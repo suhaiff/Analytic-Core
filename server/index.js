@@ -10,9 +10,35 @@ const XLSX = require('xlsx');
 const dataverseService = require('./dataverseService');
 
 const app = express();
-const port = 3001;
+const port = process.env.PORT || 3001;
 
-app.use(cors());
+// CORS Configuration - Allow specific origins
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:5173',  // Vite dev server
+    'https://analyticcore-server.onrender.com',
+    'https://analytic-core.netlify.app',  // Netlify frontend
+    process.env.FRONTEND_URL,  // Environment variable for additional domains
+].filter(Boolean);  // Remove undefined values
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps, Postman, or curl)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            console.log('CORS blocked origin:', origin);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(bodyParser.json());
 
 // Ensure uploads directory exists
