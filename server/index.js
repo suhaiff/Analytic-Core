@@ -14,9 +14,9 @@ const port = process.env.PORT || 3001;
 
 // CORS Configuration - Allow specific origins
 const allowedOrigins = [
-    // 'http://localhost:3000',
-    // 'http://localhost:3001',
-    // 'http://localhost:5173',  // Vite dev server
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:5173',  // Vite dev server
     'https://analyticcore-server.onrender.com',
     'https://analytic-core.netlify.app',  // Netlify frontend
     process.env.FRONTEND_URL,  // Environment variable for additional domains
