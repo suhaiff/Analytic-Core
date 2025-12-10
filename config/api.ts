@@ -15,11 +15,13 @@ const getApiUrl = () => {
 export const API_URL = getApiUrl();
 export const API_BASE = `${API_URL}/api`;
 
-// Export for debugging
-if (import.meta.env.DEV) {
-    console.log('API Configuration:', {
-        API_URL,
-        API_BASE,
-        environment: import.meta.env.MODE
-    });
-}
+// Always log for debugging (even in production)
+console.log('🔍 API Configuration Debug:', {
+    API_URL,
+    API_BASE,
+    environment: import.meta.env.MODE,
+    VITE_API_URL_env: import.meta.env.VITE_API_URL,
+    isDev: import.meta.env.DEV,
+    isProd: import.meta.env.PROD,
+    allEnvVars: import.meta.env
+});
