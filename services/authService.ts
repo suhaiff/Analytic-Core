@@ -1,6 +1,7 @@
 import { User } from '../types';
+import { API_BASE } from '../config/api';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = API_BASE;
 
 export const authService = {
     async login(email: string, password: string): Promise<User> {

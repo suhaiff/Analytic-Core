@@ -1,6 +1,7 @@
 import { SavedDashboard } from '../types';
+import { API_BASE } from '../config/api';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = API_BASE;
 
 export const dashboardService = {
     async getUserDashboards(userId: number): Promise<SavedDashboard[]> {
