@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { DataModel, ChartConfig, ChartType } from '../types';
 import { aggregateData } from '../utils/aggregator';
-import { LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2, X, Home, Save, Edit } from 'lucide-react';
+import { LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2, X, Home, Save, Edit, RefreshCw } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { ChartBuilder } from './ChartBuilder';
@@ -19,6 +19,7 @@ interface DashboardProps {
     chartConfigs: ChartConfig[];
     onHome: () => void;
     onSave: (name: string, charts: ChartConfig[]) => void;
+    onRefresh?: () => Promise<void>;
 }
 
 // Vibrant dark mode palette
@@ -250,7 +251,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme }: { config: Char
     }
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, onHome, onSave }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, onHome, onSave, onRefresh }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
     // Local state for charts allows editing/adding charts in-place
@@ -260,6 +261,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
     // UI State
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
     const [dashboardName, setDashboardName] = useState(dataModel.name);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const handleRefresh = async () => {
+        if (!onRefresh) return;
+        setIsRefreshing(true);
+        try {
+            await onRefresh();
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
 
     // Update local state if props change (e.g. loading a new dashboard)
     useEffect(() => {
@@ -422,6 +434,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                                 <h1 className={`text-base sm:text-xl font-bold ${colors.textPrimary} flex items-center gap-2 flex-wrap`}>
                                     <span className="truncate">{dataModel.name}</span>
                                     <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/20 uppercase tracking-wider shrink-0">Live</span>
+                                    {dataModel.sourceType === 'google_sheet' && (
+                                        <button
+                                            onClick={handleRefresh}
+                                            disabled={isRefreshing}
+                                            className={`p-1.5 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:text-indigo-400 transition flex items-center gap-1.5`}
+                                            title="Refresh Data"
+                                        >
+                                            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
+                                            <span className="text-[10px] font-bold uppercase hidden sm:inline">Refresh</span>
+                                        </button>
+                                    )}
                                 </h1>
                                 <p className={`text-[10px] sm:text-xs ${colors.textMuted} truncate`}>InsightAI Generated Report</p>
                             </div>

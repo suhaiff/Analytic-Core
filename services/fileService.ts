@@ -57,5 +57,25 @@ export const fileService = {
             columns,
             joinConfigs
         });
+    },
+
+    getGoogleSheetsMetadata: async (url: string) => {
+        const response = await axios.post(`${API_URL}/google-sheets/metadata`, { url });
+        return response.data;
+    },
+
+    importGoogleSheet: async (userId: number, spreadsheetId: string, sheetName: string, title?: string) => {
+        const response = await axios.post(`${API_URL}/google-sheets/import`, {
+            userId,
+            spreadsheetId,
+            sheetName,
+            title
+        });
+        return response.data;
+    },
+
+    refreshGoogleSheet: async (fileId: number) => {
+        const response = await axios.post(`${API_URL}/google-sheets/refresh/${fileId}`);
+        return response.data;
     }
 };

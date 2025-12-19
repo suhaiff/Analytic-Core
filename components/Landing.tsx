@@ -4,9 +4,11 @@ import { SavedDashboard, User } from '../types';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
+import { fileService } from '../services/fileService';
 
 interface LandingProps {
   onFileUpload: (file: File) => void;
+  onGoogleSheetImport: (spreadsheetId: string, sheetName: string, data: any[][], title: string, fileId: number) => void;
   savedDashboards: SavedDashboard[];
   onLoadDashboard: (dashboard: SavedDashboard) => void;
   onDeleteDashboard: (id: string) => void;
@@ -14,12 +16,54 @@ interface LandingProps {
   user: User | null;
 }
 
-export const Landing: React.FC<LandingProps> = ({ onFileUpload, savedDashboards, onLoadDashboard, onDeleteDashboard, onLogout, user }) => {
+export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImport, savedDashboards, onLoadDashboard, onDeleteDashboard, onLogout, user }) => {
   const { theme } = useTheme();
   const colors = getThemeClasses(theme);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState<'NEW' | 'SAVED'>('NEW');
+
+  // Google Sheets State
+  const [showGSModal, setShowGSModal] = useState(false);
+  const [gsUrl, setGsUrl] = useState('');
+  const [gsLoading, setGsLoading] = useState(false);
+  const [gsError, setGsError] = useState('');
+  const [gsMetadata, setGsMetadata] = useState<{ spreadsheetId: string, title: string, sheets: string[] } | null>(null);
+  const [selectedSheet, setSelectedSheet] = useState('');
+
+  const handleGSConnect = async () => {
+    if (!gsUrl) return;
+    setGsLoading(true);
+    setGsError('');
+    try {
+      const metadata = await fileService.getGoogleSheetsMetadata(gsUrl);
+      setGsMetadata(metadata);
+      if (metadata.sheets && metadata.sheets.length > 0) {
+        setSelectedSheet(metadata.sheets[0]);
+      }
+    } catch (err: any) {
+      setGsError(err.response?.data?.error || err.message || 'Failed to connect to Google Sheet');
+    } finally {
+      setGsLoading(false);
+    }
+  };
+
+  const handleGSImport = async () => {
+    if (!gsMetadata || !selectedSheet || !user) return;
+    setGsLoading(true);
+    setGsError('');
+    try {
+      const result = await fileService.importGoogleSheet(user.id, gsMetadata.spreadsheetId, selectedSheet, gsMetadata.title);
+      onGoogleSheetImport(gsMetadata.spreadsheetId, selectedSheet, result.data, gsMetadata.title, result.fileId);
+      setShowGSModal(false);
+      setGsUrl('');
+      setGsMetadata(null);
+    } catch (err: any) {
+      setGsError(err.response?.data?.error || err.message || 'Failed to import Google Sheet');
+    } finally {
+      setGsLoading(false);
+    }
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -162,6 +206,22 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, savedDashboards,
                 {/* Decorative glow */}
                 <div className="absolute inset-0 bg-indigo-500/5 blur-3xl -z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl sm:rounded-3xl" />
               </div>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => setShowGSModal(true)}
+                  className={`w-full py-4 px-6 rounded-2xl border ${colors.borderPrimary} ${colors.bgSecondary} hover:${colors.bgTertiary} transition-all flex items-center justify-center gap-3 group shadow-lg hover:shadow-indigo-500/10`}
+                >
+                  <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <FileSpreadsheet className="w-5 h-5 text-green-500" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <div className={`text-sm font-bold ${colors.textPrimary}`}>Connect Google Sheet</div>
+                    <div className={`text-xs ${colors.textMuted}`}>Live data import from Google Sheets</div>
+                  </div>
+                  <ChevronRight className={`w-5 h-5 ${colors.textMuted} group-hover:translate-x-1 transition-transform`} />
+                </button>
+              </div>
             </div>
 
             {/* Right: Illustration / Steps - Hidden on small mobile */}
@@ -260,7 +320,130 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, savedDashboards,
           </div>
         )}
 
+        {/* Google Sheets Modal */}
+        {showGSModal && (
+          <div className={`fixed inset-0 z-[100] ${colors.overlayBg} backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in`}>
+            <div className={`${colors.modalBg} border ${colors.borderPrimary} rounded-2xl p-6 sm:p-8 max-w-lg w-full shadow-2xl transform scale-100 max-h-[90vh] overflow-y-auto`}>
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-500/10 rounded-lg">
+                    <FileSpreadsheet className="w-6 h-6 text-green-500" />
+                  </div>
+                  <h3 className={`text-xl font-bold ${colors.textPrimary}`}>Connect Google Sheet</h3>
+                </div>
+                <button
+                  onClick={() => { setShowGSModal(false); setGsMetadata(null); setGsError(''); }}
+                  className={`p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} transition`}
+                >
+                  <LogOut className="w-5 h-5 rotate-180" />
+                </button>
+              </div>
+
+              {!gsMetadata ? (
+                <div className="space-y-6">
+                  <div>
+                    <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
+                      Google Sheet URL
+                    </label>
+                    <input
+                      type="text"
+                      value={gsUrl}
+                      onChange={(e) => setGsUrl(e.target.value)}
+                      placeholder="https://docs.google.com/spreadsheets/d/..."
+                      className={`w-full px-4 py-3 rounded-xl ${colors.bgTertiary} border ${colors.borderPrimary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition`}
+                    />
+                  </div>
+
+                  <div className={`p-4 rounded-xl ${theme === 'dark' ? 'bg-indigo-500/5' : 'bg-indigo-50'} border ${theme === 'dark' ? 'border-indigo-500/20' : 'border-indigo-100'}`}>
+                    <h4 className={`text-sm font-bold ${colors.textPrimary} mb-2 flex items-center gap-2`}>
+                      <Settings className="w-4 h-4 text-indigo-400" />
+                      Setup Instructions
+                    </h4>
+                    <p className={`text-xs ${colors.textSecondary} leading-relaxed`}>
+                      Please share your Google Sheet with viewer access to:
+                      <br />
+                      <code className="block mt-2 p-2 bg-black/20 rounded font-mono text-indigo-300 break-all">
+                        dashboard-sheets-reader@diesel-skyline-479213-f1.iam.gserviceaccount.com
+                      </code>
+                    </p>
+                  </div>
+
+                  {gsError && (
+                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                      {gsError}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleGSConnect}
+                    disabled={gsLoading || !gsUrl}
+                    className={`w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition shadow-lg shadow-indigo-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
+                  >
+                    {gsLoading ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>Connect Sheet</>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div>
+                    <div className={`text-sm font-medium ${colors.textMuted} mb-1`}>Connected to:</div>
+                    <div className={`text-lg font-bold ${colors.textPrimary}`}>{gsMetadata.title}</div>
+                  </div>
+
+                  <div>
+                    <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
+                      Select Sheet Tab
+                    </label>
+                    <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                      {gsMetadata.sheets.map((sheet) => (
+                        <button
+                          key={sheet}
+                          onClick={() => setSelectedSheet(sheet)}
+                          className={`px-4 py-3 rounded-xl border text-left transition-all ${selectedSheet === sheet
+                            ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
+                            : `${colors.borderPrimary} ${colors.bgTertiary} ${colors.textSecondary} hover:border-indigo-500/50`
+                            }`}
+                        >
+                          {sheet}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {gsError && (
+                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                      {gsError}
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setGsMetadata(null)}
+                      className={`flex-1 py-3 rounded-xl border ${colors.borderPrimary} ${colors.textSecondary} font-bold hover:${colors.bgTertiary} transition`}
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={handleGSImport}
+                      disabled={gsLoading || !selectedSheet}
+                      className={`flex-[2] py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition shadow-lg shadow-indigo-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
+                    >
+                      {gsLoading ? (
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <>Import Data</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
-    </div >
+    </div>
   );
 };

@@ -1,0 +1,7 @@
+config/api.ts(6,21): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+config/api.ts(8,28): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+config/api.ts(22,30): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+config/api.ts(23,35): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+config/api.ts(24,24): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+config/api.ts(25,25): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+config/api.ts(26,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.

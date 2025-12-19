@@ -15,9 +15,10 @@ interface DataConfigProps {
     onFinalize: (model: DataModel) => void;
     onHome: () => void;
     uploadedFileId?: number; // Optional: ID of uploaded file for viewing
+    sourceType?: 'file' | 'google_sheet';
 }
 
-export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName, onFinalize, onHome, uploadedFileId }) => {
+export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName, onFinalize, onHome, uploadedFileId, sourceType = 'file' }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
 
@@ -216,7 +217,10 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             data: processedData,
             columns: validColumns,
             numericColumns: [...numericCols],
-            categoricalColumns: [...categoricalCols]
+            categoricalColumns: [...categoricalCols],
+            fileId: uploadedFileId,
+            sourceType: sourceType as 'file' | 'google_sheet',
+            headerIndex: tables.length === 1 ? (headerIndices[tables[0].id] || 0) : undefined
         };
 
         // Log configuration to server

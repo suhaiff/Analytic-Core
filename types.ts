@@ -35,6 +35,9 @@ export interface DataModel {
   columns: string[];
   numericColumns: string[];
   categoricalColumns: string[];
+  fileId?: number;
+  sourceType?: 'file' | 'google_sheet';
+  headerIndex?: number;
 }
 
 export enum ChartType {

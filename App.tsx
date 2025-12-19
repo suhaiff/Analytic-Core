@@ -8,7 +8,7 @@ import { Signup } from './components/auth/Signup';
 import { Welcome } from './components/Welcome';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { processFile } from './utils/fileParser';
-import { DataModel, ChartConfig, DataTable, SavedDashboard, User } from './types';
+import { DataModel, ChartConfig, DataTable, SavedDashboard, User, ProcessedRow } from './types';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import { getThemeClasses } from './theme';
@@ -44,6 +44,7 @@ function AppContent() {
   const [uploadedFileId, setUploadedFileId] = useState<number | undefined>(undefined);
   const [dataModel, setDataModel] = useState<DataModel | null>(null);
   const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([]);
+  const [sourceType, setSourceType] = useState<'file' | 'google_sheet'>('file');
 
   // UI State
   const [toast, setToast] = useState<ToastState>({ show: false, message: '', type: 'success' });
@@ -152,6 +153,67 @@ function AppContent() {
     } catch (error) {
       console.error("File processing failed", error);
       showToast("Failed to process file. Please ensure it is a valid CSV or Excel file.", 'error');
+    }
+  };
+
+  const handleGoogleSheetImport = (spreadsheetId: string, sheetName: string, data: any[][], title: string, fileId: number) => {
+    // Convert array of arrays to DataTable format
+    const headers = data[0] || [];
+    const rows = data; // Keep all rows including headers for DataConfig to handle header index
+
+    const table: DataTable = {
+      id: spreadsheetId,
+      name: sheetName,
+      rawData: {
+        headers,
+        rows
+      }
+    };
+
+    setInitialTables([table]);
+    setFileName(title || `GS: ${sheetName}`);
+    setSourceType('google_sheet');
+    setUploadedFileId(fileId);
+  };
+
+  const handleRefresh = async () => {
+    if (!dataModel || !dataModel.fileId || dataModel.sourceType !== 'google_sheet') return;
+
+    try {
+      const result = await fileService.refreshGoogleSheet(dataModel.fileId);
+      const rawData = result.data;
+      if (!rawData || rawData.length === 0) return;
+
+      // Re-process data
+      const headerIdx = dataModel.headerIndex || 0;
+      const headers = rawData[headerIdx] || [];
+      const rows = rawData.slice(headerIdx + 1);
+
+      const processedData: ProcessedRow[] = rows.map(row => {
+        const rowObj: ProcessedRow = {};
+        dataModel.columns.forEach(col => {
+          const colIdx = headers.indexOf(col);
+          if (colIdx !== -1) {
+            const val = row[colIdx];
+            if (dataModel.numericColumns.includes(col)) {
+              rowObj[col] = val === '' || val === null ? 0 : Number(val);
+            } else {
+              rowObj[col] = val === null || val === undefined ? '' : String(val);
+            }
+          }
+        });
+        return rowObj;
+      });
+
+      setDataModel({
+        ...dataModel,
+        data: processedData
+      });
+
+      showToast("Data refreshed successfully", 'success');
+    } catch (error) {
+      console.error("Refresh failed", error);
+      showToast("Failed to refresh data", 'error');
     }
   };
 
@@ -295,6 +357,10 @@ function AppContent() {
         {step === Step.LANDING && (
           <Landing
             onFileUpload={handleFileUpload}
+            onGoogleSheetImport={(spreadsheetId, sheetName, data, title, fileId) => {
+              handleGoogleSheetImport(spreadsheetId, sheetName, data, title, fileId);
+              setStep(Step.CONFIG);
+            }}
             savedDashboards={savedDashboards}
             onLoadDashboard={handleLoadDashboard}
             onDeleteDashboard={handleDeleteDashboard}
@@ -308,6 +374,7 @@ function AppContent() {
             initialTables={initialTables}
             fileName={fileName}
             uploadedFileId={uploadedFileId}
+            sourceType={sourceType}
             onFinalize={handleConfigFinalize}
             onHome={handleReturnHomeRequest}
           />
@@ -327,6 +394,7 @@ function AppContent() {
             chartConfigs={chartConfigs}
             onHome={handleReturnHomeRequest}
             onSave={handleSaveDashboard}
+            onRefresh={handleRefresh}
           />
         )}
       </div>
