@@ -6,14 +6,17 @@ import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
 import { User, SavedDashboard } from '../../types';
 import { Shield, Trash2, LogOut, Search, User as UserIcon, FileText, LayoutDashboard, Upload, Eye, X } from 'lucide-react';
+import { ProfileMenu } from '../navbar/ProfileMenu';
+import { ThemeToggle } from '../ThemeToggle';
 
 interface AdminDashboardProps {
     onLogout: () => void;
+    user: User | null;
 }
 
 type AdminTab = 'USERS' | 'REPORTS' | 'UPLOADS';
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
     const [users, setUsers] = useState<User[]>([]);
@@ -118,12 +121,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                         </div>
                         <p className={colors.textMuted}>Manage users, reports, and uploads</p>
                     </div>
-                    <button
-                        onClick={onLogout}
-                        className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium transition"
-                    >
-                        <LogOut className="w-4 h-4" /> Logout
-                    </button>
+                    <div className="flex items-center gap-4">
+                        <ThemeToggle />
+                        <ProfileMenu user={user} onLogout={onLogout} />
+                    </div>
                 </div>
 
                 <div className="flex gap-4">

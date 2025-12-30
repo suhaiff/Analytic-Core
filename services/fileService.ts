@@ -64,11 +64,11 @@ export const fileService = {
         return response.data;
     },
 
-    importGoogleSheet: async (userId: number, spreadsheetId: string, sheetName: string, title?: string) => {
+    importGoogleSheet: async (userId: number, spreadsheetId: string, sheetNames: string[], title?: string) => {
         const response = await axios.post(`${API_URL}/google-sheets/import`, {
             userId,
             spreadsheetId,
-            sheetName,
+            sheetNames,
             title
         });
         return response.data;
@@ -76,6 +76,73 @@ export const fileService = {
 
     refreshGoogleSheet: async (fileId: number) => {
         const response = await axios.post(`${API_URL}/google-sheets/refresh/${fileId}`);
+        return response.data;
+    },
+
+    getSqlMetadata: async (fileId: number) => {
+        const response = await axios.post(`${API_URL}/sql/metadata`, { fileId });
+        return response.data;
+    },
+
+    importSqlTable: async (userId: number, fileId: number, tables: string[], title?: string) => {
+        const response = await axios.post(`${API_URL}/sql/import`, {
+            userId,
+            fileId,
+            tables,
+            title
+        });
+        return response.data;
+    },
+
+    // SQL Database Live Connection Methods
+    testSqlConnection: async (config: {
+        engine: string;
+        host: string;
+        port: number;
+        database: string;
+        user: string;
+        password: string;
+    }) => {
+        const response = await axios.post(`${API_URL}/sql-db/test`, config);
+        return response.data;
+    },
+
+    getSqlTables: async (config: {
+        engine: string;
+        host: string;
+        port: number;
+        database: string;
+        user: string;
+        password: string;
+    }) => {
+        const response = await axios.post(`${API_URL}/sql-db/tables`, config);
+        return response.data;
+    },
+
+    importSqlDatabase: async (
+        userId: number,
+        config: {
+            engine: string;
+            host: string;
+            port: number;
+            database: string;
+            user: string;
+            password: string;
+        },
+        tableNames: string[],
+        title?: string
+    ) => {
+        const response = await axios.post(`${API_URL}/sql-db/import`, {
+            userId,
+            ...config,
+            tableNames,
+            title
+        });
+        return response.data;
+    },
+
+    refreshSqlDatabase: async (fileId: number, password: string) => {
+        const response = await axios.post(`${API_URL}/sql-db/refresh/${fileId}`, { password });
         return response.data;
     }
 };

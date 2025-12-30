@@ -8,6 +8,7 @@ import { Signup } from './components/auth/Signup';
 import { Welcome } from './components/Welcome';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { processFile } from './utils/fileParser';
+import { DashboardLoader } from './components/DashboardLoader';
 import { DataModel, ChartConfig, DataTable, SavedDashboard, User, ProcessedRow } from './types';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ThemeProvider, useTheme } from './ThemeContext';
@@ -49,6 +50,8 @@ function AppContent() {
   // UI State
   const [toast, setToast] = useState<ToastState>({ show: false, message: '', type: 'success' });
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState('');
 
   // Saved Dashboards State
   const [savedDashboards, setSavedDashboards] = useState<SavedDashboard[]>([]);
@@ -129,6 +132,8 @@ function AppContent() {
   };
 
   const handleFileUpload = async (file: File) => {
+    setIsProcessing(true);
+    setProcessingMessage("Uploading and analyzing data...");
     try {
       // 1. Process locally for the app
       const tables = await processFile(file);
@@ -153,34 +158,81 @@ function AppContent() {
     } catch (error) {
       console.error("File processing failed", error);
       showToast("Failed to process file. Please ensure it is a valid CSV or Excel file.", 'error');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleGoogleSheetImport = (spreadsheetId: string, sheetName: string, data: any[][], title: string, fileId: number) => {
-    // Convert array of arrays to DataTable format
-    const headers = data[0] || [];
-    const rows = data; // Keep all rows including headers for DataConfig to handle header index
+  const handleGoogleSheetImport = (sheets: { id: number, name: string, data: any[][], fileId: number }[], title: string, spreadsheetId: string) => {
+    setIsProcessing(true);
+    setProcessingMessage("Importing Google Sheets...");
 
-    const table: DataTable = {
-      id: spreadsheetId,
-      name: sheetName,
-      rawData: {
-        headers,
-        rows
-      }
-    };
+    setTimeout(() => {
+      const dataTables: DataTable[] = sheets.map(s => ({
+        id: s.id.toString(),
+        name: s.name,
+        rawData: {
+          headers: s.data[0] || [],
+          rows: s.data
+        }
+      }));
 
-    setInitialTables([table]);
-    setFileName(title || `GS: ${sheetName}`);
-    setSourceType('google_sheet');
-    setUploadedFileId(fileId);
+      setInitialTables(dataTables);
+      setFileName(title || `GS: ${sheets.map(s => s.name).join(', ')}`);
+      setSourceType('google_sheet');
+      setUploadedFileId(sheets[0]?.fileId);
+      setStep(Step.LANDING);
+      setTimeout(() => setStep(Step.CONFIG), 10);
+      setIsProcessing(false);
+      showToast(`${sheets.length} sheets imported successfully`, 'success');
+    }, 1500);
+  };
+
+  const handleSqlDatabaseImport = (tables: { id: number, name: string, data: any[][], fileId: number }[], title: string, connectionId: string) => {
+    setIsProcessing(true);
+    setProcessingMessage("Importing SQL database tables...");
+
+    setTimeout(() => {
+      const dataTables: DataTable[] = tables.map(t => ({
+        id: t.id.toString(),
+        name: t.name,
+        rawData: {
+          headers: t.data[0] || [],
+          rows: t.data
+        }
+      }));
+
+      setInitialTables(dataTables);
+      setFileName(title || `SQL DB: ${tables.map(t => t.name).join(', ')}`);
+      setSourceType('sql_database');
+      // For multi-table, we use the first table's fileId as primary reference if needed,
+      // but DataConfig will manage multiple tables.
+      setUploadedFileId(tables[0]?.fileId);
+      setStep(Step.LANDING);
+      setTimeout(() => setStep(Step.CONFIG), 10);
+      setIsProcessing(false);
+      showToast(`${tables.length} tables imported successfully`, 'success');
+    }, 1500);
   };
 
   const handleRefresh = async () => {
-    if (!dataModel || !dataModel.fileId || dataModel.sourceType !== 'google_sheet') return;
+    if (!dataModel || !dataModel.fileId || !['google_sheet', 'sql_database'].includes(dataModel.sourceType || '')) return;
 
+    setIsProcessing(true);
+    setProcessingMessage("Refreshing live data...");
     try {
-      const result = await fileService.refreshGoogleSheet(dataModel.fileId);
+      let result;
+      if (dataModel.sourceType === 'google_sheet') {
+        result = await fileService.refreshGoogleSheet(dataModel.fileId);
+      } else {
+        const password = prompt("Enter database password to refresh:");
+        if (!password) {
+          setIsProcessing(false);
+          return;
+        }
+        result = await fileService.refreshSqlDatabase(dataModel.fileId, password);
+      }
+
       const rawData = result.data;
       if (!rawData || rawData.length === 0) return;
 
@@ -214,6 +266,8 @@ function AppContent() {
     } catch (error) {
       console.error("Refresh failed", error);
       showToast("Failed to refresh data", 'error');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -351,16 +405,14 @@ function AppContent() {
         )}
 
         {step === Step.ADMIN && (
-          <AdminDashboard onLogout={handleLogout} />
+          <AdminDashboard onLogout={handleLogout} user={currentUser} />
         )}
 
         {step === Step.LANDING && (
           <Landing
             onFileUpload={handleFileUpload}
-            onGoogleSheetImport={(spreadsheetId, sheetName, data, title, fileId) => {
-              handleGoogleSheetImport(spreadsheetId, sheetName, data, title, fileId);
-              setStep(Step.CONFIG);
-            }}
+            onGoogleSheetImport={handleGoogleSheetImport}
+            onSqlDatabaseImport={handleSqlDatabaseImport}
             savedDashboards={savedDashboards}
             onLoadDashboard={handleLoadDashboard}
             onDeleteDashboard={handleDeleteDashboard}
@@ -398,6 +450,7 @@ function AppContent() {
           />
         )}
       </div>
+      {isProcessing && <DashboardLoader message={processingMessage} />}
     </div>
   );
 }
