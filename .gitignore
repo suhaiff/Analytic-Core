@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.local
+.env.*
+.env.example
+*.log
+.DS_Store
+dist/
+build/
+coverage/
+package-lock.json
+!package-lock.json
+user file log.xlsx
+*.xlsx

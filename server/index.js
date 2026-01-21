@@ -9,6 +9,12 @@ const fs = require('fs');
 const XLSX = require('xlsx');
 const supabaseService = require('./supabaseService');
 const googleSheetsService = require('./googleSheetsService');
+const sharepointService = require('./sharepointService');
+const sharepointOAuthService = require('./sharepointOAuthService');
+const sqlDatabaseService = require('./sqlDatabaseService');
+
+
+
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -547,6 +553,613 @@ app.post('/api/google-sheets/refresh/:fileId', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// ============================================
+// SharePoint OAuth Endpoints (Per-User Authentication)
+// ============================================
+
+/**
+ * Initiates SharePoint OAuth flow - redirects user to Microsoft login
+ */
+app.get('/auth/sharepoint/start', async (req, res) => {
+    try {
+        const { userId } = req.query;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'Missing userId parameter' });
+        }
+
+        if (!sharepointOAuthService.isConfigured()) {
+            return res.status(503).json({
+                error: 'SharePoint OAuth is not properly configured. Please contact your administrator.'
+            });
+        }
+
+        // Generate authorization URL
+        const authUrl = sharepointOAuthService.getAuthorizationUrl(userId);
+
+        console.log(`Redirecting user ${userId} to SharePoint OAuth: ${authUrl}`);
+
+        // Redirect user to Microsoft login
+        res.redirect(authUrl);
+
+    } catch (error) {
+        console.error('SharePoint OAuth start error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * SharePoint OAuth callback - exchanges code for tokens
+ */
+app.get('/auth/sharepoint/callback', async (req, res) => {
+    try {
+        const { code, state, error, error_description } = req.query;
+
+        // Handle OAuth errors
+        if (error) {
+            console.error('SharePoint OAuth error:', error, error_description);
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+            return res.redirect(`${frontendUrl}?sharepoint_error=${encodeURIComponent(error_description || error)}`);
+        }
+
+        if (!code || !state) {
+            return res.status(400).json({ error: 'Missing authorization code or state' });
+        }
+
+        // Decode state to get userId
+        const stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf8'));
+        const { userId } = stateData;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'Invalid state parameter' });
+        }
+
+        console.log(`Processing SharePoint OAuth callback for user ${userId}`);
+
+        // Exchange code for tokens
+        const { accessToken, refreshToken, expiresIn } = await sharepointOAuthService.exchangeCodeForTokens(code);
+
+        // Store tokens in database (encrypted)
+        await sharepointOAuthService.storeUserTokens(userId, accessToken, refreshToken, expiresIn);
+
+        console.log(`SharePoint connection established for user ${userId}`);
+
+        // Redirect back to frontend with success
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        res.redirect(`${frontendUrl}?sharepoint_connected=true`);
+
+    } catch (error) {
+        console.error('SharePoint OAuth callback error:', error.message);
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        res.redirect(`${frontendUrl}?sharepoint_error=${encodeURIComponent(error.message)}`);
+    }
+});
+
+/**
+ * Check if user has connected their SharePoint account
+ */
+app.get('/api/sharepoint/connection-status', async (req, res) => {
+    try {
+        const { userId } = req.query;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'Missing userId parameter' });
+        }
+
+        const isConnected = await sharepointOAuthService.isUserConnected(parseInt(userId));
+
+        res.json({
+            connected: isConnected,
+            oauthConfigured: sharepointOAuthService.isConfigured()
+        });
+
+    } catch (error) {
+        console.error('SharePoint connection status error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Disconnect user's SharePoint account (revoke tokens)
+ */
+app.delete('/api/sharepoint/disconnect', async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'Missing userId parameter' });
+        }
+
+        await sharepointOAuthService.disconnectUser(parseInt(userId));
+
+        res.json({ message: 'SharePoint account disconnected successfully' });
+
+    } catch (error) {
+        console.error('SharePoint disconnect error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Get SharePoint sites for authenticated user
+ */
+app.post('/api/sharepoint/user/sites', async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({ error: 'Missing userId parameter' });
+        }
+
+        // Get user's access token (will refresh if needed)
+        const accessToken = await sharepointOAuthService.getUserAccessToken(parseInt(userId));
+
+        // Fetch sites using user's token
+        const sites = await sharepointService.getUserSites(accessToken);
+
+        res.json({ sites });
+
+    } catch (error) {
+        console.error('SharePoint user sites error:', error.message);
+
+        // If user not connected, return specific error
+        if (error.message.includes('not connected')) {
+            return res.status(401).json({
+                error: 'Please connect your SharePoint account first',
+                requiresAuth: true
+            });
+        }
+
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Get SharePoint lists for authenticated user
+ */
+app.post('/api/sharepoint/user/lists', async (req, res) => {
+    try {
+        const { userId, siteId } = req.body;
+
+        if (!userId || !siteId) {
+            return res.status(400).json({ error: 'Missing userId or siteId parameter' });
+        }
+
+        // Get user's access token
+        const accessToken = await sharepointOAuthService.getUserAccessToken(parseInt(userId));
+
+        // Fetch lists using user's token
+        const lists = await sharepointService.getUserLists(accessToken, siteId);
+
+        res.json({ lists });
+
+    } catch (error) {
+        console.error('SharePoint user lists error:', error.message);
+
+        if (error.message.includes('not connected')) {
+            return res.status(401).json({
+                error: 'Please connect your SharePoint account first',
+                requiresAuth: true
+            });
+        }
+
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Import SharePoint list using user's OAuth token
+ */
+app.post('/api/sharepoint/user/import', async (req, res) => {
+    try {
+        const { userId, siteId, listId, listName, siteName, title } = req.body;
+
+        if (!userId || !siteId || !listId) {
+            return res.status(400).json({ error: 'Missing required parameters' });
+        }
+
+        console.log(`Importing SharePoint list for user ${userId}: ${listId} from site: ${siteId}`);
+
+        // Get user's access token
+        const accessToken = await sharepointOAuthService.getUserAccessToken(parseInt(userId));
+
+        // Fetch data using user's token
+        const result = await sharepointService.importUserList(accessToken, siteId, listId);
+
+        if (!result.data || result.data.length === 0) {
+            return res.status(400).json({ error: 'The selected list is empty.' });
+        }
+
+        const { data, columns } = result;
+        const rowCount = data.length;
+        const columnCount = columns.length;
+
+        // Create file record in Supabase
+        const sourceInfo = {
+            type: 'sharepoint_oauth',
+            siteId,
+            siteName: siteName || 'SharePoint Site',
+            listId,
+            listName: listName || 'SharePoint List',
+            refreshMode: 'manual',
+            userId: parseInt(userId)  // Track which user imported this
+        };
+
+        const fileId = await supabaseService.createFile(
+            parseInt(userId),
+            title || `SP: ${listName}`,
+            'application/vnd.ms-sharepoint',
+            0,
+            1,
+            sourceInfo
+        );
+
+        // Create sheet record
+        const sheetId = await supabaseService.createSheet(
+            fileId,
+            listName || 'SharePoint List',
+            0,
+            rowCount,
+            columnCount
+        );
+
+        // Insert row data in batches
+        const batchSize = 100;
+        for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+            await supabaseService.createExcelData(sheetId, rowIndex, data[rowIndex]);
+            if ((rowIndex + 1) % batchSize === 0) {
+                console.log(`  Inserted ${rowIndex + 1}/${data.length} rows for SharePoint list`);
+            }
+        }
+
+        console.log('SharePoint OAuth import completed successfully');
+
+        res.json({
+            message: 'SharePoint list imported successfully',
+            fileId,
+            listName,
+            rowCount,
+            data
+        });
+
+    } catch (error) {
+        console.error('SharePoint user import error:', error.message);
+
+        if (error.message.includes('not connected')) {
+            return res.status(401).json({
+                error: 'Please connect your SharePoint account first',
+                requiresAuth: true
+            });
+        }
+
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============================================
+// SharePoint Endpoints (Legacy - Service Account)
+// These are kept for backward compatibility
+// ============================================
+
+app.get('/api/sharepoint/config-status', async (req, res) => {
+    try {
+        const isConfigured = sharepointService.isConfigured();
+        res.json({ configured: isConfigured });
+    } catch (error) {
+        console.error('SharePoint config check error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/sharepoint/sites', async (req, res) => {
+    try {
+        if (!sharepointService.isConfigured()) {
+            return res.status(503).json({
+                error: 'SharePoint is not configured. Please contact your administrator to set up SharePoint integration.'
+            });
+        }
+
+        const sites = await sharepointService.getSites();
+        res.json({ sites });
+    } catch (error) {
+        console.error('SharePoint sites error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/sharepoint/lists', async (req, res) => {
+    try {
+        const { siteId } = req.body;
+        if (!siteId) return res.status(400).json({ error: 'Missing siteId' });
+
+        const lists = await sharepointService.getLists(siteId);
+        res.json({ lists });
+    } catch (error) {
+        console.error('SharePoint lists error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/sharepoint/metadata', async (req, res) => {
+    try {
+        const { siteId, listId } = req.body;
+        if (!siteId || !listId) {
+            return res.status(400).json({ error: 'Missing siteId or listId' });
+        }
+
+        const columns = await sharepointService.getListColumns(siteId, listId);
+        res.json({ siteId, listId, columns });
+    } catch (error) {
+        console.error('SharePoint metadata error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/sharepoint/import', async (req, res) => {
+    try {
+        const { userId, siteId, listId, listName, siteName, title } = req.body;
+
+        if (!userId || !siteId || !listId) {
+            return res.status(400).json({ error: 'Missing required parameters' });
+        }
+
+        console.log(`Importing SharePoint list: ${listId} from site: ${siteId}`);
+
+        // 1. Fetch data from SharePoint
+        const result = await sharepointService.importList(siteId, listId);
+
+        if (!result.data || result.data.length === 0) {
+            return res.status(400).json({ error: 'The selected list is empty.' });
+        }
+
+        const { data, columns } = result;
+        const rowCount = data.length;
+        const columnCount = columns.length;
+
+        // 2. Create file record in Supabase
+        const sourceInfo = {
+            type: 'sharepoint',
+            siteId,
+            siteName: siteName || 'SharePoint Site',
+            listId,
+            listName: listName || 'SharePoint List',
+            refreshMode: 'manual'
+        };
+
+        const fileId = await supabaseService.createFile(
+            parseInt(userId),
+            title || `SP: ${listName}`,
+            'application/vnd.ms-sharepoint',
+            0, // Size not easily available
+            1, // One list at a time
+            sourceInfo
+        );
+
+        // 3. Create sheet record
+        const sheetId = await supabaseService.createSheet(
+            fileId,
+            listName || 'SharePoint List',
+            0,
+            rowCount,
+            columnCount
+        );
+
+        // 4. Insert row data in batches
+        const batchSize = 100;
+        for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+            await supabaseService.createExcelData(sheetId, rowIndex, data[rowIndex]);
+            if ((rowIndex + 1) % batchSize === 0) {
+                console.log(`  Inserted ${rowIndex + 1}/${data.length} rows for SharePoint list`);
+            }
+        }
+
+        console.log('SharePoint import completed successfully');
+
+        res.json({
+            message: 'SharePoint list imported successfully',
+            fileId,
+            listName,
+            rowCount,
+            data
+        });
+    } catch (error) {
+        console.error('SharePoint import error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/sharepoint/refresh/:fileId', async (req, res) => {
+    try {
+        const fileId = parseInt(req.params.fileId);
+        const file = await supabaseService.getFileById(fileId);
+
+        if (!file || !file.source_info || file.source_info.type !== 'sharepoint') {
+            return res.status(400).json({ error: 'File is not a SharePoint list or missing source info' });
+        }
+
+        const { siteId, listId } = file.source_info;
+        console.log(`Refreshing SharePoint list: ${listId} from site: ${siteId}`);
+
+        // 1. Fetch fresh data
+        const result = await sharepointService.importList(siteId, listId);
+
+        if (!result.data || result.data.length === 0) {
+            return res.status(400).json({ error: 'The SharePoint list is now empty.' });
+        }
+
+        // 2. Update data in Supabase
+        const listName = file.source_info.listName || 'SharePoint List';
+        await supabaseService.updateFileData(fileId, [{ name: listName, data: result.data }]);
+
+        res.json({
+            message: 'SharePoint list refreshed successfully',
+            rowCount: result.data.length,
+            updatedAt: new Date().toISOString(),
+            data: result.data
+        });
+    } catch (error) {
+        console.error('SharePoint refresh error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+// ============================================
+// SQL Database Endpoints (MySQL & PostgreSQL)
+// ============================================
+
+/**
+ * Test SQL database connection
+ */
+app.post('/api/sql/test-connection', async (req, res) => {
+    try {
+        const { host, port, user, password, database, type } = req.body;
+
+        if (!host || !user || !database || !type) {
+            return res.status(400).json({ error: 'Missing required parameters: host, user, database, type' });
+        }
+
+        console.log(`Testing ${type} connection to ${host}:${port || 'default'}, database: ${database}`);
+
+        const result = await sqlDatabaseService.testConnection({
+            host,
+            port: port ? parseInt(port) : undefined,
+            user,
+            password: password || '',
+            database,
+            type
+        });
+
+        res.json({
+            success: true,
+            message: result.message,
+            type
+        });
+
+    } catch (error) {
+        console.error('SQL connection test error:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * Get list of tables from SQL database
+ */
+app.post('/api/sql/tables', async (req, res) => {
+    try {
+        const { host, port, user, password, database, type } = req.body;
+
+        if (!host || !user || !database || !type) {
+            return res.status(400).json({ error: 'Missing required parameters' });
+        }
+
+        console.log(`Fetching tables from ${type} database: ${database}`);
+
+        const tables = await sqlDatabaseService.getTables({
+            host,
+            port: port ? parseInt(port) : undefined,
+            user,
+            password: password || '',
+            database,
+            type
+        });
+
+        res.json({ tables });
+
+    } catch (error) {
+        console.error('SQL get tables error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * Import table data from SQL database
+ */
+app.post('/api/sql/import', async (req, res) => {
+    try {
+        const { userId, host, port, user, password, database, type, tableName, title } = req.body;
+
+        if (!userId || !host || !user || !database || !type || !tableName) {
+            return res.status(400).json({ error: 'Missing required parameters' });
+        }
+
+        console.log(`Importing table "${tableName}" from ${type} database: ${database}`);
+
+        // 1. Fetch data from SQL database
+        const result = await sqlDatabaseService.importTable({
+            host,
+            port: port ? parseInt(port) : undefined,
+            user,
+            password: password || '',
+            database,
+            type
+        }, tableName);
+
+        if (!result.data || result.data.length === 0) {
+            return res.status(400).json({ error: 'The selected table is empty.' });
+        }
+
+        const { data, columns } = result;
+        const rowCount = data.length;
+        const columnCount = columns.length;
+
+        // 2. Create file record in Supabase
+        const sourceInfo = {
+            type: `sql_${type}`,
+            host,
+            port: port || (type === 'postgresql' ? 5432 : 3306),
+            database,
+            tableName,
+            refreshMode: 'manual'
+        };
+
+        const fileId = await supabaseService.createFile(
+            parseInt(userId),
+            title || `${type.toUpperCase()}: ${tableName}`,
+            `application/x-${type}`,
+            0,
+            1,
+            sourceInfo
+        );
+
+        // 3. Create sheet record
+        const sheetId = await supabaseService.createSheet(
+            fileId,
+            tableName,
+            0,
+            rowCount - 1, // Subtract header row
+            columnCount
+        );
+
+        // 4. Insert row data in batches  
+        const batchSize = 100;
+        for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+            await supabaseService.createExcelData(sheetId, rowIndex, data[rowIndex]);
+            if ((rowIndex + 1) % batchSize === 0) {
+                console.log(`  Inserted ${rowIndex + 1}/${data.length} rows for SQL table`);
+            }
+        }
+
+        console.log('SQL import completed successfully');
+
+        res.json({
+            message: 'SQL table imported successfully',
+            fileId,
+            tableName,
+            rowCount: rowCount - 1, // Actual data rows (excluding header)
+            data
+        });
+
+    } catch (error) {
+        console.error('SQL import error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 
 app.listen(port, () => {
     console.log(`Server running on port ${port} with Supabase integration`);

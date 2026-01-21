@@ -17,6 +17,7 @@
     "googleapis": "^169.0.0",
     "multer": "^2.0.2",
     "mysql2": "^3.9.1",
+    "pg": "^8.17.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

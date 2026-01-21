@@ -15,7 +15,7 @@ interface DataConfigProps {
     onFinalize: (model: DataModel) => void;
     onHome: () => void;
     uploadedFileId?: number; // Optional: ID of uploaded file for viewing
-    sourceType?: 'file' | 'google_sheet';
+    sourceType?: 'file' | 'google_sheet' | 'sharepoint';
 }
 
 export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName, onFinalize, onHome, uploadedFileId, sourceType = 'file' }) => {
@@ -219,7 +219,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             numericColumns: [...numericCols],
             categoricalColumns: [...categoricalCols],
             fileId: uploadedFileId,
-            sourceType: sourceType as 'file' | 'google_sheet',
+            sourceType: sourceType as 'file' | 'google_sheet' | 'sharepoint',
             headerIndex: tables.length === 1 ? (headerIndices[tables[0].id] || 0) : undefined
         };
 

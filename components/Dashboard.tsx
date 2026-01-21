@@ -434,7 +434,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                                 <h1 className={`text-base sm:text-xl font-bold ${colors.textPrimary} flex items-center gap-2 flex-wrap`}>
                                     <span className="truncate">{dataModel.name}</span>
                                     <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/20 uppercase tracking-wider shrink-0">Live</span>
-                                    {dataModel.sourceType === 'google_sheet' && (
+                                    {(dataModel.sourceType === 'google_sheet' || dataModel.sourceType === 'sharepoint') && (
                                         <button
                                             onClick={handleRefresh}
                                             disabled={isRefreshing}

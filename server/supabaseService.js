@@ -8,15 +8,22 @@ class SupabaseService {
         this.supabaseKey = process.env.SUPABASE_KEY;
 
         // Validate that all required environment variables are present
-        if (!this.supabaseUrl) {
-            throw new Error('Missing required environment variable: SUPABASE_URL');
-        }
-        if (!this.supabaseKey) {
-            throw new Error('Missing required environment variable: SUPABASE_KEY');
+        if (!this.supabaseUrl || !this.supabaseKey) {
+            console.warn('⚠️  Supabase credentials missing or invalid. Database operations will not work.');
+            console.warn('   Required env vars: SUPABASE_URL, SUPABASE_KEY');
+            console.warn('   Please create a new Supabase project and update your .env file.');
+            this.supabase = null;
+            return;
         }
 
         // Initialize Supabase client
-        this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
+        try {
+            this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
+            console.log('✓ Supabase client initialized successfully');
+        } catch (error) {
+            console.error('✗ Failed to initialize Supabase client:', error.message);
+            this.supabase = null;
+        }
     }
 
     // ==================== User Management ====================

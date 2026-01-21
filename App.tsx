@@ -44,7 +44,8 @@ function AppContent() {
   const [uploadedFileId, setUploadedFileId] = useState<number | undefined>(undefined);
   const [dataModel, setDataModel] = useState<DataModel | null>(null);
   const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([]);
-  const [sourceType, setSourceType] = useState<'file' | 'google_sheet'>('file');
+  const [sourceType, setSourceType] = useState<'file' | 'google_sheet' | 'sharepoint'>('file');
+
 
   // UI State
   const [toast, setToast] = useState<ToastState>({ show: false, message: '', type: 'success' });
@@ -176,11 +177,42 @@ function AppContent() {
     setUploadedFileId(fileId);
   };
 
+  const handleSharePointImport = (siteId: string, listId: string, listName: string, data: any[][], siteName: string, fileId: number) => {
+    // Convert array of arrays to DataTable format
+    const headers = data[0] || [];
+    const rows = data; // Keep all rows including headers for DataConfig to handle header index
+
+    const table: DataTable = {
+      id: listId,
+      name: listName,
+      rawData: {
+        headers,
+        rows
+      }
+    };
+
+    setInitialTables([table]);
+    setFileName(`SP: ${siteName} - ${listName}`);
+    setSourceType('sharepoint');
+    setUploadedFileId(fileId);
+  };
+
   const handleRefresh = async () => {
-    if (!dataModel || !dataModel.fileId || dataModel.sourceType !== 'google_sheet') return;
+    if (!dataModel || !dataModel.fileId) return;
+
+    // Support both Google Sheets and SharePoint refresh
+    if (dataModel.sourceType !== 'google_sheet' && dataModel.sourceType !== 'sharepoint') return;
 
     try {
-      const result = await fileService.refreshGoogleSheet(dataModel.fileId);
+      let result;
+      if (dataModel.sourceType === 'google_sheet') {
+        result = await fileService.refreshGoogleSheet(dataModel.fileId);
+      } else if (dataModel.sourceType === 'sharepoint') {
+        result = await fileService.refreshSharePointList(dataModel.fileId);
+      } else {
+        return;
+      }
+
       const rawData = result.data;
       if (!rawData || rawData.length === 0) return;
 
@@ -216,6 +248,7 @@ function AppContent() {
       showToast("Failed to refresh data", 'error');
     }
   };
+
 
   const handleConfigFinalize = (model: DataModel) => {
     setDataModel(model);
@@ -351,7 +384,7 @@ function AppContent() {
         )}
 
         {step === Step.ADMIN && (
-          <AdminDashboard onLogout={handleLogout} />
+          <AdminDashboard onLogout={handleLogout} user={currentUser} />
         )}
 
         {step === Step.LANDING && (
@@ -361,6 +394,10 @@ function AppContent() {
               handleGoogleSheetImport(spreadsheetId, sheetName, data, title, fileId);
               setStep(Step.CONFIG);
             }}
+            onSharePointImport={(siteId, listId, listName, data, siteName, fileId) => {
+              handleSharePointImport(siteId, listId, listName, data, siteName, fileId);
+              setStep(Step.CONFIG);
+            }}
             savedDashboards={savedDashboards}
             onLoadDashboard={handleLoadDashboard}
             onDeleteDashboard={handleDeleteDashboard}
@@ -368,6 +405,7 @@ function AppContent() {
             user={currentUser}
           />
         )}
+
 
         {step === Step.CONFIG && initialTables.length > 0 && (
           <DataConfig
