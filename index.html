@@ -1,74 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AnalyticCore Reporter</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-      body { font-family: 'Inter', sans-serif; }
-      /* Dark mode scrollbar */
-      .dark-theme ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      .dark-theme ::-webkit-scrollbar-track {
-        background: #0f172a; 
-      }
-      .dark-theme ::-webkit-scrollbar-thumb {
-        background: #334155; 
-        border-radius: 4px;
-      }
-      .dark-theme ::-webkit-scrollbar-thumb:hover {
-        background: #475569; 
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AnalyticCore Reporter</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+    }
+
+    /* Dark mode scrollbar */
+    .dark-theme ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    .dark-theme ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+
+    .dark-theme ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+
+    .dark-theme ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    /* Light mode scrollbar */
+    .light-theme ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    .light-theme ::-webkit-scrollbar-track {
+      background: #f8fafc;
+    }
+
+    .light-theme ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+
+    .light-theme ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    @media print {
+      @page {
+        size: auto;
+        margin: 0.5cm;
       }
 
-      /* Light mode scrollbar */
-      .light-theme ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      .light-theme ::-webkit-scrollbar-track {
-        background: #f8fafc; 
-      }
-      .light-theme ::-webkit-scrollbar-thumb {
-        background: #cbd5e1; 
-        border-radius: 4px;
-      }
-      .light-theme ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8; 
+      body {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        background-color: #0f172a !important;
+        /* Slate 950 */
+        color: #e2e8f0 !important;
       }
 
-      @media print {
-        @page {
-          size: auto;
-          margin: 0.5cm;
-        }
-        body {
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-          background-color: #0f172a !important; /* Slate 950 */
-          color: #e2e8f0 !important;
-        }
-        /* Hide fixed background blobs */
-        .fixed.inset-0.pointer-events-none {
-            display: none !important;
-        }
-        /* Hide buttons/nav */
-        .no-print, header button, .no-export {
-            display: none !important;
-        }
-        /* Ensure charts render correctly and don't break */
-        .recharts-responsive-container {
-            break-inside: avoid;
-        }
-        /* Hide scrollbars in print */
-        ::-webkit-scrollbar {
-            display: none;
-        }
+      /* Hide fixed background blobs */
+      .fixed.inset-0.pointer-events-none {
+        display: none !important;
       }
-    </style>
+
+      /* Hide buttons/nav */
+      .no-print,
+      header button,
+      .no-export {
+        display: none !important;
+      }
+
+      /* Ensure charts render correctly and don't break */
+      .recharts-responsive-container {
+        break-inside: avoid;
+      }
+
+      /* Hide scrollbars in print */
+      ::-webkit-scrollbar {
+        display: none;
+      }
+    }
+  </style>
   <script type="importmap">
 {
   "imports": {
@@ -86,10 +106,12 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+  <link rel="stylesheet" href="/index.css">
 </head>
-  <body>
-    <div id="root"></div>
+
+<body>
+  <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
+
 </html>

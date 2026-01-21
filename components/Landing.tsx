@@ -9,8 +9,9 @@ import { ProfileMenu } from './navbar/ProfileMenu';
 
 interface LandingProps {
   onFileUpload: (file: File) => void;
-  onGoogleSheetImport: (spreadsheetId: string, sheetName: string, data: any[][], title: string, fileId: number) => void;
+  onGoogleSheetImport: (sheets: { id: number, name: string, data: any[][], fileId: number }[], title: string, spreadsheetId: string) => void;
   onSharePointImport: (siteId: string, listId: string, listName: string, data: any[][], siteName: string, fileId: number) => void;
+  onSqlDatabaseImport: (tables: { id: number, name: string, data: any[][], fileId: number }[], title: string, connectionId: string) => void;
   savedDashboards: SavedDashboard[];
   onLoadDashboard: (dashboard: SavedDashboard) => void;
   onDeleteDashboard: (id: string) => void;
@@ -18,7 +19,7 @@ interface LandingProps {
   user: User | null;
 }
 
-export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImport, onSharePointImport, savedDashboards, onLoadDashboard, onDeleteDashboard, onLogout, user }) => {
+export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImport, onSharePointImport, onSqlDatabaseImport, savedDashboards, onLoadDashboard, onDeleteDashboard, onLogout, user }) => {
   const { theme } = useTheme();
   const colors = getThemeClasses(theme);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,7 +35,23 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
   const [gsLoading, setGsLoading] = useState(false);
   const [gsError, setGsError] = useState('');
   const [gsMetadata, setGsMetadata] = useState<{ spreadsheetId: string, title: string, sheets: string[] } | null>(null);
-  const [selectedSheet, setSelectedSheet] = useState('');
+  const [selectedSheets, setSelectedSheets] = useState<string[]>([]);
+
+  // SQL Database Connection State
+  const [showSqlDbModal, setShowSqlDbModal] = useState(false);
+  const [sqlDbConfig, setSqlDbConfig] = useState({
+    engine: 'mysql',
+    host: '',
+    port: 3306,
+    database: '',
+    user: '',
+    password: ''
+  });
+  const [sqlDbLoading, setSqlDbLoading] = useState(false);
+  const [sqlDbError, setSqlDbError] = useState('');
+  const [sqlDbConnected, setSqlDbConnected] = useState(false);
+  const [sqlDbTables, setSqlDbTables] = useState<string[]>([]);
+  const [selectedTables, setSelectedTables] = useState<string[]>([]);
 
   // SharePoint State
   const [showSPModal, setShowSPModal] = useState(false);
@@ -270,7 +287,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
       const metadata = await fileService.getGoogleSheetsMetadata(gsUrl);
       setGsMetadata(metadata);
       if (metadata.sheets && metadata.sheets.length > 0) {
-        setSelectedSheet(metadata.sheets[0]);
+        setSelectedSheets([metadata.sheets[0]]);
       }
     } catch (err: any) {
       setGsError(err.response?.data?.error || err.message || 'Failed to connect to Google Sheet');
@@ -280,21 +297,112 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
   };
 
   const handleGSImport = async () => {
-    if (!gsMetadata || !selectedSheet || !user) return;
+    if (!gsMetadata || selectedSheets.length === 0 || !user) return;
     setGsLoading(true);
     setGsError('');
     try {
-      const result = await fileService.importGoogleSheet(user.id, gsMetadata.spreadsheetId, selectedSheet, gsMetadata.title);
-      onGoogleSheetImport(gsMetadata.spreadsheetId, selectedSheet, result.data, gsMetadata.title, result.fileId);
+      const result = await fileService.importGoogleSheet(
+        user.id,
+        gsMetadata.spreadsheetId,
+        selectedSheets,
+        gsMetadata.title
+      );
+      onGoogleSheetImport(result.sheets, gsMetadata.title, gsMetadata.spreadsheetId);
       setShowGSModal(false);
       setGsUrl('');
       setGsMetadata(null);
+      setSelectedSheets([]);
     } catch (err: any) {
-      setGsError(err.response?.data?.error || err.message || 'Failed to import Google Sheet');
+      setGsError(err.response?.data?.error || err.message || 'Failed to import Google Sheets');
     } finally {
       setGsLoading(false);
     }
   };
+
+  const toggleGsSheet = (sheet: string) => {
+    setSelectedSheets(prev =>
+      prev.includes(sheet)
+        ? prev.filter(s => s !== sheet)
+        : [...prev, sheet]
+    );
+  };
+
+  // SQL Database Connection Handlers
+  const handleSqlDbTest = async () => {
+    setSqlDbLoading(true);
+    setSqlDbError('');
+    try {
+      const result = await fileService.testSqlConnection(sqlDbConfig);
+      if (result.success) {
+        setSqlDbConnected(true);
+        setSqlDbError('');
+      } else {
+        setSqlDbError(result.error || 'Connection test failed');
+      }
+    } catch (err: any) {
+      setSqlDbError(err.response?.data?.error || err.message || 'Failed to test connection');
+    } finally {
+      setSqlDbLoading(false);
+    }
+  };
+
+  const handleSqlDbFetchTables = async () => {
+    setSqlDbLoading(true);
+    setSqlDbError('');
+    try {
+      const result = await fileService.getSqlTables(sqlDbConfig);
+      setSqlDbTables(result.tables || []);
+      if (result.tables && result.tables.length > 0) {
+        setSelectedTables([result.tables[0]]);
+      }
+    } catch (err: any) {
+      setSqlDbError(err.response?.data?.error || err.message || 'Failed to fetch tables');
+    } finally {
+      setSqlDbLoading(false);
+    }
+  };
+
+  const handleSqlDbImport = async () => {
+    if (selectedTables.length === 0 || !user) return;
+    setSqlDbLoading(true);
+    setSqlDbError('');
+    try {
+      // We'll update the backend to handle multiple tables in one go for better performance
+      // For now, let's call the service which we will also update to handle an array
+      const result = await fileService.importSqlDatabase(
+        user.id,
+        sqlDbConfig,
+        selectedTables,
+        `${sqlDbConfig.engine.toUpperCase()}: ${sqlDbConfig.database}`
+      );
+
+      onSqlDatabaseImport(
+        result.tables,
+        result.title,
+        `${sqlDbConfig.engine}:${sqlDbConfig.host}:${sqlDbConfig.database}`
+      );
+
+      // Reset modal
+      setShowSqlDbModal(false);
+      setSqlDbConfig({ engine: 'mysql', host: '', port: 3306, database: '', user: '', password: '' });
+      setSqlDbConnected(false);
+      setSqlDbTables([]);
+      setSelectedTables([]);
+    } catch (err: any) {
+      setSqlDbError(err.response?.data?.error || err.message || 'Failed to import tables');
+    } finally {
+      setSqlDbLoading(false);
+    }
+  };
+
+  const toggleSqlTable = (table: string) => {
+    setSelectedTables(prev =>
+      prev.includes(table)
+        ? prev.filter(t => t !== table)
+        : [...prev, table]
+    );
+  };
+
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -494,7 +602,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
 
                     {/* SQL Option (Placeholder functionality) */}
                     <button
-                      onClick={() => { setShowSQLModal(true); setShowImportMenu(false); }}
+                      onClick={() => { setShowSqlDbModal(true); setShowImportMenu(false); }}
                       className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
                     >
                       <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
@@ -700,19 +808,20 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                   <div className="flex gap-3">
                     <button
                       onClick={() => setGsMetadata(null)}
+                      onClick={() => { setGsMetadata(null); setSelectedSheets([]); }}
                       className={`flex-1 py-3 rounded-xl border ${colors.borderPrimary} ${colors.textSecondary} font-bold hover:${colors.bgTertiary} transition`}
                     >
                       Back
                     </button>
                     <button
                       onClick={handleGSImport}
-                      disabled={gsLoading || !selectedSheet}
-                      className={`flex-[2] py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition shadow-lg shadow-indigo-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
+                      disabled={gsLoading || selectedSheets.length === 0}
+                      className="flex-[2] py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition shadow-lg shadow-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {gsLoading ? (
                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                       ) : (
-                        <>Import Data</>
+                        <>{selectedSheets.length > 1 ? `Import ${selectedSheets.length} Sheets` : 'Import Sheet'}</>
                       )}
                     </button>
                   </div>
@@ -897,225 +1006,232 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
           </div>
         )}
 
-        {/* SQL Modal */}
-        {showSQLModal && (
+
+        {/* SQL Database Connection Modal */}
+        {showSqlDbModal && (
           <div className={`fixed inset-0 z-[100] ${colors.overlayBg} backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in`}>
-            <div className={`${colors.modalBg} border ${colors.borderPrimary} rounded-2xl p-6 sm:p-8 max-w-xl w-full shadow-2xl transform scale-100 max-h-[90vh] overflow-y-auto`}>
+            <div className={`${colors.modalBg} border ${colors.borderPrimary} rounded-2xl p-6 sm:p-8 max-w-lg w-full shadow-2xl transform scale-100 max-h-[90vh] overflow-y-auto`}>
               <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-blue-500/10 rounded-lg">
-                    <Database className="w-6 h-6 text-blue-500" />
+                    <FileText className="w-6 h-6 text-blue-500" />
                   </div>
-                  <h3 className={`text-xl font-bold ${colors.textPrimary}`}>Import SQL Data</h3>
+                  <h3 className={`text-xl font-bold ${colors.textPrimary}`}>Connect SQL Database</h3>
                 </div>
                 <button
-                  onClick={() => { setShowSQLModal(false); resetSqlState(); }}
+                  onClick={() => {
+                    setShowSqlDbModal(false);
+                    setSqlDbConnected(false);
+                    setSqlDbTables([]);
+                    setSqlDbError('');
+                  }}
                   className={`p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} transition`}
                 >
-                  <X className="w-5 h-5" />
+                  <LogOut className="w-5 h-5 rotate-180" />
                 </button>
               </div>
 
-              <div className="space-y-6">
-                {/* Step Progress */}
-                <div className="flex items-center gap-2 mb-8">
-                  {[
-                    { id: 'CONNECT', label: 'Connect' },
-                    { id: 'TABLES', label: 'Select Table' },
-                    { id: 'IMPORT', label: 'Import' }
-                  ].map((step, idx) => (
-                    <React.Fragment key={step.id}>
-                      <div className={`flex items-center gap-2 ${sqlStep === step.id ? 'text-blue-400' : colors.textMuted}`}>
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${sqlStep === step.id ? 'bg-blue-600 text-white' : 'bg-slate-800'}`}>
-                          {idx + 1}
-                        </div>
-                        <span className="text-xs font-medium hidden sm:inline">{step.label}</span>
-                      </div>
-                      {idx < 2 && <div className={`h-px flex-1 ${idx === 0 && (sqlStep === 'TABLES' || sqlStep === 'IMPORT') ? 'bg-blue-600' : idx === 1 && sqlStep === 'IMPORT' ? 'bg-blue-600' : 'bg-slate-800'}`} />}
-                    </React.Fragment>
-                  ))}
-                </div>
-
-                {sqlError && (
-                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm animate-shake">
-                    {sqlError}
+              {!sqlDbConnected ? (
+                <div className="space-y-6">
+                  <div>
+                    <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
+                      Database Type
+                    </label>
+                    <select
+                      value={sqlDbConfig.engine}
+                      onChange={(e) => {
+                        const engine = e.target.value;
+                        setSqlDbConfig({
+                          ...sqlDbConfig,
+                          engine,
+                          port: engine === 'mysql' ? 3306 : 5432
+                        });
+                      }}
+                      className={`w-full px-4 py-3 rounded-xl ${colors.bgTertiary} border ${colors.borderPrimary} ${colors.textPrimary} focus:ring-2 focus:ring-blue-500 outline-none transition`}
+                    >
+                      <option value="mysql">MySQL</option>
+                      <option value="postgresql">PostgreSQL</option>
+                    </select>
                   </div>
-                )}
 
-                {/* CONNECT Step */}
-                {sqlStep === 'CONNECT' && (
-                  <div className="space-y-4">
-                    {/* Database Type */}
-                    <div>
-                      <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
-                        Database Type
-                      </label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(['mysql', 'mariadb', 'postgresql'] as const).map(type => (
-                          <button
-                            key={type}
-                            onClick={() => setSqlConfig({ ...sqlConfig, type, port: type === 'postgresql' ? '5432' : '3306' })}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${sqlConfig.type === type
-                              ? 'bg-blue-600 text-white'
-                              : `${colors.bgTertiary} ${colors.textSecondary} hover:${colors.bgSecondary}`
-                              }`}
-                          >
-                            {type === 'mysql' ? 'MySQL' : type === 'mariadb' ? 'MariaDB' : 'PostgreSQL'}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Host */}
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
                         Host
                       </label>
                       <input
                         type="text"
-                        value={sqlConfig.host}
-                        onChange={(e) => setSqlConfig({ ...sqlConfig, host: e.target.value })}
-                        placeholder="localhost or IP address"
+                        value={sqlDbConfig.host}
+                        onChange={(e) => setSqlDbConfig({ ...sqlDbConfig, host: e.target.value })}
+                        placeholder="localhost"
                         className={`w-full px-4 py-3 rounded-xl ${colors.bgTertiary} border ${colors.borderPrimary} ${colors.textPrimary} focus:ring-2 focus:ring-blue-500 outline-none transition`}
                       />
                     </div>
-
-                    {/* Port */}
                     <div>
                       <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
                         Port
                       </label>
                       <input
-                        type="text"
-                        value={sqlConfig.port}
-                        onChange={(e) => setSqlConfig({ ...sqlConfig, port: e.target.value })}
-                        placeholder={sqlConfig.type === 'postgresql' ? '5432' : '3306'}
+                        type="number"
+                        value={sqlDbConfig.port}
+                        onChange={(e) => setSqlDbConfig({ ...sqlDbConfig, port: parseInt(e.target.value) || 3306 })}
                         className={`w-full px-4 py-3 rounded-xl ${colors.bgTertiary} border ${colors.borderPrimary} ${colors.textPrimary} focus:ring-2 focus:ring-blue-500 outline-none transition`}
                       />
-                    </div>
-
-                    {/* Username */}
-                    <div>
-                      <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
-                        Username
-                      </label>
-                      <input
-                        type="text"
-                        value={sqlConfig.user}
-                        onChange={(e) => setSqlConfig({ ...sqlConfig, user: e.target.value })}
-                        placeholder="Database username"
-                        className={`w-full px-4 py-3 rounded-xl ${colors.bgTertiary} border ${colors.borderPrimary} ${colors.textPrimary} focus:ring-2 focus:ring-blue-500 outline-none transition`}
-                      />
-                    </div>
-
-                    {/* Password */}
-                    <div>
-                      <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
-                        Password
-                      </label>
-                      <input
-                        type="password"
-                        value={sqlConfig.password}
-                        onChange={(e) => setSqlConfig({ ...sqlConfig, password: e.target.value })}
-                        placeholder="Database password"
-                        className={`w-full px-4 py-3 rounded-xl ${colors.bgTertiary} border ${colors.borderPrimary} ${colors.textPrimary} focus:ring-2 focus:ring-blue-500 outline-none transition`}
-                      />
-                    </div>
-
-                    {/* Database Name */}
-                    <div>
-                      <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
-                        Database Name
-                      </label>
-                      <input
-                        type="text"
-                        value={sqlConfig.database}
-                        onChange={(e) => setSqlConfig({ ...sqlConfig, database: e.target.value })}
-                        placeholder="Database name"
-                        className={`w-full px-4 py-3 rounded-xl ${colors.bgTertiary} border ${colors.borderPrimary} ${colors.textPrimary} focus:ring-2 focus:ring-blue-500 outline-none transition`}
-                      />
-                    </div>
-
-                    <button
-                      onClick={handleSqlTestConnection}
-                      disabled={sqlLoading || !sqlConfig.host || !sqlConfig.user || !sqlConfig.database}
-                      className={`w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition shadow-lg shadow-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
-                    >
-                      {sqlLoading ? (
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <>Test Connection & Load Tables</>
-                      )}
-                    </button>
-                  </div>
-                )}
-
-                {/* TABLES Step */}
-                {sqlStep === 'TABLES' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium text-slate-400">
-                        Database: <span className="text-white">{sqlConfig.database}</span>
-                      </div>
-                      <button onClick={() => setSqlStep('CONNECT')} className="text-xs text-blue-400 hover:underline">
-                        Change Connection
-                      </button>
-                    </div>
-
-                    <div className="max-h-64 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-                      {sqlLoading && sqlTables.length === 0 ? (
-                        <div className="py-12 text-center animate-pulse text-slate-500">Loading tables...</div>
-                      ) : sqlTables.length > 0 ? (
-                        sqlTables.map((table) => (
-                          <button
-                            key={table}
-                            onClick={() => handleSqlTableSelect(table)}
-                            className={`w-full p-4 rounded-xl border ${colors.borderPrimary} ${colors.bgTertiary} text-left hover:border-blue-500/50 transition-all group`}
-                          >
-                            <div className="font-bold text-sm text-white group-hover:text-blue-400">{table}</div>
-                          </button>
-                        ))
-                      ) : (
-                        <div className="py-12 text-center text-slate-500">No tables found in this database.</div>
-                      )}
                     </div>
                   </div>
-                )}
 
-                {/* IMPORT Step */}
-                {sqlStep === 'IMPORT' && (
-                  <div className="space-y-6">
-                    <div className="bg-blue-500/5 border border-blue-500/20 rounded-2xl p-6 text-center">
-                      <Database className="w-12 h-12 text-blue-400 mx-auto mb-4" />
-                      <h4 className="text-lg font-bold text-white mb-2">Ready to Import</h4>
-                      <p className="text-sm text-slate-400 px-4">
-                        You are about to import the table <span className="text-white font-bold">{selectedSqlTable}</span> from database <span className="text-white font-bold">{sqlConfig.database}</span>.
-                      </p>
+                  <div>
+                    <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
+                      Database Name
+                    </label>
+                    <input
+                      type="text"
+                      value={sqlDbConfig.database}
+                      onChange={(e) => setSqlDbConfig({ ...sqlDbConfig, database: e.target.value })}
+                      placeholder="my_database"
+                      className={`w-full px-4 py-3 rounded-xl ${colors.bgTertiary} border ${colors.borderPrimary} ${colors.textPrimary} focus:ring-2 focus:ring-blue-500 outline-none transition`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      value={sqlDbConfig.user}
+                      onChange={(e) => setSqlDbConfig({ ...sqlDbConfig, user: e.target.value })}
+                      placeholder="username"
+                      className={`w-full px-4 py-3 rounded-xl ${colors.bgTertiary} border ${colors.borderPrimary} ${colors.textPrimary} focus:ring-2 focus:ring-blue-500 outline-none transition`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      value={sqlDbConfig.password}
+                      onChange={(e) => setSqlDbConfig({ ...sqlDbConfig, password: e.target.value })}
+                      placeholder="••••••••"
+                      className={`w-full px-4 py-3 rounded-xl ${colors.bgTertiary} border ${colors.borderPrimary} ${colors.textPrimary} focus:ring-2 focus:ring-blue-500 outline-none transition`}
+                    />
+                  </div>
+
+                  <div className={`p-4 rounded-xl ${theme === 'dark' ? 'bg-blue-500/5' : 'bg-blue-50'} border ${theme === 'dark' ? 'border-blue-500/20' : 'border-blue-100'}`}>
+                    <h4 className={`text-sm font-bold ${colors.textPrimary} mb-2 flex items-center gap-2`}>
+                      <Settings className="w-4 h-4 text-blue-400" />
+                      Security Note
+                    </h4>
+                    <p className={`text-xs ${colors.textSecondary} leading-relaxed`}>
+                      Connection credentials are transmitted securely and NOT stored. Only SELECT queries are allowed.
+                    </p>
+                  </div>
+
+                  {sqlDbError && (
+                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                      {sqlDbError}
                     </div>
+                  )}
 
-                    <div className="flex gap-3">
+                  <button
+                    onClick={handleSqlDbTest}
+                    disabled={sqlDbLoading || !sqlDbConfig.host || !sqlDbConfig.database || !sqlDbConfig.user}
+                    className={`w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition shadow-lg shadow-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
+                  >
+                    {sqlDbLoading ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>Test Connection</>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div>
+                    <div className={`text-sm font-medium ${colors.textMuted} mb-1`}>Connected to:</div>
+                    <div className={`text-lg font-bold ${colors.textPrimary}`}>{sqlDbConfig.host}:{sqlDbConfig.port}/{sqlDbConfig.database}</div>
+                  </div>
+
+                  {sqlDbTables.length === 0 ? (
+                    <div>
+                      {sqlDbError && (
+                        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm mb-4">
+                          {sqlDbError}
+                        </div>
+                      )}
                       <button
-                        onClick={() => setSqlStep('TABLES')}
-                        className={`flex-1 py-3 rounded-xl border ${colors.borderPrimary} ${colors.textSecondary} font-bold hover:${colors.bgTertiary} transition`}
-                        disabled={sqlLoading}
+                        onClick={handleSqlDbFetchTables}
+                        disabled={sqlDbLoading}
+                        className={`w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition shadow-lg shadow-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
                       >
-                        Back
-                      </button>
-                      <button
-                        onClick={handleSqlImport}
-                        disabled={sqlLoading}
-                        className={`flex-[2] py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2`}
-                      >
-                        {sqlLoading ? (
+                        {sqlDbLoading ? (
                           <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         ) : (
-                          <>Import SQL Data</>
+                          <>Fetch Tables</>
                         )}
                       </button>
                     </div>
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <>
+                      <div>
+                        <label className={`block text-sm font-medium ${colors.textSecondary} mb-2`}>
+                          Select Table
+                        </label>
+                        <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                          {sqlDbTables.map((table) => {
+                            const isSelected = selectedTables.includes(table);
+                            return (
+                              <button
+                                key={table}
+                                onClick={() => toggleSqlTable(table)}
+                                className={`px-4 py-3 rounded-xl border text-left transition-all flex justify-between items-center ${isSelected
+                                  ? 'border-blue-500 bg-blue-500/10 text-blue-400'
+                                  : `${colors.borderPrimary} ${colors.bgTertiary} ${colors.textSecondary} hover:border-blue-500/50`
+                                  }`}
+                              >
+                                <span>{table}</span>
+                                {isSelected && <Sparkles className="w-4 h-4 animate-pulse" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {sqlDbError && (
+                        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                          {sqlDbError}
+                        </div>
+                      )}
+
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => {
+                            setSqlDbConnected(false);
+                            setSqlDbTables([]);
+                            setSelectedTables([]);
+                          }}
+                          className={`flex-1 py-3 rounded-xl border ${colors.borderPrimary} ${colors.textSecondary} font-bold hover:${colors.bgTertiary} transition`}
+                        >
+                          Back
+                        </button>
+                        <button
+                          onClick={handleSqlDbImport}
+                          disabled={sqlDbLoading || selectedTables.length === 0}
+                          className={`flex-[2] py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition shadow-lg shadow-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
+                        >
+                          {sqlDbLoading ? (
+                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <>{selectedTables.length > 1 ? `Import ${selectedTables.length} Tables` : 'Import Table'}</>
+                          )}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}

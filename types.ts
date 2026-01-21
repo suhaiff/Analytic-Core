@@ -36,7 +36,7 @@ export interface DataModel {
   numericColumns: string[];
   categoricalColumns: string[];
   fileId?: number;
-  sourceType?: 'file' | 'google_sheet' | 'sharepoint';
+  sourceType?: 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database';
   headerIndex?: number;
 }
 

@@ -122,7 +122,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         <div className={`flex h-screen ${colors.bgPrimary} ${colors.textSecondary} overflow-hidden relative`}>
             {/* Data Preview Modal - Responsive */}
             {showData && (
-                <div className={`fixed inset-0 z-50 ${colors.overlayBg} backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 lg:p-8 animate-fade-in`}>
+                <div className={`fixed inset-0 z-50 ${colors.overlayBg} glass-effect flex items-center justify-center p-2 sm:p-4 lg:p-8 animate-fade-in`}>
                     <div className={`responsive-modal ${colors.bgSecondary} border ${colors.borderPrimary} w-full h-full rounded-xl sm:rounded-2xl flex flex-col shadow-2xl overflow-hidden`}>
                         <div className={`p-3 sm:p-4 md:p-6 border-b ${colors.borderPrimary} flex justify-between items-center ${colors.bgSecondary} shrink-0`}>
                             <div>
@@ -173,7 +173,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
             )}
 
             {/* Left: AI Suggestions - Responsive Sidebar */}
-            <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:relative w-80 sm:w-[350px] lg:w-[400px] max-w-[85vw] border-r ${colors.borderPrimary} ${colors.bgSecondary} flex flex-col z-40 md:z-10 shadow-2xl transition-transform duration-300 h-full`}>
+            <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:relative w-80 sm:w-[350px] lg:w-[400px] max-w-[85vw] border-r ${colors.borderPrimary} ${colors.bgSecondary} flex flex-col z-40 md:z-10 shadow-2xl transition-transform duration-300 h-full glass-effect`}>
                 {/* Mobile: Close button */}
                 <div className={`md:hidden flex justify-between items-center p-4 border-b ${colors.borderPrimary}`}>
                     <h3 className={`font-bold ${colors.textPrimary}`}>AI Insights</h3>
@@ -184,7 +184,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
 
                 <div className={`p-4 sm:p-6 border-b ${colors.borderPrimary} ${colors.bgSecondary}`}>
                     <div className="flex items-center gap-2 sm:gap-3 mb-2">
-                        <button onClick={onHome} className={`p-1.5 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition`} title={mode === 'update' ? "Cancel" : "Go Home"}>
+                        <button onClick={onHome} className={`p-1.5 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition active-press`} title={mode === 'update' ? "Cancel" : "Go Home"}>
                             {mode === 'update' ? <X className="w-4 h-4" /> : <Home className="w-4 h-4" />}
                         </button>
                         <h2 className={`responsive-text-base sm:text-lg font-bold ${colors.textPrimary} flex items-center gap-2`}>
@@ -199,7 +199,8 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
 
                 <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 custom-scrollbar">
                     {loading ? (
-                        <div className="flex flex-col items-center justify-center h-64 gap-4">
+                        <div className="flex flex-col items-center justify-center h-64 gap-4 relative overflow-hidden rounded-xl">
+                            <div className="absolute inset-0 animate-shimmer -z-10"></div>
                             <div className="relative">
                                 <div className="w-10 h-10 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin"></div>
                                 <div className="absolute inset-0 flex items-center justify-center">
@@ -214,10 +215,10 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                             return (
                                 <div
                                     key={chart.id}
-                                    className={`group relative rounded-lg sm:rounded-xl p-4 sm:p-5 transition-all duration-300 border
+                                    className={`group relative rounded-lg sm:rounded-xl p-4 sm:p-5 transition-all duration-300 border hover-lift elevation-md
                                     ${inBucket
                                             ? 'bg-indigo-900/10 border-indigo-500/30 opacity-60'
-                                            : `${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'} hover:border-indigo-500/50 hover:${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-50'} hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-1`
+                                            : `${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'} hover:border-indigo-500/50 hover:${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-50'} hover:shadow-lg hover:shadow-indigo-500/10`
                                         }
                                 `}
                                 >
@@ -231,7 +232,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                         {!inBucket && (
                                             <button
                                                 onClick={() => addToBucket(chart)}
-                                                className={`${colors.textMuted} hover:${colors.textPrimary} ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'} hover:bg-indigo-500 p-1.5 rounded-lg transition-colors`}
+                                                className={`${colors.textMuted} hover:${colors.textPrimary} ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'} hover:bg-indigo-500 p-1.5 rounded-lg transition-colors active-press`}
                                             >
                                                 <Plus className="w-4 h-4" />
                                             </button>
@@ -263,7 +264,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                         </h1>
                         <button
                             onClick={() => setShowData(true)}
-                            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 ${colors.bgTertiary} hover:${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'} border ${colors.borderSecondary} rounded-md text-[10px] sm:text-xs font-medium ${colors.textTertiary} transition`}
+                            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 ${colors.bgTertiary} hover:${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'} border ${colors.borderSecondary} rounded-md text-[10px] sm:text-xs font-medium ${colors.textTertiary} transition active-press`}
                             title="View Data"
                         >
                             <TableIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden md:inline">View Data</span>
@@ -275,7 +276,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                     <button
                         onClick={() => onGenerateReport(bucket)}
                         disabled={bucket.length === 0}
-                        className="pointer-events-auto bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-2.5 sm:px-4 md:px-6 py-1.5 sm:py-2.5 rounded-full font-bold text-[10px] sm:text-sm transition-all flex items-center gap-1 sm:gap-2 shadow-lg shadow-emerald-900/20 active:scale-95"
+                        className="pointer-events-auto bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-2.5 sm:px-4 md:px-6 py-1.5 sm:py-2.5 rounded-full font-bold text-[10px] sm:text-sm transition-all flex items-center gap-1 sm:gap-2 shadow-lg shadow-emerald-900/20 active-press"
                     >
                         {mode === 'update' ? (
                             <>
@@ -299,7 +300,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                     <div className="w-full max-w-3xl mx-auto mt-2 sm:mt-4">
                         <div className="relative group">
                             <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl sm:rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-500"></div>
-                            <div className={`relative ${colors.bgSecondary} rounded-xl sm:rounded-2xl p-1 flex items-center ring-1 ${theme === 'dark' ? 'ring-white/10' : 'ring-slate-300'} focus-within:ring-indigo-500/50 transition-all`}>
+                            <div className={`relative ${colors.bgSecondary} rounded-xl sm:rounded-2xl p-1 flex items-center ring-1 ${theme === 'dark' ? 'ring-white/10' : 'ring-slate-300'} focus-within:ring-indigo-500/50 transition-all elevation-md`}>
                                 <input
                                     type="text"
                                     value={customPrompt}
@@ -354,12 +355,12 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                 {bucket.map((chart, i) => (
                                     <div
                                         key={chart.id}
-                                        className={`responsive-card p-3 sm:p-4 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-lg sm:rounded-xl relative group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-900/10 transition-all duration-300 animate-fade-in-up flex flex-col h-full`}
+                                        className={`responsive-card p-3 sm:p-4 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-lg sm:rounded-xl relative group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-900/10 transition-all duration-300 animate-fade-in-up flex flex-col h-full hover-lift elevation-md`}
                                         style={{ animationDelay: `${i * 50}ms` }}
                                     >
                                         <button
                                             onClick={() => removeFromBucket(chart.id)}
-                                            className={`absolute top-2 right-2 sm:top-3 sm:right-3 ${colors.textMuted} hover:text-red-400 hover:bg-red-400/10 p-1 sm:p-1.5 rounded-md transition opacity-100 sm:opacity-0 sm:group-hover:opacity-100 z-10`}
+                                            className={`absolute top-2 right-2 sm:top-3 sm:right-3 ${colors.textMuted} hover:text-red-400 hover:bg-red-400/10 p-1 sm:p-1.5 rounded-md transition opacity-100 sm:opacity-0 sm:group-hover:opacity-100 z-10 active-press`}
                                         >
                                             <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                         </button>

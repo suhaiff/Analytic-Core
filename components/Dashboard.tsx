@@ -13,6 +13,7 @@ import { useTheme } from '../ThemeContext';
 import { getThemeClasses, type Theme } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
 import { formatCurrency, isCurrencyColumn, isDateTimeColumn, isExcelSerialDate, excelSerialToDate } from '../utils/formatters';
+import { DashboardLoader } from './DashboardLoader';
 
 interface DashboardProps {
     dataModel: DataModel;
@@ -393,8 +394,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
 
             {/* Expanded Chart Modal */}
             {expandedChartConfig && (
-                <div className={`fixed inset-0 z-50 ${colors.overlayBg} backdrop-blur-md flex items-center justify-center p-4 lg:p-8 animate-fade-in no-print`}>
-                    <div className={`${colors.bgSecondary} w-full h-full max-w-7xl max-h-[90vh] rounded-2xl border ${colors.borderPrimary} shadow-2xl flex flex-col relative`}>
+                <div className={`fixed inset-0 z-50 ${colors.overlayBg} glass-effect flex items-center justify-center p-4 lg:p-8 animate-fade-in no-print`}>
+                    <div className={`${colors.bgSecondary} w-full h-full max-w-7xl max-h-[90vh] rounded-2xl border ${colors.borderPrimary} shadow-2xl elevation-lg flex flex-col relative`}>
                         <div className={`p-6 border-b ${colors.borderPrimary} flex justify-between items-start`}>
                             <div>
                                 <h2 className={`text-2xl font-bold ${colors.textPrimary}`}>{expandedChartConfig.title}</h2>
@@ -424,10 +425,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
 
             <div id="dashboard-container" className={`min-h-screen ${colors.bgPrimary} flex flex-col ${colors.textSecondary} print:${theme === 'dark' ? 'bg-slate-950' : 'bg-white'}`}>
                 {/* Header */}
-                <header className={`${theme === 'dark' ? 'bg-slate-900/80' : 'bg-white/80'} backdrop-blur border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-3 sm:py-4 sticky top-0 z-30 shadow-lg print:hidden`}>
+                <header className={`${theme === 'dark' ? 'bg-slate-900/80' : 'bg-white/80'} glass-effect border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-3 sm:py-4 sticky top-0 z-30 shadow-lg print:hidden`}>
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center max-w-7xl mx-auto w-full gap-3 md:gap-0">
                         <div className="flex items-center gap-3 w-full md:w-auto">
-                            <button onClick={onHome} className={`p-1.5 sm:p-2 -ml-1.5 sm:-ml-2 rounded-full hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition no-export shrink-0`} title="Return Home">
+                            <button onClick={onHome} className={`p-1.5 sm:p-2 -ml-1.5 sm:-ml-2 rounded-full hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition no-export shrink-0 active-press`} title="Return Home">
                                 <Home className="w-4 h-4 sm:w-5 sm:h-5" />
                             </button>
                             <div className="min-w-0 flex-1">
@@ -438,7 +439,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                                         <button
                                             onClick={handleRefresh}
                                             disabled={isRefreshing}
-                                            className={`p-1.5 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:text-indigo-400 transition flex items-center gap-1.5`}
+                                            className={`p-1.5 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:text-indigo-400 transition flex items-center gap-1.5 active-press`}
                                             title="Refresh Data"
                                         >
                                             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
@@ -458,7 +459,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => setIsEditing(true)}
-                                    className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} whitespace-nowrap`}
+                                    className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} whitespace-nowrap active-press`}
                                     title="Edit Charts"
                                 >
                                     <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -466,13 +467,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                                 </button>
                                 <button
                                     onClick={openSaveModal}
-                                    className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary}`}
+                                    className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} active-press`}
                                     title="Save Dashboard"
                                 >
                                     <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     <span className="hidden sm:inline">Save</span>
                                 </button>
-                                <button className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary}`}>
+                                <button className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} active-press`}>
                                     <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     <span className="hidden sm:inline">Share</span>
                                 </button>
@@ -485,7 +486,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                                 <button
                                     onClick={handleExportPDF}
                                     disabled={isExporting}
-                                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 disabled:cursor-wait text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition font-medium text-xs sm:text-sm shadow-lg shadow-indigo-900/20 whitespace-nowrap"
+                                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 disabled:cursor-wait text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition font-medium text-xs sm:text-sm shadow-lg shadow-indigo-900/20 whitespace-nowrap active-press"
                                 >
                                     {isExporting ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                                     {isExporting ? '...' : <span className="hidden xs:inline">Export PDF</span>}
@@ -512,7 +513,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                                 const isCurrency = isCurrencyColumn(kpi.dataKey);
                                 const displayValue = isCurrency ? formatCurrency(value) : (typeof value === 'number' ? value.toLocaleString('en-IN') : value);
                                 return (
-                                    <div key={kpi.id} className={`${colors.bgSecondary} rounded-xl border ${colors.borderPrimary} p-6 shadow-xl relative overflow-hidden group print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'}`}>
+                                    <div key={kpi.id} className={`${colors.bgSecondary} rounded-xl border ${colors.borderPrimary} p-6 shadow-xl relative overflow-hidden group print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} hover-lift elevation-lg`}>
                                         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition transform group-hover:scale-110 print:hidden">
                                             <TrendingUp className="w-16 h-16 text-indigo-500" />
                                         </div>
@@ -534,7 +535,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                         {charts.map(chart => {
                             const aggregatedData = aggregateData(dataModel.data, chart);
                             return (
-                                <div key={chart.id} className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] flex flex-col hover:${colors.borderHover} transition-colors print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid relative group`}>
+                                <div key={chart.id} className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid relative group elevation-md`}>
                                     <div className="mb-6 pr-8">
                                         <h3 className={`font-bold text-lg ${colors.textSecondary} truncate`}>{chart.title}</h3>
                                         <p className={`text-xs ${colors.textMuted} mt-1 truncate`}>{chart.description}</p>
@@ -570,6 +571,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                     )}
                 </main>
             </div>
+            {isRefreshing && <DashboardLoader message="Refreshing live data..." />}
         </>
     );
 };

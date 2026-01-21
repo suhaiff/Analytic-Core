@@ -15,7 +15,7 @@ interface DataConfigProps {
     onFinalize: (model: DataModel) => void;
     onHome: () => void;
     uploadedFileId?: number; // Optional: ID of uploaded file for viewing
-    sourceType?: 'file' | 'google_sheet' | 'sharepoint';
+    sourceType?: 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database';
 }
 
 export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName, onFinalize, onHome, uploadedFileId, sourceType = 'file' }) => {
@@ -66,7 +66,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
     // --- Helper: Get columns for a specific table ---
     const getTableColumns = (tableId: string): string[] => {
         const table = tables.find(t => t.id === tableId);
-        if (!table) return [];
+        if (!table || !table.rawData || !table.rawData.rows) return [];
         const idx = headerIndices[tableId] || 0;
         return table.rawData.rows[idx] || [];
     };
@@ -219,7 +219,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             numericColumns: [...numericCols],
             categoricalColumns: [...categoricalCols],
             fileId: uploadedFileId,
-            sourceType: sourceType as 'file' | 'google_sheet' | 'sharepoint',
+            sourceType: sourceType as 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database',
             headerIndex: tables.length === 1 ? (headerIndices[tables[0].id] || 0) : undefined
         };
 
@@ -239,10 +239,10 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
     return (
         <div className={`flex flex-col h-screen ${colors.bgPrimary} ${colors.textSecondary}`}>
             {/* Header - Fully Responsive */}
-            <header className={`${theme === 'dark' ? 'bg-slate-900/50' : 'bg-white/80'} backdrop-blur-md border-b ${colors.borderPrimary} px-2 sm:px-4 md:px-6 lg:px-8 py-1.5 sm:py-2.5 md:py-3.5 lg:py-4 flex justify-between items-center sticky top-0 z-20 gap-1.5 sm:gap-2.5 md:gap-3`}>
+            <header className={`${theme === 'dark' ? 'bg-slate-900/50' : 'bg-white/80'} glass-effect border-b ${colors.borderPrimary} px-2 sm:px-4 md:px-6 lg:px-8 py-1.5 sm:py-2.5 md:py-3.5 lg:py-4 flex justify-between items-center sticky top-0 z-20 gap-1.5 sm:gap-2.5 md:gap-3`}>
                 {/* Left Section - Title Area */}
                 <div className="flex items-center gap-1 sm:gap-2 md:gap-3 min-w-0 flex-shrink">
-                    <button onClick={onHome} className={`p-1 sm:p-1.5 md:p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition flex-shrink-0`} title="Go Home">
+                    <button onClick={onHome} className={`p-1 sm:p-1.5 md:p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition flex-shrink-0 active-press`} title="Go Home">
                         <Home className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
                     <div className={`w-px h-6 ${colors.borderPrimary} hidden sm:block flex-shrink-0`}></div>
@@ -288,14 +288,14 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                     {/* Mobile: Show sidebar toggle */}
                     <button
                         onClick={() => setSidebarOpen(!sidebarOpen)}
-                        className={`md:hidden p-1 sm:p-1.5 rounded-lg ${colors.bgSecondary} border ${colors.borderPrimary} ${colors.textMuted} transition hover:${colors.textPrimary}`}
+                        className={`md:hidden p-1 sm:p-1.5 rounded-lg ${colors.bgSecondary} border ${colors.borderPrimary} ${colors.textMuted} transition hover:${colors.textPrimary} active-press`}
                         title="Settings"
                     >
                         <Settings2 className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
                     <button
                         onClick={handleFinalize}
-                        className="px-1.5 sm:px-3 md:px-4 py-1 sm:py-1.5 md:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] sm:text-xs md:text-sm font-medium transition flex items-center gap-0.5 sm:gap-1 md:gap-1.5 shadow-lg shadow-indigo-900/20 hover:shadow-indigo-500/20 active:scale-95 flex-shrink-0 whitespace-nowrap"
+                        className="px-1.5 sm:px-3 md:px-4 py-1 sm:py-1.5 md:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] sm:text-xs md:text-sm font-medium transition flex items-center gap-0.5 sm:gap-1 md:gap-1.5 shadow-lg shadow-indigo-900/20 hover:shadow-indigo-500/20 active-press flex-shrink-0 whitespace-nowrap"
                     >
                         <span className="hidden xs:inline">Finalize</span>
                         <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />
@@ -316,7 +316,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                 )}
 
                 {/* Sidebar: Tables & Settings - Responsive */}
-                <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:relative w-80 max-w-[85vw] sm:max-w-md md:w-80 ${colors.bgSecondary} border-r ${colors.borderPrimary} overflow-y-auto flex flex-col z-40 md:z-10 shadow-xl transition-transform duration-300 h-full`}>
+                <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:relative w-80 max-w-[85vw] sm:max-w-md md:w-80 ${colors.bgSecondary} border-r ${colors.borderPrimary} overflow-y-auto flex flex-col z-40 md:z-10 shadow-xl transition-transform duration-300 h-full glass-effect`}>
                     {/* Mobile: Close button */}
                     <div className={`md:hidden flex justify-between items-center p-4 border-b ${colors.borderPrimary}`}>
                         <h3 className={`font-bold ${colors.textPrimary}`}>Settings</h3>
@@ -362,7 +362,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
 
                         <div className="space-y-3">
                             {tables.map(table => (
-                                <div key={table.id} className={`${theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-100'} rounded-lg p-3 border ${colors.borderSecondary}`}>
+                                <div key={table.id} className={`${theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-100'} rounded-lg p-3 border ${colors.borderSecondary} elevation-low`}>
                                     <div className="flex items-center justify-between mb-2">
                                         <span className={`text-sm font-bold ${colors.textSecondary} truncate w-32`} title={table.name}>{table.name}</span>
                                         <div className="flex items-center gap-1">
@@ -442,7 +442,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
 
                     {activeTab === 'JOIN' && (
                         <div className="flex-1 flex flex-col gap-4 sm:gap-6 md:gap-8 overflow-y-auto custom-scrollbar pb-20">
-                            <div className={`responsive-card ${colors.bgSecondary} rounded-xl border ${colors.borderPrimary}`}>
+                            <div className={`responsive-card ${colors.bgSecondary} rounded-xl border ${colors.borderPrimary} elevation-md`}>
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-4 sm:mb-6">
                                     <div>
                                         <h2 className={`responsive-text-lg font-bold ${colors.textPrimary}`}>Join Configuration</h2>

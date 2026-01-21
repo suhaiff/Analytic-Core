@@ -64,11 +64,11 @@ export const fileService = {
         return response.data;
     },
 
-    importGoogleSheet: async (userId: number, spreadsheetId: string, sheetName: string, title?: string) => {
+    importGoogleSheet: async (userId: number, spreadsheetId: string, sheetNames: string[], title?: string) => {
         const response = await axios.post(`${API_URL}/google-sheets/import`, {
             userId,
             spreadsheetId,
-            sheetName,
+            sheetNames,
             title
         });
         return response.data;
@@ -124,7 +124,6 @@ export const fileService = {
         return response.data;
     },
 
-    // ============================================
     // SharePoint OAuth Methods (Per-User)
     // ============================================
 
@@ -194,61 +193,71 @@ export const fileService = {
     },
 
     // ============================================
-    // SQL Database Methods (MySQL & PostgreSQL)
-    // ============================================
 
-    /**
-     * Test SQL database connection
-     */
-    testSqlConnection: async (config: {
-        host: string;
-        port?: number;
-        user: string;
-        password: string;
-        database: string;
-        type: 'mysql' | 'mariadb' | 'postgresql';
-    }) => {
-        const response = await axios.post(`${API_URL}/sql/test-connection`, config);
+    getSqlMetadata: async (fileId: number) => {
+        const response = await axios.post(`${API_URL}/sql/metadata`, { fileId });
         return response.data;
     },
 
-    /**
-     * Get tables from SQL database
-     */
-    getSqlTables: async (config: {
-        host: string;
-        port?: number;
-        user: string;
-        password: string;
-        database: string;
-        type: 'mysql' | 'mariadb' | 'postgresql';
-    }) => {
-        const response = await axios.post(`${API_URL}/sql/tables`, config);
-        return response.data;
-    },
-
-    /**
-     * Import SQL table
-     */
-    importSqlTable: async (
-        userId: number,
-        config: {
-            host: string;
-            port?: number;
-            user: string;
-            password: string;
-            database: string;
-            type: 'mysql' | 'mariadb' | 'postgresql';
-        },
-        tableName: string,
-        title?: string
-    ) => {
+    importSqlTable: async (userId: number, fileId: number, tables: string[], title?: string) => {
         const response = await axios.post(`${API_URL}/sql/import`, {
             userId,
-            ...config,
-            tableName,
+            fileId,
+            tables,
             title
         });
+        return response.data;
+    },
+
+    // SQL Database Live Connection Methods
+    testSqlConnection: async (config: {
+        engine: string;
+        host: string;
+        port: number;
+        database: string;
+        user: string;
+        password: string;
+    }) => {
+        const response = await axios.post(`${API_URL}/sql-db/test`, config);
+        return response.data;
+    },
+
+    getSqlTables: async (config: {
+        engine: string;
+        host: string;
+        port: number;
+        database: string;
+        user: string;
+        password: string;
+    }) => {
+        const response = await axios.post(`${API_URL}/sql-db/tables`, config);
+        return response.data;
+    },
+
+    importSqlDatabase: async (
+        userId: number,
+        config: {
+            engine: string;
+            host: string;
+            port: number;
+            database: string;
+            user: string;
+            password: string;
+        },
+        tableNames: string[],
+        title?: string
+    ) => {
+        const response = await axios.post(`${API_URL}/sql-db/import`, {
+            userId,
+            ...config,
+            tableNames,
+            title
+        });
+        return response.data;
+    },
+
+    refreshSqlDatabase: async (fileId: number, password: string) => {
+        const response = await axios.post(`${API_URL}/sql-db/refresh/${fileId}`, { password });
         return response.data;
     }
 
