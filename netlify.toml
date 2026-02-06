@@ -1,0 +1,16 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Proxy /api requests to Digital Ocean Backend to avoid Mixed Content errors
+[[redirects]]
+  from = "/api/*"
+  to = "http://139.59.32.39:3001/api/:splat"
+  status = 200
+  force = true
+
+# Fallback for SPA routing (React Router)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
