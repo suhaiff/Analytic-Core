@@ -37,7 +37,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme }: { config: Char
 
     const commonProps = {
         data: data,
-        margin: { top: 10, right: 30, left: 0, bottom: 0 }
+        margin: { top: 30, right: 40, left: 20, bottom: 25 }
     };
 
     const themeColors = getThemeClasses(theme);
@@ -114,8 +114,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme }: { config: Char
         axisLine: false,
         tickLine: false,
         tick: { fontSize: 11, fill: themeColors.chartAxisText },
-        dy: 10,
-        minTickGap: 30,
+        minTickGap: 20,
         tickFormatter: (val: any) => {
             const str = String(val);
             if (str.length > 12) return str.substring(0, 10) + '..';
@@ -131,8 +130,15 @@ const RenderChart = ({ config, data, isExpanded = false, theme }: { config: Char
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart {...commonProps}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
-                        <XAxis dataKey={config.xAxisKey} {...AxisProps} tickFormatter={xAxisFormatter} />
-                        <YAxis {...AxisProps} tickFormatter={yAxisFormatter} />
+                        <XAxis
+                            dataKey={config.xAxisKey}
+                            {...AxisProps}
+                            tickFormatter={xAxisFormatter}
+                            angle={-25}
+                            textAnchor="end"
+                            height={50}
+                        />
+                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
                         <Tooltip content={<CustomTooltip />} />
                         <Legend verticalAlign="top" height={36} iconType="square" wrapperStyle={{ fontSize: '12px', color: themeColors.chartLegendText, paddingBottom: '10px' }} />
                         <Bar dataKey={config.dataKey} fill={COLORS[0]} radius={[4, 4, 0, 0]}>
@@ -155,8 +161,15 @@ const RenderChart = ({ config, data, isExpanded = false, theme }: { config: Char
                 <ResponsiveContainer width="100%" height="100%">
                     <LineChart {...commonProps}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
-                        <XAxis dataKey={config.xAxisKey} {...AxisProps} tickFormatter={xAxisFormatter} />
-                        <YAxis {...AxisProps} tickFormatter={yAxisFormatter} />
+                        <XAxis
+                            dataKey={config.xAxisKey}
+                            {...AxisProps}
+                            tickFormatter={xAxisFormatter}
+                            angle={-25}
+                            textAnchor="end"
+                            height={50}
+                        />
+                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
                         <Tooltip content={<CustomTooltip />} />
                         <Legend verticalAlign="top" height={36} iconType="line" wrapperStyle={{ fontSize: '12px', color: themeColors.chartLegendText, paddingBottom: '10px' }} />
                         <Line
@@ -186,8 +199,15 @@ const RenderChart = ({ config, data, isExpanded = false, theme }: { config: Char
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart {...commonProps}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
-                        <XAxis dataKey={config.xAxisKey} {...AxisProps} tickFormatter={xAxisFormatter} />
-                        <YAxis {...AxisProps} tickFormatter={yAxisFormatter} />
+                        <XAxis
+                            dataKey={config.xAxisKey}
+                            {...AxisProps}
+                            tickFormatter={xAxisFormatter}
+                            angle={-25}
+                            textAnchor="end"
+                            height={50}
+                        />
+                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
                         <Tooltip content={<CustomTooltip />} />
                         <Legend verticalAlign="top" height={36} iconType="rect" wrapperStyle={{ fontSize: '12px', color: themeColors.chartLegendText, paddingBottom: '10px' }} />
                         <defs>
@@ -292,28 +312,65 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
 
     const handleExportPDF = async () => {
         setIsExporting(true);
-        await new Promise(resolve => setTimeout(resolve, 50));
+        // Wait longer to ensure all charts are fully rendered
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         try {
             const element = document.getElementById('dashboard-container');
             if (!element) throw new Error("Dashboard container not found");
 
+            // Capture with high quality settings
             const canvas = await html2canvas(element, {
                 scale: 2,
                 backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc',
                 useCORS: true,
+                allowTaint: true,
                 logging: false,
-                ignoreElements: (node) => node.classList.contains('no-export') || node.classList.contains('chart-controls')
+                width: element.scrollWidth,
+                height: element.scrollHeight,
+                windowWidth: element.scrollWidth,
+                windowHeight: element.scrollHeight,
+                x: 0,
+                y: 0,
+                scrollX: 0,
+                scrollY: -window.scrollY,
+                onclone: (clonedDoc) => {
+                    const el = clonedDoc.getElementById('dashboard-container');
+                    if (el) {
+                        el.style.transform = 'none';
+                        el.style.fontFamily = 'Inter, system-ui, sans-serif';
+                        // Force specific styles that help html2canvas
+                        el.querySelectorAll('*').forEach((node: any) => {
+                            if (node.style) {
+                                node.style.fontFamily = 'Inter, system-ui, sans-serif';
+                            }
+                        });
+                    }
+                },
+                ignoreElements: (node) => {
+                    return node.classList && (
+                        node.classList.contains('no-export') ||
+                        node.classList.contains('chart-controls') ||
+                        node.classList.contains('no-print')
+                    );
+                }
             });
 
-            const imgData = canvas.toDataURL('image/png');
+            const imgData = canvas.toDataURL('image/png', 1.0);
+
+            // Use custom page size that matches content
+            const imgWidth = canvas.width;
+            const imgHeight = canvas.height;
+
             const pdf = new jsPDF({
-                orientation: 'landscape',
+                orientation: imgWidth > imgHeight ? 'landscape' : 'portrait',
                 unit: 'px',
-                format: [canvas.width, canvas.height]
+                format: [imgWidth / 2, imgHeight / 2],
             });
 
-            pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+            // Add image at full size
+            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth / 2, imgHeight / 2, undefined, 'FAST');
+
             pdf.save(`${dataModel.name.replace(/\s+/g, '_')}_Dashboard.pdf`);
 
         } catch (error) {
@@ -535,7 +592,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                         {charts.map(chart => {
                             const aggregatedData = aggregateData(dataModel.data, chart);
                             return (
-                                <div key={chart.id} className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid relative group elevation-md`}>
+                                <div key={chart.id} className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] print:h-[380px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid print:p-4 relative group elevation-md`}>
                                     <div className="mb-6 pr-8">
                                         <h3 className={`font-bold text-lg ${colors.textSecondary} truncate`}>{chart.title}</h3>
                                         <p className={`text-xs ${colors.textMuted} mt-1 truncate`}>{chart.description}</p>

@@ -193,23 +193,23 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
     setSqlError('');
     try {
       const result = await fileService.testSqlConnection({
+        engine: sqlConfig.type,
         host: sqlConfig.host,
-        port: sqlConfig.port ? parseInt(sqlConfig.port) : undefined,
+        port: sqlConfig.port ? parseInt(sqlConfig.port) : (sqlConfig.type === 'postgresql' ? 5432 : 3306),
         user: sqlConfig.user,
         password: sqlConfig.password,
-        database: sqlConfig.database,
-        type: sqlConfig.type
+        database: sqlConfig.database
       });
 
       if (result.success) {
         // Fetch tables after successful connection
         const tablesResult = await fileService.getSqlTables({
+          engine: sqlConfig.type,
           host: sqlConfig.host,
-          port: sqlConfig.port ? parseInt(sqlConfig.port) : undefined,
+          port: sqlConfig.port ? parseInt(sqlConfig.port) : (sqlConfig.type === 'postgresql' ? 5432 : 3306),
           user: sqlConfig.user,
           password: sqlConfig.password,
-          database: sqlConfig.database,
-          type: sqlConfig.type
+          database: sqlConfig.database
         });
 
         setSqlTables(tablesResult.tables || []);
@@ -232,27 +232,26 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
     setSqlLoading(true);
     setSqlError('');
     try {
-      const result = await fileService.importSqlTable(
+      const result = await fileService.importSqlDatabase(
         user.id,
         {
+          engine: sqlConfig.type,
           host: sqlConfig.host,
-          port: sqlConfig.port ? parseInt(sqlConfig.port) : undefined,
+          port: sqlConfig.port ? parseInt(sqlConfig.port) : (sqlConfig.type === 'postgresql' ? 5432 : 3306),
           user: sqlConfig.user,
           password: sqlConfig.password,
-          database: sqlConfig.database,
-          type: sqlConfig.type
+          database: sqlConfig.database
         },
-        selectedSqlTable,
+        [selectedSqlTable],
         `${sqlConfig.type.toUpperCase()}: ${selectedSqlTable}`
       );
 
-      // Import successful - pass to parent using Google Sheet import handler (same format)
-      onGoogleSheetImport(
-        `${sqlConfig.database}_${selectedSqlTable}`,
-        selectedSqlTable,
-        result.data,
-        `${sqlConfig.type.toUpperCase()}: ${selectedSqlTable}`,
-        result.fileId
+
+      // Import successful - pass to parent using SQL Database import handler
+      onSqlDatabaseImport(
+        result.tables,
+        result.title,
+        `${sqlConfig.type}:${sqlConfig.host}:${sqlConfig.database}`
       );
 
       setShowSQLModal(false);
@@ -787,8 +786,8 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                       {gsMetadata.sheets.map((sheet) => (
                         <button
                           key={sheet}
-                          onClick={() => setSelectedSheet(sheet)}
-                          className={`px-4 py-3 rounded-xl border text-left transition-all ${selectedSheet === sheet
+                          onClick={() => toggleGsSheet(sheet)}
+                          className={`px-4 py-3 rounded-xl border text-left transition-all ${selectedSheets.includes(sheet)
                             ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
                             : `${colors.borderPrimary} ${colors.bgTertiary} ${colors.textSecondary} hover:border-indigo-500/50`
                             }`}
@@ -807,7 +806,6 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
 
                   <div className="flex gap-3">
                     <button
-                      onClick={() => setGsMetadata(null)}
                       onClick={() => { setGsMetadata(null); setSelectedSheets([]); }}
                       className={`flex-1 py-3 rounded-xl border ${colors.borderPrimary} ${colors.textSecondary} font-bold hover:${colors.bgTertiary} transition`}
                     >

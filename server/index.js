@@ -24,6 +24,8 @@ const allowedOrigins = [
     'http://localhost:3001',
     'http://localhost:5173',  // Vite dev server
     'https://analyticcore-server.onrender.com',
+    'http://139.59.32.39',  // Digital Ocean Droplet
+    'http://139.59.32.39:3001',  // Digital Ocean Droplet with port
     'https://analytic-core.netlify.app',  // Netlify frontend
     process.env.FRONTEND_URL,  // Environment variable for additional domains
 ].filter(Boolean);  // Remove undefined values
@@ -609,7 +611,6 @@ app.post('/api/google-sheets/refresh/:fileId', async (req, res) => {
     }
 });
 
-<<<<<<< HEAD
 // ============================================
 // SharePoint OAuth Endpoints (Per-User Authentication)
 // ============================================
@@ -1056,7 +1057,10 @@ app.post('/api/sharepoint/refresh/:fileId', async (req, res) => {
         });
     } catch (error) {
         console.error('SharePoint refresh error:', error.message);
-=======
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // SQL Dump Endpoints
 app.post('/api/sql/metadata', async (req, res) => {
     try {
@@ -1090,12 +1094,10 @@ app.post('/api/sql/metadata', async (req, res) => {
         res.json({ fileId, tables });
     } catch (error) {
         console.error('SQL metadata error:', error.message);
->>>>>>> 78a8efacada3c1c982291aee2e4736dc703962e7
         res.status(500).json({ error: error.message });
     }
 });
 
-<<<<<<< HEAD
 
 // ============================================
 // SQL Database Endpoints (MySQL & PostgreSQL)
@@ -1245,9 +1247,14 @@ app.post('/api/sql/import', async (req, res) => {
             rowCount: rowCount - 1, // Actual data rows (excluding header)
             data
         });
+    } catch (error) {
+        console.error('SQL import error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
 
-=======
-app.post('/api/sql/import', async (req, res) => {
+// SQL File Import (Batch)
+app.post('/api/sql/import-file', async (req, res) => {
     try {
         const { userId, fileId, tables, title } = req.body;
 
@@ -1351,15 +1358,12 @@ app.post('/api/sql/import', async (req, res) => {
             rowCount: importedTables[0].rowCount,
             data: importedTables[0].data
         });
->>>>>>> 78a8efacada3c1c982291aee2e4736dc703962e7
     } catch (error) {
         console.error('SQL import error:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-<<<<<<< HEAD
-=======
 // SQL Database Connection Endpoints (Live Import)
 app.post('/api/sql-db/test', async (req, res) => {
     try {
@@ -1563,7 +1567,6 @@ app.post('/api/sql-db/refresh/:fileId', async (req, res) => {
     }
 });
 
->>>>>>> 78a8efacada3c1c982291aee2e4736dc703962e7
 
 app.listen(port, () => {
     console.log(`Server running on port ${port} with Supabase integration`);
