@@ -141,7 +141,14 @@ export const fileService = {
      * Initiate SharePoint OAuth flow (redirects to Microsoft login)
      */
     connectSharePoint: (userId: number) => {
-        window.location.href = `${API_URL.replace('/api', '')}/auth/sharepoint/start?userId=${userId}`;
+        // Get the root URL (remove /api if it exists at the end)
+        const rootUrl = API_URL.endsWith('/api') ? API_URL.slice(0, -4) : API_URL;
+        const redirectUrl = `${rootUrl}/auth/sharepoint/start?userId=${userId}`;
+
+        console.log('🔗 Redirecting to SharePoint OAuth:', redirectUrl);
+
+        // Use window.location.assign for a more standard redirect
+        window.location.assign(redirectUrl);
     },
 
     /**
