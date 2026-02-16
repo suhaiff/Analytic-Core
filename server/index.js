@@ -11,9 +11,8 @@ const supabaseService = require('./supabaseService');
 const googleSheetsService = require('./googleSheetsService');
 const sharepointService = require('./sharepointService');
 const sharepointOAuthService = require('./sharepointOAuthService');
-const sqlDatabaseService = require('./sqlDatabaseService');
-const sqlParserService = require('./sqlParserService');
 const dbConnectorService = require('./dbConnectorService');
+const sqlParserService = require('./sqlParserService');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -1114,22 +1113,29 @@ app.post('/api/sql/test-connection', async (req, res) => {
             return res.status(400).json({ error: 'Missing required parameters: host, user, database, type' });
         }
 
-        console.log(`Testing ${type} connection to ${host}:${port || 'default'}, database: ${database}`);
+        console.log(`[SQL Route] Testing ${type} connection to ${host}:${port || 'default'}, database: ${database}`);
 
-        const result = await sqlDatabaseService.testConnection({
+        const result = await dbConnectorService.testConnection({
             host,
             port: port ? parseInt(port) : undefined,
             user,
             password: password || '',
             database,
-            type
+            engine: type // Normalize to 'engine' for DbConnectorService
         });
 
-        res.json({
-            success: true,
-            message: result.message,
-            type
-        });
+        if (result.success) {
+            res.json({
+                success: true,
+                message: result.message,
+                type
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                error: result.message
+            });
+        }
 
     } catch (error) {
         console.error('SQL connection test error:', error.message);
@@ -1151,15 +1157,15 @@ app.post('/api/sql/tables', async (req, res) => {
             return res.status(400).json({ error: 'Missing required parameters' });
         }
 
-        console.log(`Fetching tables from ${type} database: ${database}`);
+        console.log(`[SQL Route] Fetching tables from ${type} database: ${database}`);
 
-        const tables = await sqlDatabaseService.getTables({
+        const tables = await dbConnectorService.getTables({
             host,
             port: port ? parseInt(port) : undefined,
             user,
             password: password || '',
             database,
-            type
+            engine: type
         });
 
         res.json({ tables });
@@ -1184,13 +1190,13 @@ app.post('/api/sql/import', async (req, res) => {
         console.log(`Importing table "${tableName}" from ${type} database: ${database}`);
 
         // 1. Fetch data from SQL database
-        const result = await sqlDatabaseService.importTable({
+        const result = await dbConnectorService.getTableData({
             host,
             port: port ? parseInt(port) : undefined,
             user,
             password: password || '',
             database,
-            type
+            engine: type
         }, tableName);
 
         if (!result.data || result.data.length === 0) {

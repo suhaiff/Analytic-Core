@@ -1127,6 +1127,16 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                     </p>
                   </div>
 
+                  {(sqlDbConfig.host === 'localhost' || sqlDbConfig.host === '127.0.0.1') && window.location.hostname !== 'localhost' && (
+                    <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs leading-relaxed">
+                      <div className="font-bold flex items-center gap-2 mb-1">
+                        <Database className="w-3.5 h-3.5" />
+                        Network Tip: Localhost detected
+                      </div>
+                      You are using a hosted app but trying to connect to 'localhost'. The server cannot reach your physical computer. Use a public IP or a tunnel (e.g., ngrok) to expose your local database.
+                    </div>
+                  )}
+
                   {sqlDbError && (
                     <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
                       {sqlDbError}

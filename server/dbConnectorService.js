@@ -19,56 +19,86 @@ class DbConnectorService {
     }
 
     /**
+     * Helper to create a MySQL connection with SSL fallback
+     */
+    async _createMySQLConnection(config) {
+        const connectionConfig = {
+            host: config.host,
+            port: config.port || 3306,
+            user: config.user,
+            password: config.password,
+            database: config.database,
+            connectTimeout: this.CONNECTION_TIMEOUT,
+            ssl: {
+                rejectUnauthorized: false
+            }
+        };
+
+        try {
+            console.log(`[MySQL] Connecting to ${config.host} with SSL...`);
+            return await mysql.createConnection(connectionConfig);
+        } catch (sslError) {
+            console.warn(`[MySQL] SSL connection failed: ${sslError.message}. Retrying without SSL...`);
+            const noSslConfig = { ...connectionConfig };
+            delete noSslConfig.ssl;
+            return await mysql.createConnection(noSslConfig);
+        }
+    }
+
+    /**
+     * Helper to create a PostgreSQL pool with SSL fallback
+     */
+    async _createPostgreSQLPool(config) {
+        const poolConfig = {
+            host: config.host,
+            port: config.port || 5432,
+            user: config.user,
+            password: config.password,
+            database: config.database,
+            connectionTimeoutMillis: this.CONNECTION_TIMEOUT,
+            max: 1,
+            ssl: {
+                rejectUnauthorized: false
+            }
+        };
+
+        try {
+            console.log(`[Postgres] Connecting to ${config.host} with SSL...`);
+            const pool = new Pool(poolConfig);
+            // Verify connection
+            const client = await pool.connect();
+            client.release();
+            return pool;
+        } catch (sslError) {
+            console.warn(`[Postgres] SSL connection failed: ${sslError.message}. Retrying without SSL...`);
+            const noSslConfig = { ...poolConfig };
+            delete noSslConfig.ssl;
+            return new Pool(noSslConfig);
+        }
+    }
+
+    /**
      * Test database connection credentials
-     * @param {Object} config - Database configuration
-     * @param {string} config.engine - 'mysql' or 'postgresql'
-     * @param {string} config.host - Database host
-     * @param {number} config.port - Database port
-     * @param {string} config.database - Database name
-     * @param {string} config.user - Database username
-     * @param {string} config.password - Database password
-     * @returns {Promise<{success: boolean, message: string}>}
      */
     async testConnection(config) {
         try {
-            const { engine, host, port, database, user, password } = config;
+            const { engine, host, database, user } = config;
 
             if (!engine || !host || !database || !user) {
                 throw new Error('Missing required connection parameters');
             }
 
             if (engine === 'mysql') {
-                const connection = await mysql.createConnection({
-                    host,
-                    port: port || 3306,
-                    user,
-                    password,
-                    database,
-                    connectTimeout: this.CONNECTION_TIMEOUT
-                });
-
-                // Test the connection with a simple query
+                const connection = await this._createMySQLConnection(config);
                 await connection.query('SELECT 1');
                 await connection.end();
-
                 return { success: true, message: 'MySQL connection successful' };
             } else if (engine === 'postgresql') {
-                const pool = new Pool({
-                    host,
-                    port: port || 5432,
-                    user,
-                    password,
-                    database,
-                    connectionTimeoutMillis: this.CONNECTION_TIMEOUT,
-                    max: 1 // Only one connection for testing
-                });
-
-                // Test the connection
+                const pool = await this._createPostgreSQLPool(config);
                 const client = await pool.connect();
                 await client.query('SELECT 1');
                 client.release();
                 await pool.end();
-
                 return { success: true, message: 'PostgreSQL connection successful' };
             } else {
                 throw new Error(`Unsupported database engine: ${engine}`);
@@ -77,53 +107,26 @@ class DbConnectorService {
             console.error('Database connection test failed:', error.message);
             return {
                 success: false,
-                message: this._sanitizeErrorMessage(error.message)
+                message: this._sanitizeErrorMessage(error.message, config.host)
             };
         }
     }
 
     /**
      * Get list of tables from the database
-     * @param {Object} config - Database configuration
-     * @returns {Promise<string[]>} Array of table names
      */
     async getTables(config) {
         try {
-            const { engine, host, port, database, user, password } = config;
+            const { engine, database } = config;
 
             if (engine === 'mysql') {
-                const connection = await mysql.createConnection({
-                    host,
-                    port: port || 3306,
-                    user,
-                    password,
-                    database,
-                    connectTimeout: this.CONNECTION_TIMEOUT
-                });
-
-                const [rows] = await connection.query(
-                    'SHOW TABLES',
-                    [],
-                    { timeout: this.QUERY_TIMEOUT }
-                );
-
+                const connection = await this._createMySQLConnection(config);
+                const [rows] = await connection.query('SHOW TABLES');
                 await connection.end();
-
-                // MySQL returns results as array of objects with key "Tables_in_<dbname>"
                 const tableKey = `Tables_in_${database}`;
                 return rows.map(row => row[tableKey]);
             } else if (engine === 'postgresql') {
-                const pool = new Pool({
-                    host,
-                    port: port || 5432,
-                    user,
-                    password,
-                    database,
-                    connectionTimeoutMillis: this.CONNECTION_TIMEOUT,
-                    query_timeout: this.QUERY_TIMEOUT,
-                    max: 1
-                });
-
+                const pool = await this._createPostgreSQLPool(config);
                 const client = await pool.connect();
                 const result = await client.query(
                     `SELECT table_name FROM information_schema.tables 
@@ -133,148 +136,120 @@ class DbConnectorService {
                 );
                 client.release();
                 await pool.end();
-
                 return result.rows.map(row => row.table_name);
             } else {
                 throw new Error(`Unsupported database engine: ${engine}`);
             }
         } catch (error) {
             console.error('Failed to get tables:', error.message);
-            throw new Error(this._sanitizeErrorMessage(error.message));
+            throw new Error(this._sanitizeErrorMessage(error.message, config.host));
         }
     }
 
     /**
-     * Get data from a specific table
-     * @param {Object} config - Database configuration
-     * @param {string} tableName - Name of the table to query
-     * @param {number} limit - Maximum number of rows (default: MAX_ROWS)
-     * @returns {Promise<{headers: string[], rows: any[][]}>} Table data in array-of-arrays format
+     * Get data from a specific table, including column metadata
      */
     async getTableData(config, tableName, limit = this.MAX_ROWS) {
         try {
-            const { engine, host, port, database, user, password } = config;
+            const { engine, database } = config;
 
-            // Security: Validate table name to prevent SQL injection
             if (!this._isValidTableName(tableName)) {
                 throw new Error('Invalid table name');
             }
 
-            // Enforce row limit
             const rowLimit = Math.min(limit, this.MAX_ROWS);
 
             if (engine === 'mysql') {
-                const connection = await mysql.createConnection({
-                    host,
-                    port: port || 3306,
-                    user,
-                    password,
-                    database,
-                    connectTimeout: this.CONNECTION_TIMEOUT
-                });
+                const connection = await this._createMySQLConnection(config);
 
-                // Use parameterized query for table name safety
-                // Note: mysql2 doesn't support parameter binding for table names
-                // so we validate the table name separately
+                // Get columns
+                const [columns] = await connection.query(
+                    'SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION',
+                    [database, tableName]
+                );
+
+                // Get data
                 const query = `SELECT * FROM \`${tableName}\` LIMIT ${rowLimit}`;
-                const [rows] = await connection.query(query, [], { timeout: this.QUERY_TIMEOUT });
-
+                const [rows] = await connection.query(query);
                 await connection.end();
 
+                const headers = columns.map(col => col.COLUMN_NAME);
                 if (rows.length === 0) {
-                    return { headers: [], rows: [] };
+                    return { headers, columns: columns.map(c => ({ name: c.COLUMN_NAME, type: c.DATA_TYPE })), rows: [headers] };
                 }
 
-                // Extract headers from first row
-                const headers = Object.keys(rows[0]);
-
-                // Convert rows to array-of-arrays format (matching Excel/Sheets)
                 const dataRows = rows.map(row => headers.map(header => row[header]));
-
                 return {
                     headers,
-                    rows: [headers, ...dataRows] // Include headers as first row
+                    columns: columns.map(c => ({ name: c.COLUMN_NAME, type: c.DATA_TYPE })),
+                    rows: [headers, ...dataRows]
                 };
             } else if (engine === 'postgresql') {
-                const pool = new Pool({
-                    host,
-                    port: port || 5432,
-                    user,
-                    password,
-                    database,
-                    connectionTimeoutMillis: this.CONNECTION_TIMEOUT,
-                    query_timeout: this.QUERY_TIMEOUT,
-                    max: 1
-                });
-
+                const pool = await this._createPostgreSQLPool(config);
                 const client = await pool.connect();
 
-                // PostgreSQL: Use double quotes for identifiers
+                // Get columns
+                const columnsResult = await client.query(
+                    `SELECT column_name, data_type 
+                     FROM information_schema.columns 
+                     WHERE table_schema = 'public' 
+                     AND table_name = $1 
+                     ORDER BY ordinal_position`,
+                    [tableName]
+                );
+
+                // Get data
                 const query = `SELECT * FROM "${tableName}" LIMIT $1`;
                 const result = await client.query(query, [rowLimit]);
-
                 client.release();
                 await pool.end();
 
+                const headers = columnsResult.rows.map(col => col.column_name);
                 if (result.rows.length === 0) {
-                    return { headers: [], rows: [] };
+                    return { headers, columns: columnsResult.rows.map(c => ({ name: c.column_name, type: c.data_type })), rows: [headers] };
                 }
 
-                // Extract headers from result fields
-                const headers = result.fields.map(field => field.name);
-
-                // Convert rows to array-of-arrays format
                 const dataRows = result.rows.map(row => headers.map(header => row[header]));
-
                 return {
                     headers,
-                    rows: [headers, ...dataRows] // Include headers as first row
+                    columns: columnsResult.rows.map(c => ({ name: c.column_name, type: c.data_type })),
+                    rows: [headers, ...dataRows]
                 };
             } else {
                 throw new Error(`Unsupported database engine: ${engine}`);
             }
         } catch (error) {
             console.error('Failed to get table data:', error.message);
-            throw new Error(this._sanitizeErrorMessage(error.message));
+            throw new Error(this._sanitizeErrorMessage(error.message, config.host));
         }
     }
 
-    /**
-     * Validate table name to prevent SQL injection
-     * @private
-     */
     _isValidTableName(tableName) {
-        // Allow only alphanumeric characters, underscores, and hyphens
-        // No spaces, semicolons, or other SQL metacharacters
         const validPattern = /^[a-zA-Z0-9_-]+$/;
         return validPattern.test(tableName);
     }
 
-    /**
-     * Sanitize error messages to avoid leaking sensitive information
-     * @private
-     */
-    _sanitizeErrorMessage(message) {
-        // Remove any potential sensitive information from error messages
-        // while keeping the error useful for debugging
-
-        // Common error patterns to make user-friendly
+    _sanitizeErrorMessage(message, host) {
         if (message.includes('ECONNREFUSED')) {
-            return 'Unable to connect to database server. Please check host and port.';
+            if (host === 'localhost' || host === '127.0.0.1') {
+                return 'Connection refused for "localhost". Since the app is hosted online, it cannot reach your local device\'s database. Please use a public database host or an IP tunnel (like ngrok).';
+            }
+            return 'Unable to connect to database server. Please check host, port, and ensure the server allows external connections.';
         }
         if (message.includes('ER_ACCESS_DENIED_ERROR') || message.includes('authentication failed')) {
             return 'Authentication failed. Please check username and password.';
         }
-        if (message.includes('Unknown database')) {
+        if (message.includes('Unknown database') || message.includes('database') && message.includes('does not exist')) {
             return 'Database not found. Please check database name.';
         }
         if (message.includes('ETIMEDOUT') || message.includes('timeout')) {
-            return 'Connection timeout. Please check your network and database availability.';
+            return 'Connection timeout. Please check your network, firewall settings, and ensure the database is accessible from the internet.';
+        }
+        if (message.includes('SSL') || message.includes('ssl')) {
+            return 'SSL/TLS connection error. The database might require specific SSL configuration or your cloud provider might be blocking the connection.';
         }
 
-        // If no specific pattern matches, return a generic message
-        // but log the full error server-side
-        return 'Database operation failed. Please check your connection settings.';
+        return 'Database operation failed: ' + message;
     }
 }
 
