@@ -3,8 +3,13 @@
 
 const getApiUrl = () => {
     // Check if we're in production (deployed) or development (local)
+    if (import.meta.env.PROD) {
+        // In production on Netlify, we use relative paths to leverage the built-in proxy
+        // This avoids Mixed Content (HTTPS -> HTTP) errors
+        return window.location.origin;
+    }
+
     if (import.meta.env.VITE_API_URL) {
-        // Use environment variable if set (for production)
         return import.meta.env.VITE_API_URL;
     }
 

@@ -2,10 +2,17 @@
   command = "npm run build"
   publish = "dist"
 
-# Proxy /api requests to Digital Ocean Backend to avoid Mixed Content errors
+# Proxy /api requests to Digital Ocean Backend
 [[redirects]]
   from = "/api/*"
   to = "http://139.59.32.39:3001/api/:splat"
+  status = 200
+  force = true
+
+# Proxy /auth requests to Digital Ocean Backend (for SharePoint OAuth)
+[[redirects]]
+  from = "/auth/*"
+  to = "http://139.59.32.39:3001/auth/:splat"
   status = 200
   force = true
 
