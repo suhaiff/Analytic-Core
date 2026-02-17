@@ -81,6 +81,27 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
   const [sqlTables, setSqlTables] = useState<string[]>([]);
   const [selectedSqlTable, setSelectedSqlTable] = useState<string>('');
 
+  const fetchSPSites = React.useCallback(async () => {
+    if (!user) return;
+    setSpLoading(true);
+    setSpError('');
+    try {
+      const response = await fileService.getUserSharePointSites(user.id);
+      setSpSites(response.sites || []);
+      setSpStep('SITES');
+    } catch (err: any) {
+      if (err.response?.status === 401 || err.response?.data?.requiresAuth) {
+        setSpConnected(false);
+        setSpStep('CONNECT');
+        setSpError('Please connect your SharePoint account first');
+      } else {
+        setSpError(err.response?.data?.error || err.message || 'Failed to fetch SharePoint sites');
+      }
+    } finally {
+      setSpLoading(false);
+    }
+  }, [user]);
+
   // Check SharePoint connection status on mount
   React.useEffect(() => {
     const checkConnection = async () => {
@@ -100,39 +121,27 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
     const params = new URLSearchParams(window.location.search);
     if (params.get('sharepoint_connected') === 'true') {
       setSpConnected(true);
-      // Remove the parameter from URL
-      window.history.replaceState({}, '', window.location.pathname);
+      setShowSPModal(true);
+      fetchSPSites();
+      // Remove the parameter from URL - better for UX to keep the clean URL
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
     }
     if (params.get('sharepoint_error')) {
+      setShowSPModal(true);
+      setSpStep('CONNECT');
       setSpError(decodeURIComponent(params.get('sharepoint_error') || ''));
+      // Remove error from URL
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
     }
-  }, [user]);
+  }, [user, fetchSPSites]);
 
   const handleConnectSharePoint = () => {
     if (!user) return;
     fileService.connectSharePoint(user.id);
   };
 
-  const fetchSPSites = async () => {
-    if (!user) return;
-    setSpLoading(true);
-    setSpError('');
-    try {
-      const response = await fileService.getUserSharePointSites(user.id);
-      setSpSites(response.sites || []);
-      setSpStep('SITES');
-    } catch (err: any) {
-      if (err.response?.status === 401 || err.response?.data?.requiresAuth) {
-        setSpConnected(false);
-        setSpStep('CONNECT');
-        setSpError('Please connect your SharePoint account first');
-      } else {
-        setSpError(err.response?.data?.error || err.message || 'Failed to fetch SharePoint sites');
-      }
-    } finally {
-      setSpLoading(false);
-    }
-  };
 
   const handleSiteSelect = async (site: any) => {
     if (!user) return;
@@ -618,11 +627,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                       onClick={() => {
                         setShowSPModal(true);
                         setShowImportMenu(false);
-                        if (spConnected) {
-                          fetchSPSites();
-                        } else {
-                          setSpStep('CONNECT');
-                        }
+                        setSpStep('CONNECT'); // Always start at connect for privacy
                       }}
                       className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
                     >
