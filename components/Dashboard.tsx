@@ -14,6 +14,7 @@ import { getThemeClasses, type Theme } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
 import { formatCurrency, isCurrencyColumn, isDateTimeColumn, isExcelSerialDate, excelSerialToDate } from '../utils/formatters';
 import { DashboardLoader } from './DashboardLoader';
+import { Filter, Trash2, ChevronDown, Check, MousePointer2 } from 'lucide-react';
 
 interface DashboardProps {
     dataModel: DataModel;
@@ -26,18 +27,18 @@ interface DashboardProps {
 // Vibrant dark mode palette
 const COLORS = ['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4'];
 
-const RenderChart = ({ config, data, isExpanded = false, theme }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme }) => {
+const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any }) => {
     const colors = getThemeClasses(theme);
     if (!data || data.length === 0) return <div className={`flex items-center justify-center h-full ${colors.textMuted} text-sm`}>No Data Available</div>;
 
-    // Detect if this is a currency field
-    const isCurrency = isCurrencyColumn(config.dataKey);
-    // Detect if x-axis is a date field
-    const isDateAxis = isDateTimeColumn(config.xAxisKey);
-
-    const commonProps = {
-        data: data,
-        margin: { top: 30, right: 40, left: 20, bottom: 25 }
+    const handleChartClick = (d: any) => {
+        if (!onItemClick) return;
+        // Recharts passes different objects depending on the chart type
+        // Usually, the raw data value is in activeLabel, activePayload, or the data object itself
+        const value = d?.activeLabel || d?.[config.xAxisKey] || d?.name || (d?.payload && d.payload[config.xAxisKey]) || (d?.activePayload && d.activePayload[0]?.payload?.[config.xAxisKey]);
+        if (value !== undefined) {
+            onItemClick(value);
+        }
     };
 
     const themeColors = getThemeClasses(theme);
@@ -141,7 +142,20 @@ const RenderChart = ({ config, data, isExpanded = false, theme }: { config: Char
                         <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
                         <Tooltip content={<CustomTooltip />} />
                         <Legend verticalAlign="top" height={36} iconType="square" wrapperStyle={{ fontSize: '12px', color: themeColors.chartLegendText, paddingBottom: '10px' }} />
-                        <Bar dataKey={config.dataKey} fill={COLORS[0]} radius={[4, 4, 0, 0]}>
+                        <Bar
+                            dataKey={config.dataKey}
+                            radius={[4, 4, 0, 0]}
+                            onClick={(d) => onItemClick && onItemClick(d[config.xAxisKey])}
+                            cursor="pointer"
+                        >
+                            {data.map((entry, index) => (
+                                <Cell
+                                    key={`cell-${index}`}
+                                    fill={activeFilterValue && entry[config.xAxisKey] === activeFilterValue ? '#f59e0b' : COLORS[0]}
+                                    fillOpacity={activeFilterValue && entry[config.xAxisKey] !== activeFilterValue ? 0.4 : 1}
+                                    style={{ transition: 'all 0.3s ease' }}
+                                />
+                            ))}
                             <LabelList dataKey={config.dataKey} position="top" fill={themeColors.chartLabelText} fontSize={11} formatter={labelFormatter} />
                         </Bar>
                         {showBrush && (
@@ -177,8 +191,19 @@ const RenderChart = ({ config, data, isExpanded = false, theme }: { config: Char
                             dataKey={config.dataKey}
                             stroke={COLORS[1]}
                             strokeWidth={3}
-                            dot={data.length > 50 ? false : { fill: theme === 'dark' ? '#0f172a' : '#ffffff', stroke: COLORS[1], strokeWidth: 2, r: 4 }}
-                            activeDot={{ r: 6, fill: COLORS[1] }}
+                            dot={data.length > 50 ? false : {
+                                fill: theme === 'dark' ? '#0f172a' : '#ffffff',
+                                stroke: COLORS[1],
+                                strokeWidth: 2,
+                                r: 4,
+                                cursor: 'pointer'
+                            }}
+                            activeDot={{ r: 6, fill: COLORS[1], cursor: 'pointer' }}
+                            onClick={(d: any) => {
+                                // For Line charts, we usually want the payload's x-axis value
+                                const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                if (value !== undefined && onItemClick) onItemClick(value);
+                            }}
                         >
                             {data.length <= 20 && <LabelList dataKey={config.dataKey} position="top" fill={themeColors.chartLabelText} fontSize={11} formatter={labelFormatter} />}
                         </Line>
@@ -216,7 +241,18 @@ const RenderChart = ({ config, data, isExpanded = false, theme }: { config: Char
                                 <stop offset="95%" stopColor={COLORS[4]} stopOpacity={0} />
                             </linearGradient>
                         </defs>
-                        <Area type="monotone" dataKey={config.dataKey} stroke={COLORS[4]} fill="url(#colorGradient)" strokeWidth={2}>
+                        <Area
+                            type="monotone"
+                            dataKey={config.dataKey}
+                            stroke={COLORS[4]}
+                            fill="url(#colorGradient)"
+                            strokeWidth={2}
+                            onClick={(d: any) => {
+                                const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                if (value !== undefined && onItemClick) onItemClick(value);
+                            }}
+                            cursor="pointer"
+                        >
                             {data.length <= 20 && <LabelList dataKey={config.dataKey} position="top" fill={themeColors.chartLabelText} fontSize={11} formatter={labelFormatter} />}
                         </Area>
                         {showBrush && (
@@ -245,6 +281,8 @@ const RenderChart = ({ config, data, isExpanded = false, theme }: { config: Char
                             dataKey={config.dataKey}
                             nameKey={config.xAxisKey}
                             stroke="none"
+                            onClick={(d) => onItemClick && onItemClick(d.name)}
+                            cursor="pointer"
                             label={({ name, value, percent }) => {
                                 const formattedValue = isCurrency ? formatCurrency(value) : value;
                                 let displayName = name;
@@ -259,7 +297,11 @@ const RenderChart = ({ config, data, isExpanded = false, theme }: { config: Char
                             labelLine={{ stroke: themeColors.chartLabelText, strokeWidth: 1 }}
                         >
                             {data.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                <Cell
+                                    key={`cell-${index}`}
+                                    fill={activeFilterValue && entry[config.xAxisKey] === activeFilterValue ? '#f59e0b' : COLORS[index % COLORS.length]}
+                                    fillOpacity={activeFilterValue && entry[config.xAxisKey] !== activeFilterValue ? 0.4 : 1}
+                                />
                             ))}
                         </Pie>
                         <Tooltip content={<CustomTooltip />} />
@@ -283,6 +325,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
     const [dashboardName, setDashboardName] = useState(dataModel.name);
     const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // --- NEW: Global Filtering State ---
+    const [activeFilters, setActiveFilters] = useState<{ [column: string]: any }>({});
+
+    // Filtered data calculation
+    const filteredData = useMemo(() => {
+        if (Object.keys(activeFilters).length === 0) return dataModel.data;
+
+        return dataModel.data.filter(row => {
+            return Object.entries(activeFilters).every(([col, val]) => {
+                return String(row[col]) === String(val);
+            });
+        });
+    }, [dataModel.data, activeFilters]);
+
+    const toggleFilter = (column: string, value: any) => {
+        setActiveFilters(prev => {
+            const next = { ...prev };
+            if (next[column] === value) {
+                delete next[column];
+            } else {
+                next[column] = value;
+            }
+            return next;
+        });
+    };
+
+    const clearFilters = () => setActiveFilters({});
 
     const handleRefresh = async () => {
         if (!onRefresh) return;
@@ -468,9 +538,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                         <div className="flex-1 p-6 min-h-0">
                             <RenderChart
                                 config={expandedChartConfig}
-                                data={aggregateData(dataModel.data, expandedChartConfig)}
+                                data={aggregateData(filteredData, expandedChartConfig)}
                                 isExpanded={true}
                                 theme={theme}
+                                onItemClick={(val) => toggleFilter(expandedChartConfig.xAxisKey, val)}
+                                activeFilterValue={activeFilters[expandedChartConfig.xAxisKey]}
                             />
                         </div>
                         <div className={`p-4 ${colors.bgSecondary} border-t ${colors.borderPrimary} text-center`}>
@@ -530,10 +602,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                                     <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     <span className="hidden sm:inline">Save</span>
                                 </button>
-                                <button className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} active-press`}>
+                                {/* <button className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} active-press`}>
                                     <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     <span className="hidden sm:inline">Share</span>
-                                </button>
+                                </button> */}
                             </div>
 
                             <div className="flex items-center gap-2">
@@ -553,6 +625,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                     </div>
                 </header>
 
+                {/* --- NEW: Interactive Filter Bar --- */}
+                <div className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2 sticky top-[57px] sm:top-[65px] md:top-[73px] z-20 shadow-sm print:hidden`}>
+                    <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 sm:gap-4">
+                        <div className="flex items-center gap-2 text-indigo-400">
+                            <Filter className="w-4 h-4" />
+                            <span className="text-xs font-bold uppercase tracking-wider">Active Filters</span>
+                        </div>
+
+                        {Object.keys(activeFilters).length === 0 ? (
+                            <div className={`text-[10px] sm:text-xs ${colors.textMuted} italic`}>
+                                Click on any chart element to filter the dashboard...
+                            </div>
+                        ) : (
+                            <div className="flex flex-wrap gap-2 items-center">
+                                {Object.entries(activeFilters).map(([col, val]) => (
+                                    <div
+                                        key={col}
+                                        className="flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-2 py-1 rounded-md text-[10px] sm:text-xs font-medium"
+                                    >
+                                        <span className="opacity-60">{col}:</span>
+                                        <span className="font-bold">{String(val)}</span>
+                                        <button
+                                            onClick={() => toggleFilter(col, val)}
+                                            className="ml-1 hover:text-white transition-colors"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                                <button
+                                    onClick={clearFilters}
+                                    className={`flex items-center gap-1.5 px-2 py-1 text-[10px] sm:text-xs font-bold ${colors.textMuted} hover:text-red-400 transition-colors uppercase`}
+                                >
+                                    <Trash2 className="w-3 h-3" />
+                                    Clear All
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Summary of visible vs total */}
+                        <div className="ml-auto flex items-center gap-2 text-[10px] sm:text-xs font-medium">
+                            <span className={colors.textMuted}>Showing</span>
+                            <span className="text-indigo-400 font-bold">{filteredData.length.toLocaleString()}</span>
+                            <span className={colors.textMuted}>/</span>
+                            <span className={colors.textPrimary}>{dataModel.data.length.toLocaleString()}</span>
+                            <span className={colors.textMuted}>rows</span>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Print Header */}
                 <div className={`hidden print:block px-8 py-6 border-b ${colors.borderPrimary} mb-6`}>
                     <h1 className={`text-3xl font-bold ${colors.textPrimary}`}>{dataModel.name} Dashboard</h1>
@@ -565,7 +687,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                     {kpis.length > 0 && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 print:grid-cols-4">
                             {kpis.map((kpi, i) => {
-                                const data = aggregateData(dataModel.data, kpi);
+                                const data = aggregateData(filteredData, kpi);
                                 const value = data[0]?.value || 0;
                                 const isCurrency = isCurrencyColumn(kpi.dataKey);
                                 const displayValue = isCurrency ? formatCurrency(value) : (typeof value === 'number' ? value.toLocaleString('en-IN') : value);
@@ -590,7 +712,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                     {/* Charts Grid */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 print:grid-cols-2 print:gap-4">
                         {charts.map(chart => {
-                            const aggregatedData = aggregateData(dataModel.data, chart);
+                            const aggregatedData = aggregateData(filteredData, chart);
                             return (
                                 <div key={chart.id} className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] print:h-[380px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid print:p-4 relative group elevation-md`}>
                                     <div className="mb-6 pr-8">
@@ -609,7 +731,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                                     </div>
 
                                     <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden">
-                                        <RenderChart config={chart} data={aggregatedData} theme={theme} />
+                                        <RenderChart
+                                            config={chart}
+                                            data={aggregatedData}
+                                            theme={theme}
+                                            onItemClick={(val) => toggleFilter(chart.xAxisKey, val)}
+                                            activeFilterValue={activeFilters[chart.xAxisKey]}
+                                        />
                                     </div>
                                 </div>
                             );
