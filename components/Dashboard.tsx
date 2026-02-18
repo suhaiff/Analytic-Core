@@ -368,36 +368,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
     const clearFilters = () => setActiveFilters({});
 
     // --- NEW: Manual Filter Dropdown Logic ---
-    const filterableColumns = useMemo(() => {
-        // Use pre-detected categorical columns if available, otherwise fallback
-        const baseCols = dataModel.categoricalColumns?.length > 0
-            ? dataModel.categoricalColumns
-            : dataModel.columns.filter(col => !dataModel.numericColumns.includes(col));
+    const [openFilterMenu, setOpenFilterMenu] = useState(false);
+    const [selectedFilterCol, setSelectedFilterCol] = useState<string | null>(null);
+    const [filterSearch, setFilterSearch] = useState('');
+    const [columnSearch, setColumnSearch] = useState('');
 
-        return baseCols.filter(col => {
+    const filterableColumns = useMemo(() => {
+        // Get all columns from data model
+        return dataModel.columns.filter(col => {
             // Ensure column exists in data
             const firstRow = dataModel.data[0];
-            if (!firstRow || !(col in firstRow)) return false;
-
-            const uniqueValues = new Set(dataModel.data.map(r => String(r[col])));
-            // Remove null-like values for the check
-            uniqueValues.delete('null');
-            uniqueValues.delete('undefined');
-            uniqueValues.delete('');
-
-            // Allow columns with 1 to 200 unique values for manual filtering
-            return uniqueValues.size >= 1 && uniqueValues.size <= 200;
+            return firstRow && (col in firstRow);
         });
     }, [dataModel]);
 
-    const [openFilterCol, setOpenFilterCol] = useState<string | null>(null);
-    const [filterSearch, setFilterSearch] = useState('');
-
     const getUniqueValues = (column: string) => {
-        const rawValues = Array.from(new Set(dataModel.data.map(r => String(r[column]))));
+        if (!column) return [];
+        const rawValues = Array.from(new Set(dataModel.data.map(r => String(r[column] || ''))));
         return rawValues
             .map(v => (v === 'null' || v === 'undefined' || v === '') ? '(Empty)' : v)
-            .sort((a, b) => a.localeCompare(b));
+            .sort((a, b) => String(a).localeCompare(String(b)));
     };
 
     const handleRefresh = async () => {
@@ -710,85 +700,113 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                             </div>
                         )}
 
-                        {/* Dropdown Filters */}
-                        <div className="flex flex-wrap items-center gap-2 border-l border-slate-700/50 pl-4 ml-2 max-w-full">
-                            {filterableColumns.map(col => {
-                                const isOpen = openFilterCol === col;
-                                const uniqueVals = getUniqueValues(col);
-                                const filteredVals = uniqueVals.filter(v =>
-                                    v.toLowerCase().includes(filterSearch.toLowerCase())
-                                );
-                                const activeVal = activeFilters[col];
+                        {/* Improved Manual Filter Dropdown */}
+                        <div className="relative ml-2 border-l border-slate-700/50 pl-4">
+                            <button
+                                onClick={() => {
+                                    setOpenFilterMenu(!openFilterMenu);
+                                    setSelectedFilterCol(null);
+                                    setColumnSearch('');
+                                    setFilterSearch('');
+                                }}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${openFilterMenu ? 'bg-indigo-500 border-indigo-400 text-white' : `${colors.bgPrimary} ${colors.borderSecondary} ${colors.textSecondary} hover:${colors.borderPrimary} hover:${colors.textPrimary}`} transition-all text-xs font-bold shadow-lg active-press`}
+                            >
+                                <Plus className="w-4 h-4" />
+                                <span>Add Filter</span>
+                                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${openFilterMenu ? 'rotate-180' : ''}`} />
+                            </button>
 
-                                return (
-                                    <div key={col} className="relative">
-                                        <button
-                                            onClick={() => {
-                                                setOpenFilterCol(isOpen ? null : col);
-                                                setFilterSearch('');
-                                            }}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${activeVal ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300 ring-1 ring-indigo-500/30' : `${colors.bgPrimary} ${colors.borderSecondary} ${colors.textMuted} hover:${colors.borderPrimary} hover:${colors.textPrimary}`} transition-all text-xs font-semibold active-press`}
-                                        >
-                                            <span className="max-w-[120px] truncate">{col.includes('.') ? col.split('.').pop() : col}</span>
-                                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
-                                            {activeVal && (
-                                                <div className="ml-1 w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
-                                            )}
-                                        </button>
+                            {openFilterMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setOpenFilterMenu(false)}></div>
+                                    <div className={`absolute top-full left-0 mt-3 w-72 max-h-[450px] overflow-hidden ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 flex flex-col`}>
 
-                                        {isOpen && (
+                                        {!selectedFilterCol ? (
+                                            // STEP 1: Select Column
                                             <>
-                                                <div className="fixed inset-0 z-40" onClick={() => setOpenFilterCol(null)}></div>
-                                                <div className={`absolute top-full left-0 mt-2 w-64 max-h-80 overflow-hidden ${colors.bgSecondary} border ${colors.borderPrimary} rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 flex flex-col`}>
-                                                    {/* Search Header */}
-                                                    <div className={`p-2 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
-                                                        <input
-                                                            type="text"
-                                                            placeholder={`Search ${col}...`}
-                                                            autoFocus
-                                                            className={`w-full px-3 py-1.5 text-xs rounded-md ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-1 focus:ring-indigo-500 outline-none`}
-                                                            value={filterSearch}
-                                                            onChange={(e) => setFilterSearch(e.target.value)}
-                                                        />
+                                                <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className={`text-[10px] font-bold uppercase tracking-widest ${colors.textMuted}`}>Select Column</span>
+                                                        <X className="w-3.5 h-3.5 cursor-pointer opacity-50 hover:opacity-100" onClick={() => setOpenFilterMenu(false)} />
                                                     </div>
-
-                                                    <div className="overflow-y-auto max-h-60 p-1 no-scrollbar">
-                                                        {filteredVals.length === 0 ? (
-                                                            <div className={`px-3 py-4 text-center text-xs ${colors.textMuted} italic`}>
-                                                                No values found
-                                                            </div>
-                                                        ) : (
-                                                            filteredVals.map(val => {
-                                                                const isSelected = activeVal === (val === '(Empty)' ? '' : val);
-                                                                return (
-                                                                    <button
-                                                                        key={val}
-                                                                        onClick={() => {
-                                                                            const actualVal = val === '(Empty)' ? '' : val;
-                                                                            toggleFilter(col, actualVal);
-                                                                            setOpenFilterCol(null);
-                                                                        }}
-                                                                        className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs transition-all mb-0.5 last:mb-0 ${isSelected ? 'bg-indigo-500/20 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
-                                                                    >
-                                                                        <span className="truncate mr-4">{val}</span>
-                                                                        {isSelected && <Check className="w-4 h-4 shrink-0 text-indigo-400" />}
-                                                                    </button>
-                                                                );
-                                                            })
-                                                        )}
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Search columns..."
+                                                        autoFocus
+                                                        className={`w-full px-3 py-2 text-xs rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                                        value={columnSearch}
+                                                        onChange={(e) => setColumnSearch(e.target.value)}
+                                                    />
+                                                </div>
+                                                <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80">
+                                                    {filterableColumns
+                                                        .filter(c => c.toLowerCase().includes(columnSearch.toLowerCase()))
+                                                        .map(col => (
+                                                            <button
+                                                                key={col}
+                                                                onClick={() => setSelectedFilterCol(col)}
+                                                                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${activeFilters[col] ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                            >
+                                                                <div className="flex flex-col items-start truncate mr-2">
+                                                                    {col.includes('.') && <span className="text-[9px] opacity-50 block">{col.split('.')[0]}</span>}
+                                                                    <span className="truncate">{col.includes('.') ? col.split('.').pop() : col}</span>
+                                                                </div>
+                                                                <ArrowRight className="w-3.5 h-3.5 shrink-0 opacity-30" />
+                                                            </button>
+                                                        ))}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            // STEP 2: Select Value
+                                            <>
+                                                <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <button
+                                                            onClick={() => setSelectedFilterCol(null)}
+                                                            className="p-1 rounded-md hover:bg-slate-700/50 transition"
+                                                        >
+                                                            <Home className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 truncate">
+                                                            {selectedFilterCol.includes('.') ? selectedFilterCol.split('.').pop() : selectedFilterCol}
+                                                        </span>
                                                     </div>
-
-                                                    {uniqueVals.length > filteredVals.length && (
-                                                        <div className={`px-3 py-1.5 text-[10px] ${colors.textMuted} border-t ${colors.borderPrimary} bg-slate-800/20`}>
-                                                            Showing {filteredVals.length} of {uniqueVals.length} values
-                                                        </div>
-                                                    )}
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Search values..."
+                                                        autoFocus
+                                                        className={`w-full px-3 py-2 text-xs rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                                        value={filterSearch}
+                                                        onChange={(e) => setFilterSearch(e.target.value)}
+                                                    />
+                                                </div>
+                                                <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80">
+                                                    {getUniqueValues(selectedFilterCol)
+                                                        .filter(v => String(v).toLowerCase().includes(filterSearch.toLowerCase()))
+                                                        .map(val => {
+                                                            const valueStr = String(val);
+                                                            const actualVal = valueStr === '(Empty)' ? '' : valueStr;
+                                                            const isSelected = activeFilters[selectedFilterCol] === actualVal;
+                                                            return (
+                                                                <button
+                                                                    key={valueStr}
+                                                                    onClick={() => {
+                                                                        toggleFilter(selectedFilterCol!, actualVal);
+                                                                        setOpenFilterMenu(false);
+                                                                    }}
+                                                                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${isSelected ? 'bg-indigo-500/20 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                                >
+                                                                    <span className="truncate mr-4">{valueStr}</span>
+                                                                    {isSelected && <Check className="w-4 h-4 shrink-0 text-indigo-400" />}
+                                                                </button>
+                                                            );
+                                                        })}
                                                 </div>
                                             </>
                                         )}
                                     </div>
-                                );
-                            })}
+                                </>
+                            )}
                         </div>
 
                         {/* Summary of visible vs total */}
