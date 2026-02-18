@@ -367,6 +367,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
 
     const clearFilters = () => setActiveFilters({});
 
+    // --- NEW: Manual Filter Dropdown Logic ---
+    const filterableColumns = useMemo(() => {
+        // Only show columns that are NOT numeric and NOT too unique (like IDs)
+        return dataModel.columns.filter(col => {
+            if (dataModel.numericColumns.includes(col)) return false;
+            // Get sample of unique values
+            const uniqueValues = new Set(dataModel.data.map(r => String(r[col])).filter(v => v && v !== 'null' && v !== 'undefined'));
+            // If more than 50 unique values, it's probably an ID or too dense for a simple filter
+            return uniqueValues.size > 1 && uniqueValues.size <= 50;
+        });
+    }, [dataModel.columns, dataModel.numericColumns, dataModel.data]);
+
+    const [openFilterCol, setOpenFilterCol] = useState<string | null>(null);
+
+    const getUniqueValues = (column: string) => {
+        const values = Array.from(new Set(dataModel.data.map(r => String(r[column])).filter(v => v && v !== 'null' && v !== 'undefined')));
+        return values.sort();
+    };
+
     const handleRefresh = async () => {
         if (!onRefresh) return;
         setIsRefreshing(true);
@@ -676,6 +695,50 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                                 </button>
                             </div>
                         )}
+
+                        {/* Dropdown Filters */}
+                        <div className="flex items-center gap-2 border-l border-slate-700/50 pl-4 ml-2 overflow-x-auto no-scrollbar">
+                            {filterableColumns.map(col => {
+                                const isOpen = openFilterCol === col;
+                                const uniqueVals = getUniqueValues(col);
+                                const activeVal = activeFilters[col];
+
+                                return (
+                                    <div key={col} className="relative shrink-0">
+                                        <button
+                                            onClick={() => setOpenFilterCol(isOpen ? null : col)}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${activeVal ? 'bg-indigo-500/10 border-indigo-500/50 text-indigo-300' : `${colors.bgPrimary} ${colors.borderSecondary} ${colors.textMuted} hover:${colors.borderPrimary} hover:${colors.textPrimary}`} transition-all text-xs font-medium active-press`}
+                                        >
+                                            <span className="max-w-[80px] truncate">{col}</span>
+                                            <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                                        </button>
+
+                                        {isOpen && (
+                                            <>
+                                                <div className="fixed inset-0 z-40" onClick={() => setOpenFilterCol(null)}></div>
+                                                <div className={`absolute top-full left-0 mt-2 w-48 max-h-60 overflow-y-auto ${colors.bgSecondary} border ${colors.borderPrimary} rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 no-scrollbar`}>
+                                                    <div className="p-1">
+                                                        {uniqueVals.map(val => (
+                                                            <button
+                                                                key={val}
+                                                                onClick={() => {
+                                                                    toggleFilter(col, val);
+                                                                    setOpenFilterCol(null);
+                                                                }}
+                                                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${activeVal === val ? 'bg-indigo-500/20 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                            >
+                                                                <span className="truncate mr-2">{val}</span>
+                                                                {activeVal === val && <Check className="w-3.5 h-3.5 shrink-0" />}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
 
                         {/* Summary of visible vs total */}
                         <div className="ml-auto flex items-center gap-2 text-[10px] sm:text-xs font-medium">
