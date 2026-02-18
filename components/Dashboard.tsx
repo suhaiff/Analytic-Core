@@ -41,6 +41,16 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
         }
     };
 
+    // Detect if this is a currency field
+    const isCurrency = isCurrencyColumn(config.dataKey);
+    // Detect if x-axis is a date field
+    const isDateAxis = isDateTimeColumn(config.xAxisKey);
+
+    const commonProps = {
+        data: data,
+        margin: { top: 30, right: 40, left: 20, bottom: 25 }
+    };
+
     const themeColors = getThemeClasses(theme);
 
     // Custom formatter for labels
