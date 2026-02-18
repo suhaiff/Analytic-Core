@@ -155,7 +155,10 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                         <Bar
                             dataKey={config.dataKey}
                             radius={[4, 4, 0, 0]}
-                            onClick={(d) => onItemClick && onItemClick(d[config.xAxisKey])}
+                            onClick={(d: any) => {
+                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                if (value !== undefined && onItemClick) onItemClick(value);
+                            }}
                             cursor="pointer"
                         >
                             {data.map((entry, index) => (
