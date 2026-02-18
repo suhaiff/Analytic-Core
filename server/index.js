@@ -264,15 +264,21 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
             console.log(`Created sheet record with ID: ${sheetId}`);
 
-            // Insert row data - process in smaller batches to avoid timeouts
-            const batchSize = 100;
-            for (let rowIndex = 0; rowIndex < sheetData.length; rowIndex++) {
-                const rowData = sheetData[rowIndex];
-                await supabaseService.createExcelData(sheetId, rowIndex, rowData);
+            // Insert row data - process in larger batches for high performance
+            const batchSize = 500;
+            let currentBatch = [];
 
-                // Log progress for large files
-                if ((rowIndex + 1) % batchSize === 0) {
+            for (let rowIndex = 0; rowIndex < sheetData.length; rowIndex++) {
+                currentBatch.push({
+                    rowIndex,
+                    rowData: sheetData[rowIndex]
+                });
+
+                // When batch is full or it's the last row, insert
+                if (currentBatch.length === batchSize || rowIndex === sheetData.length - 1) {
+                    await supabaseService.createExcelDataBatch(sheetId, currentBatch);
                     console.log(`  Inserted ${rowIndex + 1}/${sheetData.length} rows for sheet "${sheetName}"`);
+                    currentBatch = []; // Reset batch
                 }
             }
 

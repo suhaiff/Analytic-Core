@@ -284,6 +284,28 @@ class SupabaseService {
         }
     }
 
+    async createExcelDataBatch(sheetId, rows) {
+        try {
+            // rows is an array of {rowIndex, rowData}
+            const insertData = rows.map(row => ({
+                sheet_id: sheetId,
+                row_index: row.rowIndex,
+                row_data: row.rowData,
+                created_at: new Date().toISOString()
+            }));
+
+            const { error } = await this.supabase
+                .from('excel_data')
+                .insert(insertData);
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Error batch creating excel data:', error.message);
+            throw error;
+        }
+    }
+
     async createFileUploadLog(fileId, uploadDate, uploadTime, filePath, status, errorMessage = null) {
         try {
             const logData = {

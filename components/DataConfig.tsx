@@ -575,7 +575,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                 </tr>
                                             </thead>
                                             <tbody className={`divide-y ${colors.borderPrimary}`}>
-                                                {mergedData.slice(0, 5).map((row, i) => (
+                                                {mergedData.slice(0, 100).map((row, i) => (
                                                     <tr key={i} className={`hover:${colors.bgTertiary}/50`}>
                                                         {mergedColumns.slice(0, 8).map((col, j) => {
                                                             const cellValue = row[col];
@@ -591,6 +591,13 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                         {mergedColumns.length > 8 && <td className="px-4 py-3 text-slate-600">...</td>}
                                                     </tr>
                                                 ))}
+                                                {mergedData.length > 100 && (
+                                                    <tr className={`${colors.bgTertiary}/30`}>
+                                                        <td colSpan={Math.min(mergedColumns.length, 9)} className="px-4 py-4 text-center italic text-sm">
+                                                            Previewing first 100 of {mergedData.length.toLocaleString()} rows...
+                                                        </td>
+                                                    </tr>
+                                                )}
                                             </tbody>
                                         </table>
                                     </div>
@@ -671,7 +678,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {viewingFile.sheets[activeSheet]?.data.slice(1).map((row: any[], rIdx: number) => (
+                                        {viewingFile.sheets[activeSheet]?.data.slice(1, 101).map((row: any[], rIdx: number) => (
                                             <tr key={rIdx} className={`hover:${colors.bgPrimary} transition-colors border-b ${colors.borderSecondary} last:border-b-0`}>
                                                 {row.map((cell: any, cIdx: number) => {
                                                     const header = viewingFile.sheets[activeSheet]?.data[0][cIdx];
@@ -686,6 +693,13 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                 })}
                                             </tr>
                                         ))}
+                                        {viewingFile.sheets[activeSheet]?.data.length > 101 && (
+                                            <tr className={`${colors.bgTertiary}/30`}>
+                                                <td colSpan={viewingFile.sheets[activeSheet]?.data[0]?.length || 1} className="px-4 py-4 text-center italic text-sm">
+                                                    Previewing first 100 rows...
+                                                </td>
+                                            </tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
@@ -725,7 +739,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {viewingTable.rawData.rows.slice((headerIndices[viewingTable.id] || 0) + 1).map((row: any[], rIdx: number) => (
+                                        {viewingTable.rawData.rows.slice((headerIndices[viewingTable.id] || 0) + 1, (headerIndices[viewingTable.id] || 0) + 101).map((row: any[], rIdx: number) => (
                                             <tr key={rIdx} className={`hover:${colors.bgPrimary} transition-colors border-b ${colors.borderSecondary} last:border-b-0`}>
                                                 {row.map((cell: any, cIdx: number) => {
                                                     const header = viewingTable.rawData.rows[headerIndices[viewingTable.id] || 0]?.[cIdx];
@@ -740,6 +754,13 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                 })}
                                             </tr>
                                         ))}
+                                        {viewingTable.rawData.rows.length > (headerIndices[viewingTable.id] || 0) + 101 && (
+                                            <tr className={`${colors.bgTertiary}/30`}>
+                                                <td colSpan={viewingTable.rawData.rows[headerIndices[viewingTable.id] || 0]?.length || 1} className="px-4 py-4 text-center italic text-sm">
+                                                    Previewing first 100 rows...
+                                                </td>
+                                            </tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
