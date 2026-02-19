@@ -478,18 +478,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
             });
 
             if (!response.ok) {
-                throw new Error('Failed to generate PDF on server');
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to generate PDF on server');
+            }
+
+            // Verify content type to avoid downloading JSON errors as PDF
+            const contentType = response.headers.get('content-type');
+            if (contentType && !contentType.includes('application/pdf')) {
+                const errText = await response.text();
+                console.error('Server returned non-PDF response:', errText);
+                throw new Error('Server returned invalid data format');
             }
 
             const blob = await response.blob();
+            if (blob.size === 0) {
+                throw new Error('Generated PDF is empty');
+            }
+
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = `${dataModel.name.replace(/\s+/g, '_')}_Dashboard.pdf`;
             document.body.appendChild(a);
             a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+            setTimeout(() => {
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            }, 100);
 
         } catch (error) {
             console.error("Export PDF Error:", error);
