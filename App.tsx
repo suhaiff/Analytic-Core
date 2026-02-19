@@ -45,6 +45,7 @@ function AppContent() {
   const [uploadedFileId, setUploadedFileId] = useState<number | undefined>(undefined);
   const [dataModel, setDataModel] = useState<DataModel | null>(null);
   const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([]);
+  const [filterColumns, setFilterColumns] = useState<string[]>([]);
   const [sourceType, setSourceType] = useState<'file' | 'google_sheet' | 'sharepoint'>('file');
 
 
@@ -304,8 +305,9 @@ function AppContent() {
     setStep(Step.BUILDER);
   };
 
-  const handleGenerateReport = (charts: ChartConfig[]) => {
+  const handleGenerateReport = (charts: ChartConfig[], cols: string[]) => {
     setChartConfigs(charts);
+    setFilterColumns(cols);
     setStep(Step.DASHBOARD);
   };
 
@@ -330,7 +332,8 @@ function AppContent() {
       name,
       date: new Date().toLocaleDateString(),
       dataModel: dataModel,
-      chartConfigs: currentCharts
+      chartConfigs: currentCharts,
+      filterColumns: filterColumns
     };
 
     try {
@@ -347,6 +350,7 @@ function AppContent() {
   const handleLoadDashboard = (dash: SavedDashboard) => {
     setDataModel(dash.dataModel);
     setChartConfigs(dash.chartConfigs);
+    setFilterColumns(dash.filterColumns || []);
     setStep(Step.DASHBOARD);
   };
 
@@ -467,6 +471,8 @@ function AppContent() {
             dataModel={dataModel}
             onGenerateReport={handleGenerateReport}
             onHome={handleReturnHomeRequest}
+            onBack={() => setStep(Step.CONFIG)}
+            initialFilterColumns={filterColumns}
           />
         )}
 
@@ -474,6 +480,7 @@ function AppContent() {
           <Dashboard
             dataModel={dataModel}
             chartConfigs={chartConfigs}
+            filterColumns={filterColumns}
             onHome={handleReturnHomeRequest}
             onSave={handleSaveDashboard}
             onRefresh={handleRefresh}

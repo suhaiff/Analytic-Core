@@ -402,12 +402,20 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                     <CheckSquare className="w-4 h-4 text-indigo-500" />
                                     Selected ({selectedColumns.size})
                                 </h3>
-                                <button
-                                    onClick={() => setSelectedColumns(new Set(mergedColumns))}
-                                    className="text-[10px] text-indigo-400 hover:text-indigo-300"
-                                >
-                                    Select All
-                                </button>
+                                {(() => {
+                                    const allSelected = mergedColumns.length > 0 && mergedColumns.every(col => selectedColumns.has(col));
+                                    return (
+                                        <button
+                                            onClick={() => allSelected
+                                                ? setSelectedColumns(new Set())
+                                                : setSelectedColumns(new Set(mergedColumns))
+                                            }
+                                            className={`text-[10px] font-medium transition ${allSelected ? 'text-rose-400 hover:text-rose-300' : 'text-indigo-400 hover:text-indigo-300'}`}
+                                        >
+                                            {allSelected ? 'Unselect All' : 'Select All'}
+                                        </button>
+                                    );
+                                })()}
                             </div>
 
                             <div className="space-y-1">

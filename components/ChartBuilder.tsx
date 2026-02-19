@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DataModel, ChartConfig } from '../types';
 import { analyzeDataAndSuggestKPIs, generateChartFromPrompt } from '../services/geminiService';
-import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, Table as TableIcon, Mic, MicOff, Home, Save } from 'lucide-react';
+import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, Filter, Check, ChevronDown } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
@@ -9,9 +9,11 @@ import { smartFormat } from '../utils/formatters';
 
 interface ChartBuilderProps {
     dataModel: DataModel;
-    onGenerateReport: (charts: ChartConfig[]) => void;
+    onGenerateReport: (charts: ChartConfig[], filterColumns: string[]) => void;
     onHome: () => void;
+    onBack?: () => void;
     initialBucket?: ChartConfig[];
+    initialFilterColumns?: string[];
     mode?: 'create' | 'update';
 }
 
@@ -19,7 +21,9 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     dataModel,
     onGenerateReport,
     onHome,
+    onBack,
     initialBucket = [],
+    initialFilterColumns = [],
     mode = 'create'
 }) => {
     const { theme } = useTheme();
@@ -33,6 +37,48 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     const [isListening, setIsListening] = useState(false);
     const [showData, setShowData] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+
+    // Filter Columns state
+    const [selectedFilterCols, setSelectedFilterCols] = useState<Set<string>>(
+        new Set(initialFilterColumns.length > 0 ? initialFilterColumns : [])
+    );
+    const [openFilterColMenu, setOpenFilterColMenu] = useState(false);
+    const [filterColSearch, setFilterColSearch] = useState('');
+    const filterColMenuRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (filterColMenuRef.current && !filterColMenuRef.current.contains(e.target as Node)) {
+                setOpenFilterColMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const allColumns = dataModel.columns || [];
+    const filteredColList = allColumns.filter(c =>
+        c.toLowerCase().includes(filterColSearch.toLowerCase())
+    );
+    const allFilterColsSelected = allColumns.length > 0 && allColumns.every(c => selectedFilterCols.has(c));
+
+    const toggleFilterCol = (col: string) => {
+        setSelectedFilterCols(prev => {
+            const next = new Set(prev);
+            if (next.has(col)) next.delete(col);
+            else next.add(col);
+            return next;
+        });
+    };
+
+    const toggleAllFilterCols = () => {
+        if (allFilterColsSelected) {
+            setSelectedFilterCols(new Set());
+        } else {
+            setSelectedFilterCols(new Set(allColumns));
+        }
+    };
 
     useEffect(() => {
         if (initialBucket && initialBucket.length > 0) {
@@ -51,9 +97,33 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dataModel.name]);
 
+    // Returns true if a chart with the same visual config already exists in the bucket.
+    // For KPI charts: xAxisKey is irrelevant (they show a single metric value),
+    // so we only compare type + dataKey + aggregation — preventing duplicates even
+    // when the AI fills xAxisKey with a different column name across calls.
+    // For all other chart types: we also compare xAxisKey (case-insensitive, trimmed).
+    const isAlreadyInBucket = (chart: ChartConfig): boolean => {
+        const normalize = (s: string | undefined | null) => (s ?? '').trim().toLowerCase();
+        return bucket.some(c => {
+            if (c.type !== chart.type) return false;
+            if (normalize(c.dataKey) !== normalize(chart.dataKey)) return false;
+            if (normalize(c.aggregation) !== normalize(chart.aggregation)) return false;
+            // For KPI charts, xAxisKey doesn't affect the output — skip it
+            if (chart.type === 'KPI') return true;
+            return normalize(c.xAxisKey) === normalize(chart.xAxisKey);
+        });
+    };
+
     const addToBucket = (chart: ChartConfig) => {
-        if (!bucket.find(c => c.id === chart.id)) {
-            setBucket([...bucket, chart]);
+        if (!isAlreadyInBucket(chart)) {
+            setBucket(prev => [...prev, chart]);
+        }
+    };
+
+    const addAllToBucket = () => {
+        const newCharts = suggestedCharts.filter(chart => !isAlreadyInBucket(chart));
+        if (newCharts.length > 0) {
+            setBucket(prev => [...prev, ...newCharts]);
         }
     };
 
@@ -187,10 +257,21 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                         <button onClick={onHome} className={`p-1.5 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition active-press`} title={mode === 'update' ? "Cancel" : "Go Home"}>
                             {mode === 'update' ? <X className="w-4 h-4" /> : <Home className="w-4 h-4" />}
                         </button>
-                        <h2 className={`responsive-text-base sm:text-lg font-bold ${colors.textPrimary} flex items-center gap-2`}>
+                        <h2 className={`responsive-text-base sm:text-lg font-bold ${colors.textPrimary} flex items-center gap-2 flex-1`}>
                             <Sparkles className="text-indigo-400 w-4 h-4 sm:w-5 sm:h-5" />
                             Insights
                         </h2>
+                        {!loading && suggestedCharts.length > 0 && (
+                            <button
+                                onClick={addAllToBucket}
+                                disabled={suggestedCharts.every(c => isAlreadyInBucket(c))}
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white transition active-press whitespace-nowrap"
+                                title="Add all recommendations to bucket"
+                            >
+                                <Plus className="w-3 h-3" />
+                                Add All
+                            </button>
+                        )}
                     </div>
                     <p className={`responsive-text-xs ${colors.textMuted} ml-8`}>
                         AI suggestions based on <span className={`${colors.textTertiary} font-medium`}>{dataModel.name}</span>
@@ -211,7 +292,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                         </div>
                     ) : (
                         suggestedCharts.map(chart => {
-                            const inBucket = !!bucket.find(b => b.id === chart.id);
+                            const inBucket = isAlreadyInBucket(chart);
                             return (
                                 <div
                                     key={chart.id}
@@ -233,6 +314,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                             <button
                                                 onClick={() => addToBucket(chart)}
                                                 className={`${colors.textMuted} hover:${colors.textPrimary} ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'} hover:bg-indigo-500 p-1.5 rounded-lg transition-colors active-press`}
+                                                title="Add to dashboard bucket"
                                             >
                                                 <Plus className="w-4 h-4" />
                                             </button>
@@ -259,6 +341,17 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                         >
                             <Sparkles className="w-4 h-4" />
                         </button>
+                        {/* Back to DataConfig button — only in create mode */}
+                        {mode === 'create' && onBack && (
+                            <button
+                                onClick={onBack}
+                                className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 ${colors.bgTertiary} hover:${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'} border ${colors.borderSecondary} rounded-md text-[10px] sm:text-xs font-medium ${colors.textTertiary} transition active-press`}
+                                title="Back to Data Configuration"
+                            >
+                                <ArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                <span className="hidden sm:inline">Back</span>
+                            </button>
+                        )}
                         <h1 className={`text-base sm:text-xl md:text-2xl font-bold ${colors.textPrimary}`}>
                             {mode === 'update' ? 'Edit Dashboard' : 'Chart Builder'}
                         </h1>
@@ -272,9 +365,84 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                         <div className="scale-75 sm:scale-100 origin-left">
                             <ThemeToggle />
                         </div>
+                        {/* Filter Columns Dropdown */}
+                        <div className="relative" ref={filterColMenuRef}>
+                            <button
+                                onClick={() => { setOpenFilterColMenu(o => !o); setFilterColSearch(''); }}
+                                className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 ${selectedFilterCols.size > 0
+                                        ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
+                                        : `${colors.bgTertiary} border ${colors.borderSecondary} ${colors.textTertiary}`
+                                    } rounded-md text-[10px] sm:text-xs font-medium transition active-press border`}
+                                title="Choose which columns appear in dashboard filters"
+                            >
+                                <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                <span className="hidden md:inline">Filter Columns</span>
+                                {selectedFilterCols.size > 0 && (
+                                    <span className="bg-indigo-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                                        {selectedFilterCols.size}
+                                    </span>
+                                )}
+                                <ChevronDown className={`w-3 h-3 transition-transform ${openFilterColMenu ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {openFilterColMenu && (
+                                <div className={`absolute left-0 top-full mt-2 w-64 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-xl shadow-2xl z-50 overflow-hidden`}>
+                                    {/* Header */}
+                                    <div className={`px-3 py-2 border-b ${colors.borderPrimary} flex items-center justify-between`}>
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Filter Columns</span>
+                                        <button
+                                            onClick={toggleAllFilterCols}
+                                            className={`text-[10px] font-medium transition ${allFilterColsSelected
+                                                    ? 'text-rose-400 hover:text-rose-300'
+                                                    : 'text-indigo-400 hover:text-indigo-300'
+                                                }`}
+                                        >
+                                            {allFilterColsSelected ? 'Unselect All' : 'Select All'}
+                                        </button>
+                                    </div>
+                                    {/* Search */}
+                                    <div className={`px-2 py-2 border-b ${colors.borderPrimary}`}>
+                                        <input
+                                            type="text"
+                                            placeholder="Search columns..."
+                                            autoFocus
+                                            value={filterColSearch}
+                                            onChange={e => setFilterColSearch(e.target.value)}
+                                            className={`w-full px-3 py-1.5 text-xs rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                        />
+                                    </div>
+                                    {/* Column list */}
+                                    <div className="max-h-64 overflow-y-auto p-1.5 no-scrollbar">
+                                        {filteredColList.length === 0 ? (
+                                            <p className={`text-center text-xs py-4 ${colors.textMuted}`}>No columns found</p>
+                                        ) : filteredColList.map(col => {
+                                            const checked = selectedFilterCols.has(col);
+                                            return (
+                                                <button
+                                                    key={col}
+                                                    onClick={() => toggleFilterCol(col)}
+                                                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all mb-0.5 text-left ${checked
+                                                            ? 'bg-indigo-500/20 text-indigo-300'
+                                                            : `${colors.textSecondary} hover:${colors.bgTertiary}`
+                                                        }`}
+                                                >
+                                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${checked
+                                                            ? 'bg-indigo-500 border-indigo-500'
+                                                            : `${colors.borderSecondary} border`
+                                                        }`}>
+                                                        {checked && <Check className="w-2.5 h-2.5 text-white" />}
+                                                    </div>
+                                                    <span className="truncate">{col}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                     <button
-                        onClick={() => onGenerateReport(bucket)}
+                        onClick={() => onGenerateReport(bucket, Array.from(selectedFilterCols))}
                         disabled={bucket.length === 0}
                         className="pointer-events-auto bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-2.5 sm:px-4 md:px-6 py-1.5 sm:py-2.5 rounded-full font-bold text-[10px] sm:text-sm transition-all flex items-center gap-1 sm:gap-2 shadow-lg shadow-emerald-900/20 active-press"
                     >

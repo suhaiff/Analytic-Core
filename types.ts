@@ -72,6 +72,7 @@ export interface SavedDashboard {
   date: string;
   dataModel: DataModel;
   chartConfigs: ChartConfig[];
+  filterColumns?: string[];
 }
 
 export type UserRole = 'ADMIN' | 'USER';

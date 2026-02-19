@@ -22,6 +22,7 @@ import { DashboardLoader } from './DashboardLoader';
 interface DashboardProps {
     dataModel: DataModel;
     chartConfigs: ChartConfig[];
+    filterColumns?: string[];
     onHome: () => void;
     onSave: (name: string, charts: ChartConfig[]) => void;
     onRefresh?: () => Promise<void>;
@@ -330,7 +331,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
     }
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, onHome, onSave, onRefresh }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, filterColumns = [], onHome, onSave, onRefresh }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
 
@@ -387,14 +388,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
 
     const filterableColumns = useMemo(() => {
         if (!dataModel || !dataModel.columns) return [];
-        // Get all columns from data model
-        return dataModel.columns.filter(col => {
+        // If specific filter columns were chosen in ChartBuilder, use only those.
+        // Otherwise fall back to all columns present in data.
+        const sourceColumns = filterColumns.length > 0
+            ? filterColumns.filter(col => dataModel.columns.includes(col))
+            : dataModel.columns;
+        return sourceColumns.filter(col => {
             if (!col) return false;
-            // Ensure column exists in data
             const firstRow = dataModel.data && dataModel.data[0];
             return firstRow && (col in firstRow);
         });
-    }, [dataModel]);
+    }, [dataModel, filterColumns]);
 
     const getUniqueValues = (column: string) => {
         if (!column || !dataModel || !dataModel.data) return [];
@@ -591,9 +595,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
                     <div className="fixed inset-0 z-50 bg-slate-950 animate-fade-in">
                         <ChartBuilder
                             dataModel={dataModel}
-                            onGenerateReport={handleUpdateFromBuilder}
+                            onGenerateReport={(updatedCharts, _cols) => handleUpdateFromBuilder(updatedCharts)}
                             onHome={() => setIsEditing(false)}
                             initialBucket={currentCharts}
+                            initialFilterColumns={filterColumns}
                             mode="update"
                         />
                     </div>
