@@ -39,7 +39,7 @@ else
   echo "⚙️  Using PM2 deployment..."
   cd server
   npm ci --only=production
-  pm2 restart ecosystem.config.js --update-env
+  pm2 restart ../ecosystem.config.js --update-env
   pm2 save
   echo "✅ PM2 process restarted"
 fi

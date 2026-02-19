@@ -5,7 +5,11 @@ import {
 } from 'recharts';
 import { DataModel, ChartConfig, ChartType } from '../types';
 import { aggregateData } from '../utils/aggregator';
-import { LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2, X, Home, Save, Edit, RefreshCw } from 'lucide-react';
+import {
+    LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2,
+    X, Home, Save, Edit, RefreshCw, Plus, ArrowRight, Filter, Trash2,
+    ChevronDown, Check, MousePointer2
+} from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { ChartBuilder } from './ChartBuilder';
@@ -14,7 +18,6 @@ import { getThemeClasses, type Theme } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
 import { formatCurrency, isCurrencyColumn, isDateTimeColumn, isExcelSerialDate, excelSerialToDate } from '../utils/formatters';
 import { DashboardLoader } from './DashboardLoader';
-import { Filter, Trash2, ChevronDown, Check, MousePointer2 } from 'lucide-react';
 
 interface DashboardProps {
     dataModel: DataModel;
@@ -330,13 +333,14 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
 export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, onHome, onSave, onRefresh }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
+
     // Local state for charts allows editing/adding charts in-place
-    const [currentCharts, setCurrentCharts] = useState<ChartConfig[]>(chartConfigs);
+    const [currentCharts, setCurrentCharts] = useState<ChartConfig[]>(Array.isArray(chartConfigs) ? chartConfigs : []);
     const [isEditing, setIsEditing] = useState(false);
 
     // UI State
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
-    const [dashboardName, setDashboardName] = useState(dataModel.name);
+    const [dashboardName, setDashboardName] = useState(dataModel?.name || "Untitled Dashboard");
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     // --- NEW: Global Filtering State ---
@@ -344,14 +348,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
 
     // Filtered data calculation
     const filteredData = useMemo(() => {
+        if (!dataModel || !dataModel.data) return [];
         if (Object.keys(activeFilters).length === 0) return dataModel.data;
 
-        return dataModel.data.filter(row => {
-            return Object.entries(activeFilters).every(([col, val]) => {
-                return String(row[col]) === String(val);
+        try {
+            return dataModel.data.filter(row => {
+                if (!row) return false;
+                return Object.entries(activeFilters).every(([col, val]) => {
+                    return String(row[col]) === String(val);
+                });
             });
-        });
-    }, [dataModel.data, activeFilters]);
+        } catch (e) {
+            console.error("Error in filtering logic:", e);
+            return dataModel.data || [];
+        }
+    }, [dataModel?.data, activeFilters]);
 
     const toggleFilter = (column: string, value: any) => {
         setActiveFilters(prev => {
@@ -373,21 +384,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
     const [filterSearch, setFilterSearch] = useState('');
     const [columnSearch, setColumnSearch] = useState('');
 
+
     const filterableColumns = useMemo(() => {
+        if (!dataModel || !dataModel.columns) return [];
         // Get all columns from data model
         return dataModel.columns.filter(col => {
+            if (!col) return false;
             // Ensure column exists in data
-            const firstRow = dataModel.data[0];
+            const firstRow = dataModel.data && dataModel.data[0];
             return firstRow && (col in firstRow);
         });
     }, [dataModel]);
 
     const getUniqueValues = (column: string) => {
-        if (!column) return [];
-        const rawValues = Array.from(new Set(dataModel.data.map(r => String(r[column] || ''))));
-        return rawValues
-            .map(v => (v === 'null' || v === 'undefined' || v === '') ? '(Empty)' : v)
-            .sort((a, b) => String(a).localeCompare(String(b)));
+        if (!column || !dataModel || !dataModel.data) return [];
+        try {
+            const rawValues = Array.from(new Set(dataModel.data.map(r => {
+                const val = r[column];
+                return val === null || val === undefined ? '' : String(val);
+            })));
+            return rawValues
+                .map(v => (v === 'null' || v === 'undefined' || v === '') ? '(Empty)' : v)
+                .sort((a, b) => String(a).localeCompare(String(b)));
+        } catch (e) {
+            console.error("Error getting unique values for", column, e);
+            return [];
+        }
     };
 
     const handleRefresh = async () => {
@@ -402,19 +424,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
 
     // Update local state if props change (e.g. loading a new dashboard)
     useEffect(() => {
-        setCurrentCharts(chartConfigs);
-        setDashboardName(dataModel.name);
-    }, [chartConfigs, dataModel.name]);
+        if (dataModel) {
+            setCurrentCharts(chartConfigs);
+            setDashboardName(dataModel.name);
+        }
+    }, [chartConfigs, dataModel?.name]);
 
-    const kpis = useMemo(() => currentCharts.filter(c => c.type === ChartType.KPI), [currentCharts]);
-    const charts = useMemo(() => currentCharts.filter(c => c.type !== ChartType.KPI), [currentCharts]);
+    const kpis = useMemo(() => {
+        if (!Array.isArray(currentCharts)) return [];
+        return currentCharts.filter(c => c && c.type === ChartType.KPI);
+    }, [currentCharts]);
+
+    const charts = useMemo(() => {
+        if (!Array.isArray(currentCharts)) return [];
+        return currentCharts.filter(c => c && c.type !== ChartType.KPI);
+    }, [currentCharts]);
 
     const [isExporting, setIsExporting] = useState(false);
     const [expandedChartId, setExpandedChartId] = useState<string | null>(null);
 
-    const expandedChartConfig = useMemo(() =>
-        currentCharts.find(c => c.id === expandedChartId),
-        [expandedChartId, currentCharts]);
+    const expandedChartConfig = useMemo(() => {
+        if (!currentCharts) return undefined;
+        return currentCharts.find(c => c.id === expandedChartId);
+    }, [expandedChartId, currentCharts]);
 
     const handleExportPDF = async () => {
         setIsExporting(true);
@@ -506,402 +538,434 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, o
         setIsEditing(false);
     };
 
-    return (
-        <>
-            {/* Save Dashboard Modal */}
-            {isSaveModalOpen && (
-                <div className={`fixed inset-0 z-[60] ${colors.overlayBg} backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in`}>
-                    <div className={`${colors.modalBg} border ${colors.borderPrimary} rounded-2xl p-8 max-w-md w-full shadow-2xl`}>
-                        <h3 className={`text-xl font-bold ${colors.textPrimary} mb-4`}>Save Dashboard</h3>
-                        <div className="mb-6">
-                            <label className={`block text-xs font-bold ${colors.textMuted} uppercase mb-2`}>Dashboard Name</label>
-                            <input
-                                type="text"
-                                value={dashboardName}
-                                onChange={(e) => setDashboardName(e.target.value)}
-                                className={`w-full ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none`}
-                                placeholder="Enter name..."
-                                autoFocus
-                            />
-                        </div>
-                        <div className="flex justify-end gap-3">
-                            <button
-                                onClick={() => setIsSaveModalOpen(false)}
-                                className={`px-4 py-2 rounded-lg ${colors.textTertiary} hover:${colors.textPrimary} ${colors.bgTertiary} transition`}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleSaveConfirm}
-                                className="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition shadow-lg shadow-indigo-900/20 flex items-center gap-2"
-                            >
-                                <Save className="w-4 h-4" /> Save Dashboard
-                            </button>
-                        </div>
-                    </div>
+    try {
+        if (!dataModel) {
+            return (
+                <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-white p-6">
+                    <LayoutDashboard className="w-16 h-16 text-slate-700 mb-4" />
+                    <h2 className="text-xl font-bold">Data Model Missing</h2>
+                    <p className="text-slate-400 mt-2">Could not find data to display. Please try uploading your file again.</p>
+                    <button onClick={onHome} className="mt-6 px-6 py-2 bg-indigo-600 rounded-lg">Return Home</button>
                 </div>
-            )}
+            );
+        }
 
-            {/* Edit Mode Modal - Overlays the entire screen with ChartBuilder */}
-            {isEditing && (
-                <div className="fixed inset-0 z-50 bg-slate-950 animate-fade-in">
-                    <ChartBuilder
-                        dataModel={dataModel}
-                        onGenerateReport={handleUpdateFromBuilder}
-                        onHome={() => setIsEditing(false)}
-                        initialBucket={currentCharts}
-                        mode="update"
-                    />
-                </div>
-            )}
-
-            {/* Expanded Chart Modal */}
-            {expandedChartConfig && (
-                <div className={`fixed inset-0 z-50 ${colors.overlayBg} glass-effect flex items-center justify-center p-4 lg:p-8 animate-fade-in no-print`}>
-                    <div className={`${colors.bgSecondary} w-full h-full max-w-7xl max-h-[90vh] rounded-2xl border ${colors.borderPrimary} shadow-2xl elevation-lg flex flex-col relative`}>
-                        <div className={`p-6 border-b ${colors.borderPrimary} flex justify-between items-start`}>
-                            <div>
-                                <h2 className={`text-2xl font-bold ${colors.textPrimary}`}>{expandedChartConfig.title}</h2>
-                                <p className={`${colors.textMuted} mt-1`}>{expandedChartConfig.description}</p>
+        return (
+            <>
+                {/* Save Dashboard Modal */}
+                {isSaveModalOpen && (
+                    <div className={`fixed inset-0 z-[60] ${colors.overlayBg} backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in`}>
+                        <div className={`${colors.modalBg} border ${colors.borderPrimary} rounded-2xl p-8 max-w-md w-full shadow-2xl`}>
+                            <h3 className={`text-xl font-bold ${colors.textPrimary} mb-4`}>Save Dashboard</h3>
+                            <div className="mb-6">
+                                <label className={`block text-xs font-bold ${colors.textMuted} uppercase mb-2`}>Dashboard Name</label>
+                                <input
+                                    type="text"
+                                    value={dashboardName}
+                                    onChange={(e) => setDashboardName(e.target.value)}
+                                    className={`w-full ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none`}
+                                    placeholder="Enter name..."
+                                    autoFocus
+                                />
                             </div>
-                            <button
-                                onClick={() => setExpandedChartId(null)}
-                                className={`p-2 ${colors.bgTertiary} hover:bg-red-500/20 hover:text-red-500 rounded-lg transition-colors ${colors.textMuted}`}
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-                        <div className="flex-1 p-6 min-h-0">
-                            <RenderChart
-                                config={expandedChartConfig}
-                                data={aggregateData(filteredData, expandedChartConfig)}
-                                isExpanded={true}
-                                theme={theme}
-                                onItemClick={(val) => toggleFilter(expandedChartConfig.xAxisKey, val)}
-                                activeFilterValue={activeFilters[expandedChartConfig.xAxisKey]}
-                            />
-                        </div>
-                        <div className={`p-4 ${colors.bgSecondary} border-t ${colors.borderPrimary} text-center`}>
-                            <p className={`text-xs ${colors.textMuted}`}>Use the slider below the chart to zoom into specific time periods or categories.</p>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div id="dashboard-container" className={`min-h-screen ${colors.bgPrimary} flex flex-col ${colors.textSecondary} print:${theme === 'dark' ? 'bg-slate-950' : 'bg-white'}`}>
-                {/* Header */}
-                <header className={`${theme === 'dark' ? 'bg-slate-900/80' : 'bg-white/80'} glass-effect border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-3 sm:py-4 sticky top-0 z-30 shadow-lg print:hidden`}>
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center max-w-7xl mx-auto w-full gap-3 md:gap-0">
-                        <div className="flex items-center gap-3 w-full md:w-auto">
-                            <button onClick={onHome} className={`p-1.5 sm:p-2 -ml-1.5 sm:-ml-2 rounded-full hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition no-export shrink-0 active-press`} title="Return Home">
-                                <Home className="w-4 h-4 sm:w-5 sm:h-5" />
-                            </button>
-                            <div className="min-w-0 flex-1">
-                                <h1 className={`text-base sm:text-xl font-bold ${colors.textPrimary} flex items-center gap-2 flex-wrap`}>
-                                    <span className="truncate">{dataModel.name}</span>
-                                    <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/20 uppercase tracking-wider shrink-0">Live</span>
-                                    {(dataModel.sourceType === 'google_sheet' || dataModel.sourceType === 'sharepoint') && (
-                                        <button
-                                            onClick={handleRefresh}
-                                            disabled={isRefreshing}
-                                            className={`p-1.5 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:text-indigo-400 transition flex items-center gap-1.5 active-press`}
-                                            title="Refresh Data"
-                                        >
-                                            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
-                                            <span className="text-[10px] font-bold uppercase hidden sm:inline">Refresh</span>
-                                        </button>
-                                    )}
-                                </h1>
-                                <p className={`text-[10px] sm:text-xs ${colors.textMuted} truncate`}>InsightAI Generated Report</p>
-                            </div>
-                            {/* Mobile Theme Toggle (moved here for better access) */}
-                            <div className="md:hidden">
-                                <ThemeToggle />
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 sm:gap-3 no-export w-full md:w-auto justify-between md:justify-end overflow-x-auto pb-1 md:pb-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex justify-end gap-3">
                                 <button
-                                    onClick={() => setIsEditing(true)}
-                                    className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} whitespace-nowrap active-press`}
-                                    title="Edit Charts"
+                                    onClick={() => setIsSaveModalOpen(false)}
+                                    className={`px-4 py-2 rounded-lg ${colors.textTertiary} hover:${colors.textPrimary} ${colors.bgTertiary} transition`}
                                 >
-                                    <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                    <span className="hidden sm:inline">Edit / Add Charts</span>
+                                    Cancel
                                 </button>
                                 <button
-                                    onClick={openSaveModal}
-                                    className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} active-press`}
-                                    title="Save Dashboard"
+                                    onClick={handleSaveConfirm}
+                                    className="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition shadow-lg shadow-indigo-900/20 flex items-center gap-2"
                                 >
-                                    <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                    <span className="hidden sm:inline">Save</span>
+                                    <Save className="w-4 h-4" /> Save Dashboard
                                 </button>
-                                {/* <button className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} active-press`}>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Edit Mode Modal - Overlays the entire screen with ChartBuilder */}
+                {isEditing && (
+                    <div className="fixed inset-0 z-50 bg-slate-950 animate-fade-in">
+                        <ChartBuilder
+                            dataModel={dataModel}
+                            onGenerateReport={handleUpdateFromBuilder}
+                            onHome={() => setIsEditing(false)}
+                            initialBucket={currentCharts}
+                            mode="update"
+                        />
+                    </div>
+                )}
+
+                {/* Expanded Chart Modal */}
+                {expandedChartConfig && (
+                    <div className={`fixed inset-0 z-50 ${colors.overlayBg} glass-effect flex items-center justify-center p-4 lg:p-8 animate-fade-in no-print`}>
+                        <div className={`${colors.bgSecondary} w-full h-full max-w-7xl max-h-[90vh] rounded-2xl border ${colors.borderPrimary} shadow-2xl elevation-lg flex flex-col relative`}>
+                            <div className={`p-6 border-b ${colors.borderPrimary} flex justify-between items-start`}>
+                                <div>
+                                    <h2 className={`text-2xl font-bold ${colors.textPrimary}`}>{expandedChartConfig.title}</h2>
+                                    <p className={`${colors.textMuted} mt-1`}>{expandedChartConfig.description}</p>
+                                </div>
+                                <button
+                                    onClick={() => setExpandedChartId(null)}
+                                    className={`p-2 ${colors.bgTertiary} hover:bg-red-500/20 hover:text-red-500 rounded-lg transition-colors ${colors.textMuted}`}
+                                >
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
+                            <div className="flex-1 p-6 min-h-0">
+                                <RenderChart
+                                    config={expandedChartConfig}
+                                    data={aggregateData(filteredData, expandedChartConfig)}
+                                    isExpanded={true}
+                                    theme={theme}
+                                    onItemClick={(val) => toggleFilter(expandedChartConfig.xAxisKey, val)}
+                                    activeFilterValue={activeFilters[expandedChartConfig.xAxisKey]}
+                                />
+                            </div>
+                            <div className={`p-4 ${colors.bgSecondary} border-t ${colors.borderPrimary} text-center`}>
+                                <p className={`text-xs ${colors.textMuted}`}>Use the slider below the chart to zoom into specific time periods or categories.</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <div id="dashboard-container" className={`min-h-screen ${colors.bgPrimary} flex flex-col ${colors.textSecondary} print:${theme === 'dark' ? 'bg-slate-950' : 'bg-white'}`}>
+                    {/* Header */}
+                    <header className={`${theme === 'dark' ? 'bg-slate-900/80' : 'bg-white/80'} glass-effect border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-3 sm:py-4 sticky top-0 z-30 shadow-lg print:hidden`}>
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center max-w-7xl mx-auto w-full gap-3 md:gap-0">
+                            <div className="flex items-center gap-3 w-full md:w-auto">
+                                <button onClick={onHome} className={`p-1.5 sm:p-2 -ml-1.5 sm:-ml-2 rounded-full hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition no-export shrink-0 active-press`} title="Return Home">
+                                    <Home className="w-4 h-4 sm:w-5 sm:h-5" />
+                                </button>
+                                <div className="min-w-0 flex-1">
+                                    <h1 className={`text-base sm:text-xl font-bold ${colors.textPrimary} flex items-center gap-2 flex-wrap`}>
+                                        <span className="truncate">{dataModel.name}</span>
+                                        <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/20 uppercase tracking-wider shrink-0">Live</span>
+                                        {(dataModel.sourceType === 'google_sheet' || dataModel.sourceType === 'sharepoint') && (
+                                            <button
+                                                onClick={handleRefresh}
+                                                disabled={isRefreshing}
+                                                className={`p-1.5 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:text-indigo-400 transition flex items-center gap-1.5 active-press`}
+                                                title="Refresh Data"
+                                            >
+                                                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
+                                                <span className="text-[10px] font-bold uppercase hidden sm:inline">Refresh</span>
+                                            </button>
+                                        )}
+                                    </h1>
+                                    <p className={`text-[10px] sm:text-xs ${colors.textMuted} truncate`}>InsightAI Generated Report</p>
+                                </div>
+                                {/* Mobile Theme Toggle (moved here for better access) */}
+                                <div className="md:hidden">
+                                    <ThemeToggle />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 sm:gap-3 no-export w-full md:w-auto justify-between md:justify-end overflow-x-auto pb-1 md:pb-0">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setIsEditing(true)}
+                                        className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} whitespace-nowrap active-press`}
+                                        title="Edit Charts"
+                                    >
+                                        <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        <span className="hidden sm:inline">Edit / Add Charts</span>
+                                    </button>
+                                    <button
+                                        onClick={openSaveModal}
+                                        className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} active-press`}
+                                        title="Save Dashboard"
+                                    >
+                                        <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        <span className="hidden sm:inline">Save</span>
+                                    </button>
+                                    {/* <button className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} active-press`}>
                                     <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     <span className="hidden sm:inline">Share</span>
                                 </button> */}
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <div className="hidden md:block">
+                                        <ThemeToggle />
+                                    </div>
+                                    <button
+                                        onClick={handleExportPDF}
+                                        disabled={isExporting}
+                                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 disabled:cursor-wait text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition font-medium text-xs sm:text-sm shadow-lg shadow-indigo-900/20 whitespace-nowrap active-press"
+                                    >
+                                        {isExporting ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                                        {isExporting ? '...' : <span className="hidden xs:inline">Export PDF</span>}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* --- NEW: Interactive Filter Bar --- */}
+                    <div className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2 sticky top-[57px] sm:top-[65px] md:top-[73px] z-20 shadow-sm print:hidden`}>
+                        <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 sm:gap-4">
+                            <div className="flex items-center gap-2 text-indigo-400">
+                                <Filter className="w-4 h-4" />
+                                <span className="text-xs font-bold uppercase tracking-wider">Active Filters</span>
                             </div>
 
-                            <div className="flex items-center gap-2">
-                                <div className="hidden md:block">
-                                    <ThemeToggle />
+                            {Object.keys(activeFilters).length === 0 ? (
+                                <div className={`text-[10px] sm:text-xs ${colors.textMuted} italic`}>
+                                    Click on any chart element to filter the dashboard...
                                 </div>
+                            ) : (
+                                <div className="flex flex-wrap gap-2 items-center">
+                                    {Object.entries(activeFilters).map(([col, val]) => (
+                                        <div
+                                            key={col}
+                                            className="flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-2 py-1 rounded-md text-[10px] sm:text-xs font-medium"
+                                        >
+                                            <span className="opacity-60">{col}:</span>
+                                            <span className="font-bold">{String(val)}</span>
+                                            <button
+                                                onClick={() => toggleFilter(col, val)}
+                                                className="ml-1 hover:text-white transition-colors"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    <button
+                                        onClick={clearFilters}
+                                        className={`flex items-center gap-1.5 px-2 py-1 text-[10px] sm:text-xs font-bold ${colors.textMuted} hover:text-red-400 transition-colors uppercase`}
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                        Clear All
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Improved Manual Filter Dropdown */}
+                            <div className="relative ml-2 border-l border-slate-700/50 pl-4">
                                 <button
-                                    onClick={handleExportPDF}
-                                    disabled={isExporting}
-                                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 disabled:cursor-wait text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition font-medium text-xs sm:text-sm shadow-lg shadow-indigo-900/20 whitespace-nowrap active-press"
+                                    onClick={() => {
+                                        setOpenFilterMenu(!openFilterMenu);
+                                        setSelectedFilterCol(null);
+                                        setColumnSearch('');
+                                        setFilterSearch('');
+                                    }}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${openFilterMenu ? 'bg-indigo-500 border-indigo-400 text-white' : `${colors.bgPrimary} ${colors.borderSecondary} ${colors.textSecondary} hover:${colors.borderPrimary} hover:${colors.textPrimary}`} transition-all text-xs font-bold shadow-lg active-press`}
                                 >
-                                    {isExporting ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-                                    {isExporting ? '...' : <span className="hidden xs:inline">Export PDF</span>}
+                                    <Plus className="w-4 h-4" />
+                                    <span>Add Filter</span>
+                                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${openFilterMenu ? 'rotate-180' : ''}`} />
                                 </button>
+
+                                {openFilterMenu && (
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setOpenFilterMenu(false)}></div>
+                                        <div className={`absolute top-full left-0 mt-3 w-72 max-h-[450px] overflow-hidden ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 flex flex-col`}>
+
+                                            {!selectedFilterCol ? (
+                                                // STEP 1: Select Column
+                                                <>
+                                                    <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className={`text-[10px] font-bold uppercase tracking-widest ${colors.textMuted}`}>Select Column</span>
+                                                            <X className="w-3.5 h-3.5 cursor-pointer opacity-50 hover:opacity-100" onClick={() => setOpenFilterMenu(false)} />
+                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search columns..."
+                                                            autoFocus
+                                                            className={`w-full px-3 py-2 text-xs rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                                            value={columnSearch}
+                                                            onChange={(e) => setColumnSearch(e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80">
+                                                        {filterableColumns
+                                                            .filter(c => c.toLowerCase().includes(columnSearch.toLowerCase()))
+                                                            .map(col => (
+                                                                <button
+                                                                    key={col}
+                                                                    onClick={() => setSelectedFilterCol(col)}
+                                                                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${activeFilters[col] ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                                >
+                                                                    <div className="flex flex-col items-start truncate mr-2">
+                                                                        {col.includes('.') && <span className="text-[9px] opacity-50 block">{col.split('.')[0]}</span>}
+                                                                        <span className="truncate">{col.includes('.') ? col.split('.').pop() : col}</span>
+                                                                    </div>
+                                                                    <ArrowRight className="w-3.5 h-3.5 shrink-0 opacity-30" />
+                                                                </button>
+                                                            ))}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                // STEP 2: Select Value
+                                                <>
+                                                    <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <button
+                                                                onClick={() => setSelectedFilterCol(null)}
+                                                                className="p-1 rounded-md hover:bg-slate-700/50 transition"
+                                                            >
+                                                                <Home className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 truncate">
+                                                                {selectedFilterCol.includes('.') ? selectedFilterCol.split('.').pop() : selectedFilterCol}
+                                                            </span>
+                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Search values..."
+                                                            autoFocus
+                                                            className={`w-full px-3 py-2 text-xs rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                                            value={filterSearch}
+                                                            onChange={(e) => setFilterSearch(e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80">
+                                                        {getUniqueValues(selectedFilterCol)
+                                                            .filter(v => String(v).toLowerCase().includes(filterSearch.toLowerCase()))
+                                                            .map(val => {
+                                                                const valueStr = String(val);
+                                                                const actualVal = valueStr === '(Empty)' ? '' : valueStr;
+                                                                const isSelected = activeFilters[selectedFilterCol] === actualVal;
+                                                                return (
+                                                                    <button
+                                                                        key={valueStr}
+                                                                        onClick={() => {
+                                                                            if (selectedFilterCol) {
+                                                                                toggleFilter(selectedFilterCol, actualVal);
+                                                                            }
+                                                                            setOpenFilterMenu(false);
+                                                                        }}
+                                                                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${isSelected ? 'bg-indigo-500/20 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                                    >
+                                                                        <span className="truncate mr-4">{valueStr}</span>
+                                                                        {isSelected && <Check className="w-4 h-4 shrink-0 text-indigo-400" />}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Summary of visible vs total */}
+                            <div className="ml-auto flex items-center gap-2 text-[10px] sm:text-xs font-medium">
+                                <span className={colors.textMuted}>Showing</span>
+                                <span className="text-indigo-400 font-bold">{filteredData.length.toLocaleString()}</span>
+                                <span className={colors.textMuted}>/</span>
+                                <span className={colors.textPrimary}>{dataModel.data.length.toLocaleString()}</span>
+                                <span className={colors.textMuted}>rows</span>
                             </div>
                         </div>
                     </div>
-                </header>
 
-                {/* --- NEW: Interactive Filter Bar --- */}
-                <div className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2 sticky top-[57px] sm:top-[65px] md:top-[73px] z-20 shadow-sm print:hidden`}>
-                    <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 sm:gap-4">
-                        <div className="flex items-center gap-2 text-indigo-400">
-                            <Filter className="w-4 h-4" />
-                            <span className="text-xs font-bold uppercase tracking-wider">Active Filters</span>
-                        </div>
+                    {/* Print Header */}
+                    <div className={`hidden print:block px-8 py-6 border-b ${colors.borderPrimary} mb-6`}>
+                        <h1 className={`text-3xl font-bold ${colors.textPrimary}`}>{dataModel.name} Dashboard</h1>
+                        <p className={`${colors.textMuted}`}>Generated via InsightAI</p>
+                    </div>
 
-                        {Object.keys(activeFilters).length === 0 ? (
-                            <div className={`text-[10px] sm:text-xs ${colors.textMuted} italic`}>
-                                Click on any chart element to filter the dashboard...
-                            </div>
-                        ) : (
-                            <div className="flex flex-wrap gap-2 items-center">
-                                {Object.entries(activeFilters).map(([col, val]) => (
-                                    <div
-                                        key={col}
-                                        className="flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-2 py-1 rounded-md text-[10px] sm:text-xs font-medium"
-                                    >
-                                        <span className="opacity-60">{col}:</span>
-                                        <span className="font-bold">{String(val)}</span>
-                                        <button
-                                            onClick={() => toggleFilter(col, val)}
-                                            className="ml-1 hover:text-white transition-colors"
-                                        >
-                                            <X className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                ))}
-                                <button
-                                    onClick={clearFilters}
-                                    className={`flex items-center gap-1.5 px-2 py-1 text-[10px] sm:text-xs font-bold ${colors.textMuted} hover:text-red-400 transition-colors uppercase`}
-                                >
-                                    <Trash2 className="w-3 h-3" />
-                                    Clear All
-                                </button>
+                    <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full print:p-4">
+
+                        {/* KPIs Row */}
+                        {kpis.length > 0 && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 print:grid-cols-4">
+                                {kpis.map((kpi, i) => {
+                                    const data = aggregateData(filteredData, kpi);
+                                    const value = data[0]?.value || 0;
+                                    const isCurrency = isCurrencyColumn(kpi.dataKey);
+                                    const displayValue = isCurrency ? formatCurrency(value) : (typeof value === 'number' ? value.toLocaleString('en-IN') : value);
+                                    return (
+                                        <div key={kpi.id} className={`${colors.bgSecondary} rounded-xl border ${colors.borderPrimary} p-6 shadow-xl relative overflow-hidden group print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} hover-lift elevation-lg`}>
+                                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition transform group-hover:scale-110 print:hidden">
+                                                <TrendingUp className="w-16 h-16 text-indigo-500" />
+                                            </div>
+                                            <h3 className={`text-xs font-bold ${colors.textMuted} uppercase tracking-wider mb-1`}>{kpi.title}</h3>
+                                            <div className={`text-3xl font-bold ${colors.textPrimary} mt-2`}>
+                                                {displayValue}
+                                            </div>
+                                            <div className={`mt-4 h-1 w-full ${theme === 'dark' ? 'bg-slate-800 print:bg-slate-700' : 'bg-slate-200 print:bg-slate-300'} rounded-full overflow-hidden`}>
+                                                <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 w-2/3 rounded-full print:bg-indigo-600"></div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
 
-                        {/* Improved Manual Filter Dropdown */}
-                        <div className="relative ml-2 border-l border-slate-700/50 pl-4">
-                            <button
-                                onClick={() => {
-                                    setOpenFilterMenu(!openFilterMenu);
-                                    setSelectedFilterCol(null);
-                                    setColumnSearch('');
-                                    setFilterSearch('');
-                                }}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${openFilterMenu ? 'bg-indigo-500 border-indigo-400 text-white' : `${colors.bgPrimary} ${colors.borderSecondary} ${colors.textSecondary} hover:${colors.borderPrimary} hover:${colors.textPrimary}`} transition-all text-xs font-bold shadow-lg active-press`}
-                            >
-                                <Plus className="w-4 h-4" />
-                                <span>Add Filter</span>
-                                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${openFilterMenu ? 'rotate-180' : ''}`} />
-                            </button>
-
-                            {openFilterMenu && (
-                                <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setOpenFilterMenu(false)}></div>
-                                    <div className={`absolute top-full left-0 mt-3 w-72 max-h-[450px] overflow-hidden ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 flex flex-col`}>
-
-                                        {!selectedFilterCol ? (
-                                            // STEP 1: Select Column
-                                            <>
-                                                <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <span className={`text-[10px] font-bold uppercase tracking-widest ${colors.textMuted}`}>Select Column</span>
-                                                        <X className="w-3.5 h-3.5 cursor-pointer opacity-50 hover:opacity-100" onClick={() => setOpenFilterMenu(false)} />
-                                                    </div>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Search columns..."
-                                                        autoFocus
-                                                        className={`w-full px-3 py-2 text-xs rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
-                                                        value={columnSearch}
-                                                        onChange={(e) => setColumnSearch(e.target.value)}
-                                                    />
-                                                </div>
-                                                <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80">
-                                                    {filterableColumns
-                                                        .filter(c => c.toLowerCase().includes(columnSearch.toLowerCase()))
-                                                        .map(col => (
-                                                            <button
-                                                                key={col}
-                                                                onClick={() => setSelectedFilterCol(col)}
-                                                                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${activeFilters[col] ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
-                                                            >
-                                                                <div className="flex flex-col items-start truncate mr-2">
-                                                                    {col.includes('.') && <span className="text-[9px] opacity-50 block">{col.split('.')[0]}</span>}
-                                                                    <span className="truncate">{col.includes('.') ? col.split('.').pop() : col}</span>
-                                                                </div>
-                                                                <ArrowRight className="w-3.5 h-3.5 shrink-0 opacity-30" />
-                                                            </button>
-                                                        ))}
-                                                </div>
-                                            </>
-                                        ) : (
-                                            // STEP 2: Select Value
-                                            <>
-                                                <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                        <button
-                                                            onClick={() => setSelectedFilterCol(null)}
-                                                            className="p-1 rounded-md hover:bg-slate-700/50 transition"
-                                                        >
-                                                            <Home className="w-3.5 h-3.5" />
-                                                        </button>
-                                                        <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 truncate">
-                                                            {selectedFilterCol.includes('.') ? selectedFilterCol.split('.').pop() : selectedFilterCol}
-                                                        </span>
-                                                    </div>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Search values..."
-                                                        autoFocus
-                                                        className={`w-full px-3 py-2 text-xs rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
-                                                        value={filterSearch}
-                                                        onChange={(e) => setFilterSearch(e.target.value)}
-                                                    />
-                                                </div>
-                                                <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80">
-                                                    {getUniqueValues(selectedFilterCol)
-                                                        .filter(v => String(v).toLowerCase().includes(filterSearch.toLowerCase()))
-                                                        .map(val => {
-                                                            const valueStr = String(val);
-                                                            const actualVal = valueStr === '(Empty)' ? '' : valueStr;
-                                                            const isSelected = activeFilters[selectedFilterCol] === actualVal;
-                                                            return (
-                                                                <button
-                                                                    key={valueStr}
-                                                                    onClick={() => {
-                                                                        toggleFilter(selectedFilterCol!, actualVal);
-                                                                        setOpenFilterMenu(false);
-                                                                    }}
-                                                                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${isSelected ? 'bg-indigo-500/20 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
-                                                                >
-                                                                    <span className="truncate mr-4">{valueStr}</span>
-                                                                    {isSelected && <Check className="w-4 h-4 shrink-0 text-indigo-400" />}
-                                                                </button>
-                                                            );
-                                                        })}
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-                                </>
-                            )}
-                        </div>
-
-                        {/* Summary of visible vs total */}
-                        <div className="ml-auto flex items-center gap-2 text-[10px] sm:text-xs font-medium">
-                            <span className={colors.textMuted}>Showing</span>
-                            <span className="text-indigo-400 font-bold">{filteredData.length.toLocaleString()}</span>
-                            <span className={colors.textMuted}>/</span>
-                            <span className={colors.textPrimary}>{dataModel.data.length.toLocaleString()}</span>
-                            <span className={colors.textMuted}>rows</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Print Header */}
-                <div className={`hidden print:block px-8 py-6 border-b ${colors.borderPrimary} mb-6`}>
-                    <h1 className={`text-3xl font-bold ${colors.textPrimary}`}>{dataModel.name} Dashboard</h1>
-                    <p className={`${colors.textMuted}`}>Generated via InsightAI</p>
-                </div>
-
-                <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full print:p-4">
-
-                    {/* KPIs Row */}
-                    {kpis.length > 0 && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 print:grid-cols-4">
-                            {kpis.map((kpi, i) => {
-                                const data = aggregateData(filteredData, kpi);
-                                const value = data[0]?.value || 0;
-                                const isCurrency = isCurrencyColumn(kpi.dataKey);
-                                const displayValue = isCurrency ? formatCurrency(value) : (typeof value === 'number' ? value.toLocaleString('en-IN') : value);
+                        {/* Charts Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 print:grid-cols-2 print:gap-4">
+                            {charts.map(chart => {
+                                const aggregatedData = aggregateData(filteredData, chart);
                                 return (
-                                    <div key={kpi.id} className={`${colors.bgSecondary} rounded-xl border ${colors.borderPrimary} p-6 shadow-xl relative overflow-hidden group print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} hover-lift elevation-lg`}>
-                                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition transform group-hover:scale-110 print:hidden">
-                                            <TrendingUp className="w-16 h-16 text-indigo-500" />
+                                    <div key={chart.id} className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] print:h-[380px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid print:p-4 relative group elevation-md`}>
+                                        <div className="mb-6 pr-8">
+                                            <h3 className={`font-bold text-lg ${colors.textSecondary} truncate`}>{chart.title}</h3>
+                                            <p className={`text-xs ${colors.textMuted} mt-1 truncate`}>{chart.description}</p>
                                         </div>
-                                        <h3 className={`text-xs font-bold ${colors.textMuted} uppercase tracking-wider mb-1`}>{kpi.title}</h3>
-                                        <div className={`text-3xl font-bold ${colors.textPrimary} mt-2`}>
-                                            {displayValue}
+
+                                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity chart-controls no-print">
+                                            <button
+                                                onClick={() => setExpandedChartId(chart.id)}
+                                                className={`p-2 ${colors.bgTertiary} hover:bg-indigo-600 ${colors.textMuted} hover:text-white rounded-lg transition-all shadow-lg`}
+                                                title="Maximize Chart"
+                                            >
+                                                <Maximize2 className="w-4 h-4" />
+                                            </button>
                                         </div>
-                                        <div className={`mt-4 h-1 w-full ${theme === 'dark' ? 'bg-slate-800 print:bg-slate-700' : 'bg-slate-200 print:bg-slate-300'} rounded-full overflow-hidden`}>
-                                            <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 w-2/3 rounded-full print:bg-indigo-600"></div>
+
+                                        <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden">
+                                            <RenderChart
+                                                config={chart}
+                                                data={aggregatedData}
+                                                theme={theme}
+                                                onItemClick={(val) => toggleFilter(chart.xAxisKey, val)}
+                                                activeFilterValue={activeFilters[chart.xAxisKey]}
+                                            />
                                         </div>
                                     </div>
                                 );
                             })}
                         </div>
-                    )}
 
-                    {/* Charts Grid */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 print:grid-cols-2 print:gap-4">
-                        {charts.map(chart => {
-                            const aggregatedData = aggregateData(filteredData, chart);
-                            return (
-                                <div key={chart.id} className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] print:h-[380px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid print:p-4 relative group elevation-md`}>
-                                    <div className="mb-6 pr-8">
-                                        <h3 className={`font-bold text-lg ${colors.textSecondary} truncate`}>{chart.title}</h3>
-                                        <p className={`text-xs ${colors.textMuted} mt-1 truncate`}>{chart.description}</p>
-                                    </div>
-
-                                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity chart-controls no-print">
-                                        <button
-                                            onClick={() => setExpandedChartId(chart.id)}
-                                            className={`p-2 ${colors.bgTertiary} hover:bg-indigo-600 ${colors.textMuted} hover:text-white rounded-lg transition-all shadow-lg`}
-                                            title="Maximize Chart"
-                                        >
-                                            <Maximize2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-
-                                    <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden">
-                                        <RenderChart
-                                            config={chart}
-                                            data={aggregatedData}
-                                            theme={theme}
-                                            onItemClick={(val) => toggleFilter(chart.xAxisKey, val)}
-                                            activeFilterValue={activeFilters[chart.xAxisKey]}
-                                        />
-                                    </div>
-                                </div>
-                            );
-                        })}
+                        {charts.length === 0 && kpis.length === 0 && (
+                            <div className={`text-center py-20 border-2 border-dashed ${colors.borderPrimary} rounded-3xl ${theme === 'dark' ? 'bg-slate-900/50' : 'bg-slate-100/50'}`}>
+                                <LayoutDashboard className={`w-12 h-12 ${theme === 'dark' ? 'text-slate-600' : 'text-slate-300'} mx-auto mb-4`} />
+                                <h3 className={`text-xl font-bold ${colors.textPrimary}`}>Empty Dashboard</h3>
+                                <p className={`${colors.textMuted} mt-2`}>Go back and select some charts to populate this view.</p>
+                                <button onClick={() => setIsEditing(true)} className="mt-6 text-indigo-400 hover:underline">
+                                    Add Charts Now
+                                </button>
+                            </div>
+                        )}
+                    </main>
+                </div>
+                {isRefreshing && <DashboardLoader message="Refreshing live data..." />}
+            </>
+        );
+    } catch (error: any) {
+        console.error("Dashboard Render Error:", error);
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-white p-6">
+                <div className="bg-red-500/20 border border-red-500 p-8 rounded-2xl max-w-lg w-full text-center">
+                    <LayoutDashboard className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                    <h2 className="text-xl font-bold text-red-400">Dashboard Render Error</h2>
+                    <p className="text-slate-300 mt-4 text-left p-4 bg-black/40 rounded-lg font-mono text-xs overflow-auto max-h-40">
+                        {error?.message || String(error)}
+                    </p>
+                    <div className="flex gap-4 mt-8">
+                        <button onClick={onHome} className="flex-1 px-6 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold transition">Return Home</button>
+                        <button onClick={() => window.location.reload()} className="flex-1 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold transition">Reload App</button>
                     </div>
-
-                    {charts.length === 0 && kpis.length === 0 && (
-                        <div className={`text-center py-20 border-2 border-dashed ${colors.borderPrimary} rounded-3xl ${theme === 'dark' ? 'bg-slate-900/50' : 'bg-slate-100/50'}`}>
-                            <LayoutDashboard className={`w-12 h-12 ${theme === 'dark' ? 'text-slate-600' : 'text-slate-300'} mx-auto mb-4`} />
-                            <h3 className={`text-xl font-bold ${colors.textPrimary}`}>Empty Dashboard</h3>
-                            <p className={`${colors.textMuted} mt-2`}>Go back and select some charts to populate this view.</p>
-                            <button onClick={() => setIsEditing(true)} className="mt-6 text-indigo-400 hover:underline">
-                                Add Charts Now
-                            </button>
-                        </div>
-                    )}
-                </main>
+                </div>
             </div>
-            {isRefreshing && <DashboardLoader message="Refreshing live data..." />}
-        </>
-    );
+        );
+    }
 };
