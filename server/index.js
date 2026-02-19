@@ -13,6 +13,7 @@ const sharepointService = require('./sharepointService');
 const sharepointOAuthService = require('./sharepointOAuthService');
 const dbConnectorService = require('./dbConnectorService');
 const sqlParserService = require('./sqlParserService');
+const pdfService = require('./pdfService');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -176,6 +177,26 @@ app.get('/api/admin/dashboards', async (req, res) => {
     } catch (error) {
         console.error('Get all dashboards error:', error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// PDF Export Endpoint
+app.post('/api/export-pdf', async (req, res) => {
+    try {
+        const { dashboardName, charts, theme } = req.body;
+
+        if (!dashboardName || !charts) {
+            return res.status(400).json({ error: 'Missing required report data' });
+        }
+
+        console.log(`Generating PDF for dashboard: ${dashboardName}`);
+        const pdfBuffer = await pdfService.generateDashboardPDF(dashboardName, charts, theme || 'dark');
+
+        res.contentType('application/pdf');
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('PDF Export error:', error);
+        res.status(500).json({ error: 'Failed to generate PDF: ' + error.message });
     }
 });
 

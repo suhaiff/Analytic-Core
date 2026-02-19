@@ -10,9 +10,8 @@ import {
     X, Home, Save, Edit, RefreshCw, Plus, ArrowRight, Filter, Trash2,
     ChevronDown, Check, MousePointer2
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 import { ChartBuilder } from './ChartBuilder';
+import { API_BASE } from '../config/api';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses, type Theme } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
@@ -456,70 +455,46 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
 
     const handleExportPDF = async () => {
         setIsExporting(true);
-        // Wait longer to ensure all charts are fully rendered
-        await new Promise(resolve => setTimeout(resolve, 500));
-
         try {
-            const element = document.getElementById('dashboard-container');
-            if (!element) throw new Error("Dashboard container not found");
+            // Prepare the data for all charts
+            const reportData = currentCharts.map(config => {
+                const chartData = aggregateData(filteredData, config);
+                return {
+                    config,
+                    data: chartData
+                };
+            });
 
-            // Capture with high quality settings
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                backgroundColor: theme === 'dark' ? '#0f172a' : '#f8fafc',
-                useCORS: true,
-                allowTaint: true,
-                logging: false,
-                width: element.scrollWidth,
-                height: element.scrollHeight,
-                windowWidth: element.scrollWidth,
-                windowHeight: element.scrollHeight,
-                x: 0,
-                y: 0,
-                scrollX: 0,
-                scrollY: -window.scrollY,
-                onclone: (clonedDoc) => {
-                    const el = clonedDoc.getElementById('dashboard-container');
-                    if (el) {
-                        el.style.transform = 'none';
-                        el.style.fontFamily = 'Inter, system-ui, sans-serif';
-                        // Force specific styles that help html2canvas
-                        el.querySelectorAll('*').forEach((node: any) => {
-                            if (node.style) {
-                                node.style.fontFamily = 'Inter, system-ui, sans-serif';
-                            }
-                        });
-                    }
+            const response = await fetch(`${API_BASE}/export-pdf`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
                 },
-                ignoreElements: (node) => {
-                    return node.classList && (
-                        node.classList.contains('no-export') ||
-                        node.classList.contains('chart-controls') ||
-                        node.classList.contains('no-print')
-                    );
-                }
+                body: JSON.stringify({
+                    dashboardName: dataModel.name,
+                    charts: reportData,
+                    theme: theme
+                }),
             });
 
-            const imgData = canvas.toDataURL('image/png', 1.0);
+            if (!response.ok) {
+                throw new Error('Failed to generate PDF on server');
+            }
 
-            // Use custom page size that matches content
-            const imgWidth = canvas.width;
-            const imgHeight = canvas.height;
-
-            const pdf = new jsPDF({
-                orientation: imgWidth > imgHeight ? 'landscape' : 'portrait',
-                unit: 'px',
-                format: [imgWidth / 2, imgHeight / 2],
-            });
-
-            // Add image at full size
-            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth / 2, imgHeight / 2, undefined, 'FAST');
-
-            pdf.save(`${dataModel.name.replace(/\s+/g, '_')}_Dashboard.pdf`);
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${dataModel.name.replace(/\s+/g, '_')}_Dashboard.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
 
         } catch (error) {
             console.error("Export PDF Error:", error);
-            alert("Failed to generate PDF. Please try using the browser Print function.");
+            alert("Failed to generate PDF. Falling back to browser print.");
+            window.print();
         } finally {
             setIsExporting(false);
         }
