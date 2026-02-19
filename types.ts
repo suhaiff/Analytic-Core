@@ -64,6 +64,7 @@ export interface ChartConfig {
   dataKey: string; // Metric
   aggregation: AggregationType;
   color?: string;
+  multicolor?: boolean;
 }
 
 export interface SavedDashboard {

@@ -168,7 +168,9 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                             {data.map((entry, index) => (
                                 <Cell
                                     key={`cell-${index}`}
-                                    fill={activeFilterValue && entry[config.xAxisKey] === activeFilterValue ? '#f59e0b' : COLORS[0]}
+                                    fill={activeFilterValue && entry[config.xAxisKey] === activeFilterValue
+                                        ? '#f59e0b'
+                                        : (config.multicolor ? COLORS[index % COLORS.length] : (config.color || COLORS[0]))}
                                     fillOpacity={activeFilterValue && entry[config.xAxisKey] !== activeFilterValue ? 0.4 : 1}
                                     style={{ transition: 'all 0.3s ease' }}
                                 />
@@ -206,16 +208,16 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                         <Line
                             type="monotone"
                             dataKey={config.dataKey}
-                            stroke={COLORS[1]}
+                            stroke={config.color || COLORS[1]}
                             strokeWidth={3}
                             dot={data.length > 50 ? false : {
                                 fill: theme === 'dark' ? '#0f172a' : '#ffffff',
-                                stroke: COLORS[1],
+                                stroke: config.color || COLORS[1],
                                 strokeWidth: 2,
                                 r: 4,
                                 cursor: 'pointer'
                             }}
-                            activeDot={{ r: 6, fill: COLORS[1], cursor: 'pointer' }}
+                            activeDot={{ r: 6, fill: config.color || COLORS[1], cursor: 'pointer' }}
                             onClick={(d: any) => {
                                 // For Line charts, we usually want the payload's x-axis value
                                 const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);

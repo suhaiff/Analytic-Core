@@ -1,11 +1,174 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DataModel, ChartConfig } from '../types';
 import { analyzeDataAndSuggestKPIs, generateChartFromPrompt } from '../services/geminiService';
-import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, Filter, Check, ChevronDown } from 'lucide-react';
+import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, Filter, Check, ChevronDown, Palette } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
 import { smartFormat } from '../utils/formatters';
+
+// 10 theme-safe colors that look good on both light and dark backgrounds
+const CHART_COLOR_OPTIONS: { label: string; value: string }[] = [
+    { label: 'Indigo', value: '#6366f1' },
+    { label: 'Emerald', value: '#10b981' },
+    { label: 'Rose', value: '#f43f5e' },
+    { label: 'Amber', value: '#f59e0b' },
+    { label: 'Violet', value: '#8b5cf6' },
+    { label: 'Cyan', value: '#06b6d4' },
+    { label: 'Pink', value: '#ec4899' },
+    { label: 'Orange', value: '#f97316' },
+    { label: 'Teal', value: '#14b8a6' },
+    { label: 'Sky', value: '#38bdf8' },
+];
+
+// ---- BucketChartCard ----
+interface BucketChartCardProps {
+    chart: ChartConfig;
+    index: number;
+    theme: 'dark' | 'light';
+    colors: ReturnType<typeof getThemeClasses>;
+    getIcon: (type: string) => React.ReactElement;
+    onRemove: (id: string) => void;
+    onColorChange: (id: string, color: string) => void;
+    onMulticolorChange: (id: string, multicolor: boolean) => void;
+}
+
+const BucketChartCard: React.FC<BucketChartCardProps> = ({
+    chart, index, theme, colors, getIcon, onRemove, onColorChange, onMulticolorChange
+}) => {
+    const [showColorMenu, setShowColorMenu] = useState(false);
+    const colorMenuRef = useRef<HTMLDivElement>(null);
+
+    // Close color menu on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (colorMenuRef.current && !colorMenuRef.current.contains(e.target as Node)) {
+                setShowColorMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const isBAR = chart.type === 'BAR';
+    const isLINE = chart.type === 'LINE';
+    const showColorOption = isBAR || isLINE;
+    const activeColor = chart.color || CHART_COLOR_OPTIONS[0].value;
+
+    return (
+        <div
+            className={`responsive-card p-3 sm:p-4 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-lg sm:rounded-xl relative group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-900/10 transition-all duration-300 animate-fade-in-up flex flex-col h-full hover-lift elevation-md`}
+            style={{ animationDelay: `${index * 50}ms` }}
+        >
+            <button
+                onClick={() => onRemove(chart.id)}
+                className={`absolute top-2 right-2 sm:top-3 sm:right-3 ${colors.textMuted} hover:text-red-400 hover:bg-red-400/10 p-1 sm:p-1.5 rounded-md transition opacity-100 sm:opacity-0 sm:group-hover:opacity-100 z-10 active-press`}
+            >
+                <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
+
+            <div className="flex items-start gap-2 mb-2 sm:mb-3 flex-1">
+                <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${chart.id.startsWith('custom') ? 'bg-emerald-500/10 text-emerald-400' : 'bg-indigo-500/10 text-indigo-400'}`}>
+                    {React.cloneElement(getIcon(chart.type) as React.ReactElement, { className: "w-3.5 h-3.5 sm:w-5 sm:h-5" })}
+                </div>
+                <div className="min-w-0 flex-1 pr-6">
+                    <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} font-bold uppercase tracking-wider`}>
+                        {chart.id.startsWith('custom') ? 'Custom Request' : 'AI Insight'}
+                    </div>
+                    <h4 className={`font-bold ${colors.textSecondary} text-xs sm:text-sm w-full line-clamp-2`}>{chart.title}</h4>
+                </div>
+            </div>
+
+            {/* Color Controls */}
+            {showColorOption && (
+                <div className={`flex items-center gap-2 mb-2 pb-2 border-b ${theme === 'dark' ? 'border-slate-800/50' : 'border-slate-200'}`}>
+                    {/* Single Color Dropdown */}
+                    <div className="relative flex-1" ref={colorMenuRef}>
+                        <button
+                            onClick={() => setShowColorMenu(v => !v)}
+                            title="Pick chart color"
+                            className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition border ${theme === 'dark'
+                                ? 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+                                : 'bg-slate-100 border-slate-300 text-slate-600 hover:border-slate-400'
+                                }`}
+                        >
+                            <span
+                                className="w-3 h-3 rounded-full shrink-0 ring-1 ring-white/20"
+                                style={{ backgroundColor: activeColor }}
+                            />
+                            <Palette className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate">
+                                {CHART_COLOR_OPTIONS.find(c => c.value === activeColor)?.label ?? 'Color'}
+                            </span>
+                            <ChevronDown className={`w-2.5 h-2.5 ml-auto transition-transform ${showColorMenu ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {showColorMenu && (
+                            <div className={`absolute left-0 bottom-full mb-1 w-40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
+                                } border rounded-xl shadow-2xl z-50 p-2 animate-fade-in`}>
+                                <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-1 ${colors.textMuted}`}>Single Color</p>
+                                <div className="grid grid-cols-5 gap-1.5">
+                                    {CHART_COLOR_OPTIONS.map(opt => (
+                                        <button
+                                            key={opt.value}
+                                            title={opt.label}
+                                            onClick={() => { onColorChange(chart.id, opt.value); setShowColorMenu(false); }}
+                                            className="relative w-6 h-6 rounded-full transition-transform hover:scale-110 focus:outline-none"
+                                            style={{ backgroundColor: opt.value }}
+                                        >
+                                            {activeColor === opt.value && (
+                                                <span className="absolute inset-0 flex items-center justify-center">
+                                                    <Check className="w-3 h-3 text-white drop-shadow" />
+                                                </span>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Multicolor Checkbox — BAR only */}
+                    {isBAR && (
+                        <label
+                            onClick={() => onMulticolorChange(chart.id, !chart.multicolor)}
+                            className={`flex items-center gap-1 cursor-pointer select-none text-[10px] font-medium shrink-0 ${chart.multicolor
+                                ? 'text-indigo-400'
+                                : colors.textMuted
+                                }`}
+                            title="Apply distinct colors to each bar"
+                        >
+                            <div
+                                className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${chart.multicolor
+                                    ? 'bg-indigo-500 border-indigo-500'
+                                    : `${theme === 'dark' ? 'border-slate-600' : 'border-slate-400'}`
+                                    }`}
+                            >
+                                {chart.multicolor && <Check className="w-2.5 h-2.5 text-white" />}
+                            </div>
+                            Multicolor
+                        </label>
+                    )}
+                </div>
+            )}
+
+            <div className={`grid grid-cols-3 gap-1.5 sm:gap-2 py-2 sm:py-3 border-t ${theme === 'dark' ? 'border-slate-800/50' : 'border-slate-200'} mt-auto`}>
+                <div className={`text-center p-1.5 sm:p-2 ${theme === 'dark' ? 'bg-slate-950/50' : 'bg-slate-100'} rounded-md sm:rounded-lg overflow-hidden`}>
+                    <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>X-Axis</div>
+                    <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.xAxisKey || "-"}>{chart.xAxisKey || "-"}</div>
+                </div>
+                <div className={`text-center p-1.5 sm:p-2 ${theme === 'dark' ? 'bg-slate-950/50' : 'bg-slate-100'} rounded-md sm:rounded-lg overflow-hidden`}>
+                    <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>Metric</div>
+                    <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.dataKey}>{chart.dataKey}</div>
+                </div>
+                <div className={`text-center p-1.5 sm:p-2 ${theme === 'dark' ? 'bg-slate-950/50' : 'bg-slate-100'} rounded-md sm:rounded-lg overflow-hidden`}>
+                    <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>Agg</div>
+                    <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.aggregation}>{chart.aggregation}</div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 interface ChartBuilderProps {
     dataModel: DataModel;
@@ -370,8 +533,8 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                             <button
                                 onClick={() => { setOpenFilterColMenu(o => !o); setFilterColSearch(''); }}
                                 className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 ${selectedFilterCols.size > 0
-                                        ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
-                                        : `${colors.bgTertiary} border ${colors.borderSecondary} ${colors.textTertiary}`
+                                    ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
+                                    : `${colors.bgTertiary} border ${colors.borderSecondary} ${colors.textTertiary}`
                                     } rounded-md text-[10px] sm:text-xs font-medium transition active-press border`}
                                 title="Choose which columns appear in dashboard filters"
                             >
@@ -393,8 +556,8 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                         <button
                                             onClick={toggleAllFilterCols}
                                             className={`text-[10px] font-medium transition ${allFilterColsSelected
-                                                    ? 'text-rose-400 hover:text-rose-300'
-                                                    : 'text-indigo-400 hover:text-indigo-300'
+                                                ? 'text-rose-400 hover:text-rose-300'
+                                                : 'text-indigo-400 hover:text-indigo-300'
                                                 }`}
                                         >
                                             {allFilterColsSelected ? 'Unselect All' : 'Select All'}
@@ -422,13 +585,13 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                     key={col}
                                                     onClick={() => toggleFilterCol(col)}
                                                     className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all mb-0.5 text-left ${checked
-                                                            ? 'bg-indigo-500/20 text-indigo-300'
-                                                            : `${colors.textSecondary} hover:${colors.bgTertiary}`
+                                                        ? 'bg-indigo-500/20 text-indigo-300'
+                                                        : `${colors.textSecondary} hover:${colors.bgTertiary}`
                                                         }`}
                                                 >
                                                     <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${checked
-                                                            ? 'bg-indigo-500 border-indigo-500'
-                                                            : `${colors.borderSecondary} border`
+                                                        ? 'bg-indigo-500 border-indigo-500'
+                                                        : `${colors.borderSecondary} border`
                                                         }`}>
                                                         {checked && <Check className="w-2.5 h-2.5 text-white" />}
                                                     </div>
@@ -521,45 +684,21 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                         ) : (
                             <div className="suggestions-grid pb-12 sm:pb-16 md:pb-20">
                                 {bucket.map((chart, i) => (
-                                    <div
+                                    <BucketChartCard
                                         key={chart.id}
-                                        className={`responsive-card p-3 sm:p-4 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-lg sm:rounded-xl relative group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-900/10 transition-all duration-300 animate-fade-in-up flex flex-col h-full hover-lift elevation-md`}
-                                        style={{ animationDelay: `${i * 50}ms` }}
-                                    >
-                                        <button
-                                            onClick={() => removeFromBucket(chart.id)}
-                                            className={`absolute top-2 right-2 sm:top-3 sm:right-3 ${colors.textMuted} hover:text-red-400 hover:bg-red-400/10 p-1 sm:p-1.5 rounded-md transition opacity-100 sm:opacity-0 sm:group-hover:opacity-100 z-10 active-press`}
-                                        >
-                                            <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                        </button>
-
-                                        <div className="flex items-start gap-2 mb-2 sm:mb-4 flex-1">
-                                            <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${chart.id.startsWith('custom') ? 'bg-emerald-500/10 text-emerald-400' : 'bg-indigo-500/10 text-indigo-400'}`}>
-                                                {React.cloneElement(getIcon(chart.type) as React.ReactElement, { className: "w-3.5 h-3.5 sm:w-5 sm:h-5" })}
-                                            </div>
-                                            <div className="min-w-0 flex-1 pr-6">
-                                                <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} font-bold uppercase tracking-wider`}>
-                                                    {chart.id.startsWith('custom') ? 'Custom Request' : 'AI Insight'}
-                                                </div>
-                                                <h4 className={`font-bold ${colors.textSecondary} text-xs sm:text-sm w-full line-clamp-2`}>{chart.title}</h4>
-                                            </div>
-                                        </div>
-
-                                        <div className={`grid grid-cols-3 gap-1.5 sm:gap-2 py-2 sm:py-3 border-t ${theme === 'dark' ? 'border-slate-800/50' : 'border-slate-200'} mt-auto`}>
-                                            <div className={`text-center p-1.5 sm:p-2 ${theme === 'dark' ? 'bg-slate-950/50' : 'bg-slate-100'} rounded-md sm:rounded-lg overflow-hidden`}>
-                                                <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>X-Axis</div>
-                                                <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.xAxisKey || "-"}>{chart.xAxisKey || "-"}</div>
-                                            </div>
-                                            <div className={`text-center p-1.5 sm:p-2 ${theme === 'dark' ? 'bg-slate-950/50' : 'bg-slate-100'} rounded-md sm:rounded-lg overflow-hidden`}>
-                                                <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>Metric</div>
-                                                <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.dataKey}>{chart.dataKey}</div>
-                                            </div>
-                                            <div className={`text-center p-1.5 sm:p-2 ${theme === 'dark' ? 'bg-slate-950/50' : 'bg-slate-100'} rounded-md sm:rounded-lg overflow-hidden`}>
-                                                <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>Agg</div>
-                                                <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.aggregation}>{chart.aggregation}</div>
-                                            </div>
-                                        </div>
-                                    </div>
+                                        chart={chart}
+                                        index={i}
+                                        theme={theme}
+                                        colors={colors}
+                                        getIcon={getIcon}
+                                        onRemove={removeFromBucket}
+                                        onColorChange={(id, color) =>
+                                            setBucket(prev => prev.map(c => c.id === id ? { ...c, color } : c))
+                                        }
+                                        onMulticolorChange={(id, multicolor) =>
+                                            setBucket(prev => prev.map(c => c.id === id ? { ...c, multicolor } : c))
+                                        }
+                                    />
                                 ))}
                             </div>
                         )}
