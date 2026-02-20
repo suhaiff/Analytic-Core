@@ -801,7 +801,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                     </header>
 
                     {/* --- NEW: Interactive Filter Bar --- */}
-                    <div data-pdf-filter-bar className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2 sticky top-[57px] sm:top-[65px] md:top-[73px] z-20 shadow-sm print:hidden`}>
+                    <div data-pdf-filter-bar className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2 sticky top-[57px] sm:top-[65px] md:top-[73px] z-20 shadow-sm print:hidden no-export`}>
                         <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 sm:gap-4">
                             <div className="flex items-center gap-2 text-indigo-400">
                                 <Filter className="w-4 h-4" />
