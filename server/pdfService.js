@@ -6,8 +6,12 @@ const path = require('path');
 let chartJsContent = '';
 try {
     const chartJsPath = path.join(__dirname, 'node_modules', 'chart.js', 'dist', 'chart.umd.js');
+    console.log(`Checking Chart.js at: ${chartJsPath}`);
     if (fs.existsSync(chartJsPath)) {
         chartJsContent = fs.readFileSync(chartJsPath, 'utf8');
+        console.log(`Loaded local Chart.js: ${chartJsContent.length} bytes`);
+    } else {
+        console.warn('Local Chart.js not found, will attempt to use CDN');
     }
 } catch (err) {
     console.error('Failed to load local Chart.js:', err);
@@ -31,7 +35,11 @@ async function generateDashboardPDF(dashboardName, charts, theme = 'dark') {
     <html>
     <head>
         <meta charset="UTF-8">
-        <script>${chartJsContent || ''}</script>
+        <script>
+            // Polyfill for RequestAnimationFrame which might be needed for Chart.js
+            window.requestAnimationFrame = function(callback) { return setTimeout(callback, 0); };
+            ${chartJsContent || 'console.warn("Chart.js content missing");'}
+        </script>
         ${!chartJsContent ? '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>' : ''}
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
         <style>
@@ -126,110 +134,152 @@ async function generateDashboardPDF(dashboardName, charts, theme = 'dark') {
         </div>
 
         <script>
-            const chartsData = ${JSON.stringify(charts)};
-            const isDark = ${isDark};
-            const themeColors = {
-                grid: isDark ? '#334155' : '#e2e8f0',
-                text: isDark ? '#94a3b8' : '#64748b'
-            };
-
-            const colorOptions = ['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#14b8a6', '#38bdf8'];
-
-            chartsData.forEach((chart, index) => {
-                if (chart.config.type === 'KPI') return;
-
-                const ctx = document.getElementById('chart-' + index).getContext('2d');
-                const labels = chart.data.map(d => d[chart.config.xAxisKey]);
-                const values = chart.data.map(d => d[chart.config.dataKey]);
-                
-                let chartType = 'bar';
-                if (chart.config.type === 'LINE') chartType = 'line';
-                if (chart.config.type === 'AREA') chartType = 'line';
-                if (chart.config.type === 'PIE') chartType = 'doughnut';
-
-                const config = {
-                    type: chartType,
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: chart.config.title,
-                            data: values,
-                            backgroundColor: chart.config.multicolor 
-                                ? colorOptions 
-                                : (chart.config.color || colorOptions[index % colorOptions.length]),
-                            borderColor: chart.config.type === 'PIE' ? 'transparent' : (chart.config.color || colorOptions[index % colorOptions.length]),
-                            borderWidth: 2,
-                            fill: chart.config.type === 'AREA',
-                            tension: 0.4
-                        }]
-                    },
-                    options: {
-                        animation: false, // CRITICAL: Disable animations for stable PDF capture
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: chart.config.type === 'PIE',
-                                position: 'bottom',
-                                labels: { color: themeColors.text, font: { family: 'Inter', size: 10 } }
-                            }
-                        },
-                        scales: chart.config.type === 'PIE' ? {} : {
-                            x: {
-                                grid: { display: false },
-                                ticks: { color: themeColors.text, font: { family: 'Inter', size: 10 } }
-                            },
-                            y: {
-                                grid: { color: themeColors.grid },
-                                ticks: { color: themeColors.text, font: { family: 'Inter', size: 10 } }
-                            }
-                        }
-                    }
+            try {
+                const chartsData = ${JSON.stringify(charts)};
+                const isDark = ${isDark};
+                const themeColors = {
+                    grid: isDark ? '#334155' : '#e2e8f0',
+                    text: isDark ? '#94a3b8' : '#64748b'
                 };
 
-                if (chart.config.type === 'AREA') {
-                    config.data.datasets[0].backgroundColor = (chart.config.color || colorOptions[index % colorOptions.length]) + '44';
-                }
+                const colorOptions = ['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#14b8a6', '#38bdf8'];
 
-                new Chart(ctx, config);
-            });
+                chartsData.forEach((chart, index) => {
+                    if (chart.config.type === 'KPI') return;
+
+                    const canvas = document.getElementById('chart-' + index);
+                    if (!canvas) return;
+                    
+                    const ctx = canvas.getContext('2d');
+                    const labels = chart.data.map(d => d[chart.config.xAxisKey]);
+                    const values = chart.data.map(d => d[chart.config.dataKey]);
+                    
+                    let chartType = 'bar';
+                    if (chart.config.type === 'LINE') chartType = 'line';
+                    if (chart.config.type === 'AREA') chartType = 'line';
+                    if (chart.config.type === 'PIE') chartType = 'doughnut';
+
+                    const config = {
+                        type: chartType,
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: chart.config.title,
+                                data: values,
+                                backgroundColor: chart.config.multicolor 
+                                    ? colorOptions 
+                                    : (chart.config.color || colorOptions[index % colorOptions.length]),
+                                borderColor: chart.config.type === 'PIE' ? 'transparent' : (chart.config.color || colorOptions[index % colorOptions.length]),
+                                borderWidth: 2,
+                                fill: chart.config.type === 'AREA',
+                                tension: 0.4
+                            }]
+                        },
+                        options: {
+                            animation: false,
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: chart.config.type === 'PIE',
+                                    position: 'bottom',
+                                    labels: { color: themeColors.text, font: { family: 'Inter', size: 10 } }
+                                }
+                            },
+                            scales: chart.config.type === 'PIE' ? {} : {
+                                x: {
+                                    grid: { display: false },
+                                    ticks: { color: themeColors.text, font: { family: 'Inter', size: 10 } }
+                                },
+                                y: {
+                                    grid: { color: themeColors.grid },
+                                    ticks: { color: themeColors.text, font: { family: 'Inter', size: 10 } }
+                                }
+                            }
+                        }
+                    };
+
+                    if (chart.config.type === 'AREA') {
+                        config.data.datasets[0].backgroundColor = (chart.config.color || colorOptions[index % colorOptions.length]) + '44';
+                    }
+
+                    if (typeof Chart !== 'undefined') {
+                        new Chart(ctx, config);
+                    } else {
+                        console.error('Chart.js is not loaded');
+                    }
+                });
+            } catch (err) {
+                console.error('Error in chart rendering script:', err);
+            }
         </script>
     </body>
     </html>
     `;
 
-    const browser = await puppeteer.launch({
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu'
-        ],
-        headless: 'new',
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
-    });
+    let browser;
+    try {
+        console.log('Launching browser for PDF generation...');
+        browser = await puppeteer.launch({
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--font-render-hinting=none'
+            ],
+            headless: 'new',
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+        });
 
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+        const page = await browser.newPage();
 
-    // Wait for Chart.js animations to finish (or disable animations)
-    await new Promise(resolve => setTimeout(resolve, 1000));
+        // Listen for console logs from the page
+        page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+        page.on('pageerror', err => console.error('PAGE ERROR:', err.toString()));
 
-    const pdf = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' }
-    });
+        await page.setViewport({ width: 1200, height: 1600 });
 
-    await browser.close();
+        console.log('Setting page content...');
+        await page.setContent(htmlContent, {
+            waitUntil: ['networkidle0', 'domcontentloaded'],
+            timeout: 60000
+        });
 
-    // Verify PDF header
-    if (pdf.length > 4 && pdf.slice(0, 4).toString() === '%PDF') {
-        console.log(`Successfully generated valid PDF: ${pdf.length} bytes`);
-        return pdf;
-    } else {
-        throw new Error('Generated file is not a valid PDF');
+        // Extra wait for any late rendering
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        console.log('Generating PDF buffer...');
+        const pdf = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
+        });
+
+        if (!pdf || pdf.length === 0) {
+            throw new Error('Puppeteer generated an empty buffer');
+        }
+
+        // Verify PDF header
+        const header = pdf.slice(0, 4).toString();
+        if (header === '%PDF') {
+            console.log(`Successfully generated valid PDF: ${pdf.length} bytes`);
+            return pdf;
+        } else {
+            console.error('Invalided PDF header detected:', header);
+            console.error('First 20 bytes:', pdf.slice(0, 20).toString('hex'));
+            throw new Error('Generated file is not a valid PDF');
+        }
+    } catch (error) {
+        console.error('Detailed PDF generation error:', error);
+        throw error;
+    } finally {
+        if (browser) {
+            await browser.close();
+            console.log('Browser closed');
+        }
     }
 }
 
 module.exports = { generateDashboardPDF };
+
