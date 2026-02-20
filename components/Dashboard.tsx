@@ -493,6 +493,49 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                         el.style.transform = 'none';
                         el.style.fontFamily = 'Inter, system-ui, sans-serif';
 
+                        // Disable sticky/fixed positioning for snapshot
+                        el.querySelectorAll('.sticky, .fixed').forEach((node: any) => {
+                            if (!node.classList.contains('fixed')) { // Don't break fixed modals if any
+                                node.style.position = 'static';
+                            }
+                        });
+
+                        // Fix Header Alignments (Title + Live Badge)
+                        const header = el.querySelector('header');
+                        if (header) {
+                            header.style.position = 'static';
+                            header.style.width = '100%';
+                            const titleContainer = header.querySelector('h1');
+                            if (titleContainer) {
+                                titleContainer.style.display = 'flex';
+                                titleContainer.style.alignItems = 'center';
+                                titleContainer.style.flexWrap = 'nowrap';
+                                titleContainer.style.gap = '12px';
+                            }
+                        }
+
+                        // Fix Filter Bar Alignment
+                        const filterBar = el.querySelector('.sticky.top-\\[57px\\], .sticky.top-\\[65px\\], .sticky.top-\\[73px\\]');
+                        if (filterBar) {
+                            (filterBar as HTMLElement).style.position = 'static';
+                            const innerContainer = filterBar.querySelector('.max-w-7xl');
+                            if (innerContainer) {
+                                (innerContainer as HTMLElement).style.display = 'flex';
+                                (innerContainer as HTMLElement).style.alignItems = 'center';
+                                (innerContainer as HTMLElement).style.justifyContent = 'flex-start';
+                            }
+                        }
+
+                        // Fix Chart Legend Alignment
+                        el.querySelectorAll('.recharts-legend-wrapper').forEach((node: any) => {
+                            node.style.width = '100% !important';
+                            node.style.display = 'flex';
+                            node.style.justifyContent = 'center';
+                            node.style.position = 'relative';
+                            node.style.top = '0';
+                            node.style.left = '0';
+                        });
+
                         // Fix for text clipping: remove truncate and line-clamp so full text shows in PDF
                         el.querySelectorAll('.truncate, .line-clamp-1, .line-clamp-2').forEach((node: any) => {
                             node.classList.remove('truncate', 'line-clamp-1', 'line-clamp-2');
@@ -500,6 +543,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                             node.style.wordBreak = 'break-word';
                             node.style.overflow = 'visible';
                             node.style.textOverflow = 'clip';
+                            node.style.height = 'auto';
                         });
 
                         // Ensure all data labels and SVG text are correctly visible
@@ -511,7 +555,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                         // Remove shadow/effects that sometimes cause canvas artifacts
                         el.querySelectorAll('.glass-effect').forEach((node: any) => {
                             node.style.backdropFilter = 'none';
-                            node.style.background = theme === 'dark' ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+                            node.style.background = theme === 'dark' ? 'rgba(15, 23, 42, 1)' : 'rgba(255, 255, 255, 1)';
                         });
                     }
                 },
