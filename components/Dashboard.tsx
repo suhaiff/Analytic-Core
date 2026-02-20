@@ -493,64 +493,75 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                         el.style.transform = 'none';
                         el.style.fontFamily = 'Inter, system-ui, sans-serif';
 
+                        // Helper to fix flex containers recursively
+                        const fixFlex = (node: HTMLElement) => {
+                            const style = window.getComputedStyle(node);
+                            if (node.classList.contains('flex') || style.display === 'flex') {
+                                node.style.display = 'block';
+                                node.style.textAlign = 'left';
+
+                                // Reset gap
+                                node.style.gap = '0';
+
+                                Array.from(node.children).forEach((child: any, idx) => {
+                                    child.style.display = 'inline-block';
+                                    child.style.verticalAlign = 'middle';
+                                    child.style.float = 'none';
+                                    if (idx > 0) child.style.marginLeft = '12px';
+
+                                    // Recursively fix children if they are flex
+                                    if (child instanceof HTMLElement) fixFlex(child);
+                                });
+                            } else {
+                                Array.from(node.children).forEach((child: any) => {
+                                    if (child instanceof HTMLElement) fixFlex(child);
+                                });
+                            }
+                        };
+
                         // 1. Reset all sticky/fixed to static flow
                         el.querySelectorAll('.sticky, .fixed, [data-pdf-filter-bar]').forEach((node: any) => {
                             (node as HTMLElement).style.position = 'static';
                             (node as HTMLElement).style.top = 'auto';
                         });
 
-                        // 2. Fix Header Alignment (Title + Live Badge) using inline-block for maximum stability
+                        // 2. Fix Header / Title and Badge Alignment
                         const titleH1 = el.querySelector('[data-pdf-title]') as HTMLElement;
-                        if (titleH1) {
-                            titleH1.style.display = 'block';
-                            titleH1.style.textAlign = 'left';
-                            titleH1.style.whiteSpace = 'nowrap';
-
-                            Array.from(titleH1.children).forEach((child: any, idx) => {
-                                child.style.display = 'inline-block';
-                                child.style.verticalAlign = 'middle';
-                                child.style.float = 'none';
-                                if (idx > 0) child.style.marginLeft = '12px';
-                            });
-                        }
+                        if (titleH1) fixFlex(titleH1);
 
                         // 3. Fix Filter Bar Alignment
                         const filterBar = el.querySelector('[data-pdf-filter-bar]') as HTMLElement;
                         if (filterBar) {
                             filterBar.style.display = 'block';
                             filterBar.style.padding = '12px 32px';
-                            const inner = filterBar.querySelector('.max-w-7xl') as HTMLElement;
-                            if (inner) {
-                                inner.style.display = 'block';
-                                inner.style.textAlign = 'left';
-                                Array.from(inner.children).forEach((child: any, idx) => {
-                                    child.style.display = 'inline-block';
-                                    child.style.verticalAlign = 'middle';
-                                    if (idx > 0) child.style.marginLeft = '20px';
-                                });
-                            }
+                            fixFlex(filterBar);
                         }
 
-                        // 4. Fix Chart Legends - Force Centering via block + inline-block
+                        // 4. Fix Chart Legends - Deep Fix
                         el.querySelectorAll('.recharts-legend-wrapper').forEach((node: any) => {
                             node.style.setProperty('width', '100%', 'important');
                             node.style.setProperty('position', 'relative', 'important');
                             node.style.setProperty('left', '0', 'important');
-                            node.style.setProperty('right', '0', 'important');
                             node.style.textAlign = 'center';
 
                             const ul = node.querySelector('ul');
                             if (ul) {
-                                ul.style.display = 'block';
-                                ul.style.width = '100%';
-                                ul.style.textAlign = 'center';
-                                ul.style.margin = '0 auto';
-                                ul.style.padding = '0';
+                                ul.style.setProperty('display', 'block', 'important');
+                                ul.style.setProperty('text-align', 'center', 'important');
+                                ul.style.setProperty('padding', '0', 'important');
+                                ul.style.setProperty('margin', '0 auto', 'important');
 
-                                ul.querySelectorAll('li').forEach((li: any) => {
-                                    li.style.display = 'inline-block';
-                                    li.style.margin = '0 10px';
-                                    li.style.float = 'none';
+                                ul.querySelectorAll('.recharts-legend-item').forEach((li: any) => {
+                                    li.style.setProperty('display', 'inline-block', 'important');
+                                    li.style.setProperty('margin', '0 12px', 'important');
+                                    li.style.setProperty('vertical-align', 'middle', 'important');
+
+                                    // Fix content inside legend item (icon + text)
+                                    li.querySelectorAll('*').forEach((child: any) => {
+                                        child.style.setProperty('display', 'inline-block', 'important');
+                                        child.style.setProperty('vertical-align', 'middle', 'important');
+                                        child.style.setProperty('margin-right', '4px', 'important');
+                                    });
                                 });
                             }
                         });
