@@ -493,69 +493,80 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                         el.style.transform = 'none';
                         el.style.fontFamily = 'Inter, system-ui, sans-serif';
 
-                        // Disable sticky/fixed positioning for snapshot
-                        el.querySelectorAll('.sticky, .fixed').forEach((node: any) => {
-                            if (!node.classList.contains('fixed')) { // Don't break fixed modals if any
-                                node.style.position = 'static';
-                            }
+                        // 1. Force all sticky/fixed to static for flow
+                        el.querySelectorAll('.sticky, .fixed, [data-pdf-filter-bar]').forEach((node: any) => {
+                            node.style.position = 'static';
+                            node.style.top = 'auto';
                         });
 
-                        // Fix Header Alignments (Title + Live Badge)
-                        const header = el.querySelector('header');
-                        if (header) {
-                            header.style.position = 'static';
-                            header.style.width = '100%';
-                            const titleContainer = header.querySelector('h1');
-                            if (titleContainer) {
-                                titleContainer.style.display = 'flex';
-                                titleContainer.style.alignItems = 'center';
-                                titleContainer.style.flexWrap = 'nowrap';
-                                titleContainer.style.gap = '12px';
+                        // 2. Fix Header / Title and Badge Alignment
+                        const titleH1 = el.querySelector('[data-pdf-title]') as HTMLElement;
+                        if (titleH1) {
+                            titleH1.style.setProperty('display', 'flex', 'important');
+                            titleH1.style.setProperty('flex-direction', 'row', 'important');
+                            titleH1.style.setProperty('align-items', 'center', 'important');
+                            titleH1.style.setProperty('justify-content', 'flex-start', 'important');
+                            titleH1.style.setProperty('flex-wrap', 'nowrap', 'important');
+                            titleH1.style.setProperty('gap', '12px', 'important');
+
+                            const badge = titleH1.querySelector('[data-pdf-badge]') as HTMLElement;
+                            if (badge) {
+                                badge.style.setProperty('display', 'inline-flex', 'important');
+                                badge.style.setProperty('margin', '0', 'important');
+                                badge.style.setProperty('flex-shrink', '0', 'important');
                             }
                         }
 
-                        // Fix Filter Bar Alignment
-                        const filterBar = el.querySelector('.sticky.top-\\[57px\\], .sticky.top-\\[65px\\], .sticky.top-\\[73px\\]');
+                        // 3. Fix Filter Bar Alignment
+                        const filterBar = el.querySelector('[data-pdf-filter-bar]') as HTMLElement;
                         if (filterBar) {
-                            (filterBar as HTMLElement).style.position = 'static';
-                            const innerContainer = filterBar.querySelector('.max-w-7xl');
-                            if (innerContainer) {
-                                (innerContainer as HTMLElement).style.display = 'flex';
-                                (innerContainer as HTMLElement).style.alignItems = 'center';
-                                (innerContainer as HTMLElement).style.justifyContent = 'flex-start';
+                            filterBar.style.setProperty('position', 'static', 'important');
+                            filterBar.style.setProperty('display', 'block', 'important');
+                            filterBar.style.setProperty('padding', '12px 24px', 'important');
+                            const inner = filterBar.querySelector('.max-w-7xl') as HTMLElement;
+                            if (inner) {
+                                inner.style.setProperty('display', 'flex', 'important');
+                                inner.style.setProperty('flex-direction', 'row', 'important');
+                                inner.style.setProperty('align-items', 'center', 'important');
+                                inner.style.setProperty('justify-content', 'flex-start', 'important');
+                                inner.style.setProperty('gap', '16px', 'important');
                             }
                         }
 
-                        // Fix Chart Legend Alignment
+                        // 4. Center Legends for all charts
                         el.querySelectorAll('.recharts-legend-wrapper').forEach((node: any) => {
-                            node.style.width = '100% !important';
-                            node.style.display = 'flex';
-                            node.style.justifyContent = 'center';
-                            node.style.position = 'relative';
-                            node.style.top = '0';
-                            node.style.left = '0';
+                            node.style.setProperty('width', '100%', 'important');
+                            node.style.setProperty('display', 'flex', 'important');
+                            node.style.setProperty('justify-content', 'center', 'important');
+                            node.style.setProperty('position', 'relative', 'important');
+                            const ul = node.querySelector('ul');
+                            if (ul) {
+                                ul.style.setProperty('display', 'flex', 'important');
+                                ul.style.setProperty('justify-content', 'center', 'important');
+                                ul.style.setProperty('width', '100%', 'important');
+                                ul.style.setProperty('margin', '0', 'important');
+                                ul.style.setProperty('padding', '0', 'important');
+                            }
                         });
 
-                        // Fix for text clipping: remove truncate and line-clamp so full text shows in PDF
+                        // 5. Fix for text clipping
                         el.querySelectorAll('.truncate, .line-clamp-1, .line-clamp-2').forEach((node: any) => {
                             node.classList.remove('truncate', 'line-clamp-1', 'line-clamp-2');
-                            node.style.whiteSpace = 'normal';
-                            node.style.wordBreak = 'break-word';
-                            node.style.overflow = 'visible';
-                            node.style.textOverflow = 'clip';
-                            node.style.height = 'auto';
+                            node.style.setProperty('white-space', 'normal', 'important');
+                            node.style.setProperty('overflow', 'visible', 'important');
+                            node.style.setProperty('height', 'auto', 'important');
                         });
 
-                        // Ensure all data labels and SVG text are correctly visible
+                        // 6. Ensure all internal chart text is visible
                         el.querySelectorAll('text').forEach((node: any) => {
-                            node.style.visibility = 'visible';
-                            node.style.opacity = '1';
+                            node.style.setProperty('visibility', 'visible', 'important');
+                            node.style.setProperty('opacity', '1', 'important');
                         });
 
-                        // Remove shadow/effects that sometimes cause canvas artifacts
+                        // 7. Remove shadow/effects
                         el.querySelectorAll('.glass-effect').forEach((node: any) => {
-                            node.style.backdropFilter = 'none';
-                            node.style.background = theme === 'dark' ? 'rgba(15, 23, 42, 1)' : 'rgba(255, 255, 255, 1)';
+                            node.style.setProperty('backdrop-filter', 'none', 'important');
+                            node.style.setProperty('background', theme === 'dark' ? 'rgba(15, 23, 42, 1)' : 'rgba(255, 255, 255, 1)', 'important');
                         });
                     }
                 },
@@ -718,9 +729,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                                     <Home className="w-4 h-4 sm:w-5 sm:h-5" />
                                 </button>
                                 <div className="min-w-0 flex-1">
-                                    <h1 className={`text-base sm:text-xl font-bold ${colors.textPrimary} flex items-center gap-2 flex-wrap`}>
+                                    <h1 data-pdf-title className={`text-base sm:text-xl font-bold ${colors.textPrimary} flex items-center gap-2 flex-wrap`}>
                                         <span className="truncate">{dataModel.name}</span>
-                                        <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/20 uppercase tracking-wider shrink-0">Live</span>
+                                        <span data-pdf-badge className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/20 uppercase tracking-wider shrink-0">Live</span>
                                         {(dataModel.sourceType === 'google_sheet' || dataModel.sourceType === 'sharepoint') && (
                                             <button
                                                 onClick={handleRefresh}
@@ -783,7 +794,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                     </header>
 
                     {/* --- NEW: Interactive Filter Bar --- */}
-                    <div className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2 sticky top-[57px] sm:top-[65px] md:top-[73px] z-20 shadow-sm print:hidden`}>
+                    <div data-pdf-filter-bar className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2 sticky top-[57px] sm:top-[65px] md:top-[73px] z-20 shadow-sm print:hidden`}>
                         <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 sm:gap-4">
                             <div className="flex items-center gap-2 text-indigo-400">
                                 <Filter className="w-4 h-4" />
