@@ -193,8 +193,9 @@ app.post('/api/export-pdf', async (req, res) => {
         console.log(`Generating PDF for dashboard: ${dashboardName}`);
         const pdfBuffer = await pdfService.generateDashboardPDF(dashboardName, charts, theme || 'dark');
 
-        res.contentType('application/pdf');
-        res.send(pdfBuffer);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Length', pdfBuffer.length);
+        res.end(pdfBuffer, 'binary');
     } catch (error) {
         console.error('PDF Export error:', error);
         res.status(500).json({ error: 'Failed to generate PDF: ' + error.message });

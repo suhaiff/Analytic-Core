@@ -1,4 +1,17 @@
 const puppeteer = require('puppeteer');
+const fs = require('fs');
+const path = require('path');
+
+// Load Chart.js content once
+let chartJsContent = '';
+try {
+    const chartJsPath = path.join(__dirname, 'node_modules', 'chart.js', 'dist', 'chart.umd.js');
+    if (fs.existsSync(chartJsPath)) {
+        chartJsContent = fs.readFileSync(chartJsPath, 'utf8');
+    }
+} catch (err) {
+    console.error('Failed to load local Chart.js:', err);
+}
 
 /**
  * Generates a high-quality PDF from dashboard data using Puppeteer and Chart.js
@@ -18,7 +31,8 @@ async function generateDashboardPDF(dashboardName, charts, theme = 'dark') {
     <html>
     <head>
         <meta charset="UTF-8">
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>${chartJsContent || ''}</script>
+        ${!chartJsContent ? '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>' : ''}
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
         <style>
             body {
@@ -185,7 +199,12 @@ async function generateDashboardPDF(dashboardName, charts, theme = 'dark') {
     `;
 
     const browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu'
+        ],
         headless: 'new',
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
     });
@@ -203,7 +222,14 @@ async function generateDashboardPDF(dashboardName, charts, theme = 'dark') {
     });
 
     await browser.close();
-    return pdf;
+
+    // Verify PDF header
+    if (pdf.length > 4 && pdf.slice(0, 4).toString() === '%PDF') {
+        console.log(`Successfully generated valid PDF: ${pdf.length} bytes`);
+        return pdf;
+    } else {
+        throw new Error('Generated file is not a valid PDF');
+    }
 }
 
 module.exports = { generateDashboardPDF };
