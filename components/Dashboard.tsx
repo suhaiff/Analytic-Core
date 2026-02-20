@@ -487,101 +487,91 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                 scrollX: 0,
                 scrollY: -window.scrollY,
                 onclone: (clonedDoc) => {
-                    const el = clonedDoc.getElementById('dashboard-container');
-                    if (el) {
-                        el.style.width = originalWidth + 'px';
-                        el.style.transform = 'none';
-                        el.style.fontFamily = 'Inter, system-ui, sans-serif';
+                    const elOriginal = document.getElementById('dashboard-container');
+                    const elCloned = clonedDoc.getElementById('dashboard-container');
 
-                        // Helper to fix flex containers recursively
-                        const fixFlex = (node: HTMLElement) => {
-                            const style = window.getComputedStyle(node);
-                            if (node.classList.contains('flex') || style.display === 'flex') {
-                                node.style.display = 'block';
-                                node.style.textAlign = 'left';
+                    if (elOriginal && elCloned) {
+                        elCloned.style.width = originalWidth + 'px';
+                        elCloned.style.transform = 'none';
 
-                                // Reset gap
-                                node.style.gap = '0';
+                        // 1. Recursive helper to sync layout from original to clone
+                        const syncLayout = (orig: HTMLElement, cloned: HTMLElement) => {
+                            const style = window.getComputedStyle(orig);
 
-                                Array.from(node.children).forEach((child: any, idx) => {
-                                    child.style.display = 'inline-block';
-                                    child.style.verticalAlign = 'middle';
-                                    child.style.float = 'none';
-                                    if (idx > 0) child.style.marginLeft = '12px';
+                            // Transform flex/gap to block/margin for html2canvas compatibility
+                            if (style.display.includes('flex')) {
+                                cloned.style.display = 'block';
+                                cloned.style.textAlign = 'left';
 
-                                    // Recursively fix children if they are flex
-                                    if (child instanceof HTMLElement) fixFlex(child);
+                                // Extract gap from original computed style
+                                const gap = parseInt(style.gap) || 0;
+
+                                Array.from(orig.children).forEach((origChild, idx) => {
+                                    const clonedChild = cloned.children[idx] as HTMLElement;
+                                    if (clonedChild) {
+                                        clonedChild.style.display = 'inline-block';
+                                        clonedChild.style.verticalAlign = 'middle';
+                                        if (gap > 0 && idx > 0) {
+                                            clonedChild.style.marginLeft = gap + 'px';
+                                        }
+
+                                        // Recurse deeper
+                                        if (origChild instanceof HTMLElement) {
+                                            syncLayout(origChild, clonedChild);
+                                        }
+                                    }
                                 });
                             } else {
-                                Array.from(node.children).forEach((child: any) => {
-                                    if (child instanceof HTMLElement) fixFlex(child);
+                                // For non-flex items, still check children for nested flex
+                                Array.from(orig.children).forEach((origChild, idx) => {
+                                    const clonedChild = cloned.children[idx] as HTMLElement;
+                                    if (origChild instanceof HTMLElement && clonedChild) {
+                                        syncLayout(origChild, clonedChild);
+                                    }
                                 });
                             }
                         };
 
-                        // 1. Reset all sticky/fixed to static flow
-                        el.querySelectorAll('.sticky, .fixed, [data-pdf-filter-bar]').forEach((node: any) => {
-                            (node as HTMLElement).style.position = 'static';
-                            (node as HTMLElement).style.top = 'auto';
+                        // 2. Clear Sticky elements FIRST
+                        elCloned.querySelectorAll('.sticky, .fixed').forEach((node: any) => {
+                            node.style.position = 'static';
+                            node.style.top = 'auto';
                         });
 
-                        // 2. Fix Header / Title and Badge Alignment
-                        const titleH1 = el.querySelector('[data-pdf-title]') as HTMLElement;
-                        if (titleH1) fixFlex(titleH1);
+                        // 3. Execution - walk the whole tree
+                        syncLayout(elOriginal, elCloned);
 
-                        // 3. Fix Filter Bar Alignment
-                        const filterBar = el.querySelector('[data-pdf-filter-bar]') as HTMLElement;
-                        if (filterBar) {
-                            filterBar.style.display = 'block';
-                            filterBar.style.padding = '12px 32px';
-                            fixFlex(filterBar);
-                        }
-
-                        // 4. Fix Chart Legends - Deep Fix
-                        el.querySelectorAll('.recharts-legend-wrapper').forEach((node: any) => {
+                        // 4. Force Chart Legend alignment
+                        elCloned.querySelectorAll('.recharts-legend-wrapper').forEach((node: any) => {
                             node.style.setProperty('width', '100%', 'important');
-                            node.style.setProperty('position', 'relative', 'important');
-                            node.style.setProperty('left', '0', 'important');
+                            node.style.setProperty('display', 'block', 'important');
                             node.style.textAlign = 'center';
 
                             const ul = node.querySelector('ul');
                             if (ul) {
-                                ul.style.setProperty('display', 'block', 'important');
-                                ul.style.setProperty('text-align', 'center', 'important');
-                                ul.style.setProperty('padding', '0', 'important');
-                                ul.style.setProperty('margin', '0 auto', 'important');
-
-                                ul.querySelectorAll('.recharts-legend-item').forEach((li: any) => {
-                                    li.style.setProperty('display', 'inline-block', 'important');
-                                    li.style.setProperty('margin', '0 12px', 'important');
-                                    li.style.setProperty('vertical-align', 'middle', 'important');
-
-                                    // Fix content inside legend item (icon + text)
-                                    li.querySelectorAll('*').forEach((child: any) => {
-                                        child.style.setProperty('display', 'inline-block', 'important');
-                                        child.style.setProperty('vertical-align', 'middle', 'important');
-                                        child.style.setProperty('margin-right', '4px', 'important');
-                                    });
+                                ul.style.display = 'block';
+                                ul.style.margin = '0 auto';
+                                ul.querySelectorAll('li').forEach((li: any) => {
+                                    li.style.display = 'inline-block';
+                                    li.style.margin = '0 10px';
+                                    li.style.float = 'none';
                                 });
                             }
                         });
 
-                        // 5. Fix for text clipping
-                        el.querySelectorAll('.truncate, .line-clamp-1, .line-clamp-2').forEach((node: any) => {
+                        // 5. Cleanup visibility
+                        elCloned.querySelectorAll('text').forEach((node: any) => {
+                            node.style.setProperty('visibility', 'visible', 'important');
+                            node.style.setProperty('opacity', '1', 'important');
+                        });
+
+                        elCloned.querySelectorAll('.truncate, .line-clamp-1, .line-clamp-2').forEach((node: any) => {
                             node.classList.remove('truncate', 'line-clamp-1', 'line-clamp-2');
                             node.style.whiteSpace = 'normal';
                             node.style.overflow = 'visible';
-                            node.style.height = 'auto';
                         });
 
-                        // 6. Ensure all internal chart text is visible
-                        el.querySelectorAll('text').forEach((node: any) => {
-                            node.style.visibility = 'visible';
-                            node.style.opacity = '1';
-                        });
-
-                        // 7. Remove shadow/effects
-                        el.querySelectorAll('.glass-effect').forEach((node: any) => {
+                        elCloned.querySelectorAll('.glass-effect').forEach((node: any) => {
                             node.style.backdropFilter = 'none';
                             node.style.background = theme === 'dark' ? 'rgba(15, 23, 42, 1)' : 'rgba(255, 255, 255, 1)';
                         });
