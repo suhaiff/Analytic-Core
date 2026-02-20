@@ -10,8 +10,9 @@ import {
     X, Home, Save, Edit, RefreshCw, Plus, ArrowRight, Filter, Trash2,
     ChevronDown, Check, MousePointer2
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { ChartBuilder } from './ChartBuilder';
-import { API_BASE } from '../config/api';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses, type Theme } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
@@ -30,7 +31,7 @@ interface DashboardProps {
 // Vibrant dark mode palette
 const COLORS = ['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4'];
 
-const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any }) => {
+const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean }) => {
     const colors = getThemeClasses(theme);
     if (!data || data.length === 0) return <div className={`flex items-center justify-center h-full ${colors.textMuted} text-sm`}>No Data Available</div>;
 
@@ -163,6 +164,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                                 if (value !== undefined && onItemClick) onItemClick(value);
                             }}
                             cursor="pointer"
+                            isAnimationActive={isAnimationActive}
                         >
                             {data.map((entry, index) => (
                                 <Cell
@@ -209,6 +211,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                             dataKey={config.dataKey}
                             stroke={config.color || COLORS[1]}
                             strokeWidth={3}
+                            isAnimationActive={isAnimationActive}
                             dot={data.length > 50 ? false : {
                                 fill: theme === 'dark' ? '#0f172a' : '#ffffff',
                                 stroke: config.color || COLORS[1],
@@ -265,6 +268,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                             stroke={COLORS[4]}
                             fill="url(#colorGradient)"
                             strokeWidth={2}
+                            isAnimationActive={isAnimationActive}
                             onClick={(d: any) => {
                                 const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
                                 if (value !== undefined && onItemClick) onItemClick(value);
@@ -299,6 +303,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                             dataKey={config.dataKey}
                             nameKey={config.xAxisKey}
                             stroke="none"
+                            isAnimationActive={isAnimationActive}
                             onClick={(d) => onItemClick && onItemClick(d.name)}
                             cursor="pointer"
                             label={({ name, value, percent }) => {
@@ -455,61 +460,91 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
 
     const handleExportPDF = async () => {
         setIsExporting(true);
+        // Wait longer (animation duration) to ensure all charts are fully rendered and animations are finished/disabled
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
         try {
-            // Prepare the data for all charts
-            const reportData = currentCharts.map(config => {
-                const chartData = aggregateData(filteredData, config);
-                return {
-                    config,
-                    data: chartData
-                };
-            });
+            const element = document.getElementById('dashboard-container');
+            if (!element) throw new Error("Dashboard container not found");
 
-            const response = await fetch(`${API_BASE}/export-pdf`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
+            // Lock dimensions and prepare for capture
+            const originalWidth = element.offsetWidth;
+            const originalHeight = element.scrollHeight;
+
+            // Capture with high quality settings
+            const canvas = await html2canvas(element, {
+                scale: 2,
+                backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
+                width: originalWidth,
+                height: originalHeight,
+                windowWidth: originalWidth,
+                windowHeight: originalHeight,
+                x: 0,
+                y: 0,
+                scrollX: 0,
+                scrollY: -window.scrollY,
+                onclone: (clonedDoc) => {
+                    const el = clonedDoc.getElementById('dashboard-container');
+                    if (el) {
+                        el.style.width = originalWidth + 'px';
+                        el.style.transform = 'none';
+                        el.style.fontFamily = 'Inter, system-ui, sans-serif';
+
+                        // Fix for text clipping: remove truncate and line-clamp so full text shows in PDF
+                        el.querySelectorAll('.truncate, .line-clamp-1, .line-clamp-2').forEach((node: any) => {
+                            node.classList.remove('truncate', 'line-clamp-1', 'line-clamp-2');
+                            node.style.whiteSpace = 'normal';
+                            node.style.wordBreak = 'break-word';
+                            node.style.overflow = 'visible';
+                            node.style.textOverflow = 'clip';
+                        });
+
+                        // Ensure all data labels and SVG text are correctly visible
+                        el.querySelectorAll('text').forEach((node: any) => {
+                            node.style.visibility = 'visible';
+                            node.style.opacity = '1';
+                        });
+
+                        // Remove shadow/effects that sometimes cause canvas artifacts
+                        el.querySelectorAll('.glass-effect').forEach((node: any) => {
+                            node.style.backdropFilter = 'none';
+                            node.style.background = theme === 'dark' ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+                        });
+                    }
                 },
-                body: JSON.stringify({
-                    dashboardName: dataModel.name,
-                    charts: reportData,
-                    theme: theme
-                }),
+                ignoreElements: (node) => {
+                    return node.classList && (
+                        node.classList.contains('no-export') ||
+                        node.classList.contains('chart-controls') ||
+                        node.classList.contains('no-print')
+                    );
+                }
             });
 
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.error || 'Failed to generate PDF on server');
-            }
+            const imgData = canvas.toDataURL('image/png', 1.0);
 
-            // Verify content type to avoid downloading JSON errors as PDF
-            const contentType = response.headers.get('content-type');
-            if (contentType && !contentType.includes('application/pdf')) {
-                const errText = await response.text();
-                console.error('Server returned non-PDF response:', errText);
-                throw new Error('Server returned invalid data format');
-            }
+            // Use custom page size that matches content
+            const imgWidth = canvas.width;
+            const imgHeight = canvas.height;
 
-            const blob = await response.blob();
-            if (blob.size === 0) {
-                throw new Error('Generated PDF is empty');
-            }
+            const pdf = new jsPDF({
+                orientation: imgWidth > imgHeight ? 'landscape' : 'portrait',
+                unit: 'px',
+                format: [imgWidth / 2, imgHeight / 2],
+                compress: true
+            });
 
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${dataModel.name.replace(/\s+/g, '_')}_Dashboard.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => {
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            }, 100);
+            // Add image at full size
+            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth / 2, imgHeight / 2, undefined, 'FAST');
 
-        } catch (error: any) {
+            pdf.save(`${dataModel.name.replace(/\s+/g, '_')}_Dashboard.pdf`);
+
+        } catch (error) {
             console.error("Export PDF Error:", error);
-            alert(`Failed to generate PDF: ${error.message}. Falling back to browser print.`);
-            window.print();
+            alert("Failed to generate PDF. Please try using the browser Print function.");
         } finally {
             setIsExporting(false);
         }
@@ -618,6 +653,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                                     data={aggregateData(filteredData, expandedChartConfig)}
                                     isExpanded={true}
                                     theme={theme}
+                                    isAnimationActive={!isExporting}
                                     onItemClick={(val) => toggleFilter(expandedChartConfig.xAxisKey, val)}
                                     activeFilterValue={activeFilters[expandedChartConfig.xAxisKey]}
                                 />
@@ -923,6 +959,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                                                 config={chart}
                                                 data={aggregatedData}
                                                 theme={theme}
+                                                isAnimationActive={!isExporting}
                                                 onItemClick={(val) => toggleFilter(chart.xAxisKey, val)}
                                                 activeFilterValue={activeFilters[chart.xAxisKey]}
                                             />
