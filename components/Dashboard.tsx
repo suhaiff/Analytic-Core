@@ -506,9 +506,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                 document.body.removeChild(a);
             }, 100);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error("Export PDF Error:", error);
-            alert("Failed to generate PDF. Falling back to browser print.");
+            alert(`Failed to generate PDF: ${error.message}. Falling back to browser print.`);
             window.print();
         } finally {
             setIsExporting(false);
