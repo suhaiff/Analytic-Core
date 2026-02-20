@@ -493,80 +493,86 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                         el.style.transform = 'none';
                         el.style.fontFamily = 'Inter, system-ui, sans-serif';
 
-                        // 1. Force all sticky/fixed to static for flow
+                        // 1. Reset all sticky/fixed to static flow
                         el.querySelectorAll('.sticky, .fixed, [data-pdf-filter-bar]').forEach((node: any) => {
-                            node.style.position = 'static';
-                            node.style.top = 'auto';
+                            (node as HTMLElement).style.position = 'static';
+                            (node as HTMLElement).style.top = 'auto';
                         });
 
-                        // 2. Fix Header / Title and Badge Alignment
+                        // 2. Fix Header Alignment (Title + Live Badge) using inline-block for maximum stability
                         const titleH1 = el.querySelector('[data-pdf-title]') as HTMLElement;
                         if (titleH1) {
-                            titleH1.style.setProperty('display', 'flex', 'important');
-                            titleH1.style.setProperty('flex-direction', 'row', 'important');
-                            titleH1.style.setProperty('align-items', 'center', 'important');
-                            titleH1.style.setProperty('justify-content', 'flex-start', 'important');
-                            titleH1.style.setProperty('flex-wrap', 'nowrap', 'important');
-                            titleH1.style.setProperty('gap', '12px', 'important');
+                            titleH1.style.display = 'block';
+                            titleH1.style.textAlign = 'left';
+                            titleH1.style.whiteSpace = 'nowrap';
 
-                            const badge = titleH1.querySelector('[data-pdf-badge]') as HTMLElement;
-                            if (badge) {
-                                badge.style.setProperty('display', 'inline-flex', 'important');
-                                badge.style.setProperty('margin', '0', 'important');
-                                badge.style.setProperty('flex-shrink', '0', 'important');
-                            }
+                            Array.from(titleH1.children).forEach((child: any, idx) => {
+                                child.style.display = 'inline-block';
+                                child.style.verticalAlign = 'middle';
+                                child.style.float = 'none';
+                                if (idx > 0) child.style.marginLeft = '12px';
+                            });
                         }
 
                         // 3. Fix Filter Bar Alignment
                         const filterBar = el.querySelector('[data-pdf-filter-bar]') as HTMLElement;
                         if (filterBar) {
-                            filterBar.style.setProperty('position', 'static', 'important');
-                            filterBar.style.setProperty('display', 'block', 'important');
-                            filterBar.style.setProperty('padding', '12px 24px', 'important');
+                            filterBar.style.display = 'block';
+                            filterBar.style.padding = '12px 32px';
                             const inner = filterBar.querySelector('.max-w-7xl') as HTMLElement;
                             if (inner) {
-                                inner.style.setProperty('display', 'flex', 'important');
-                                inner.style.setProperty('flex-direction', 'row', 'important');
-                                inner.style.setProperty('align-items', 'center', 'important');
-                                inner.style.setProperty('justify-content', 'flex-start', 'important');
-                                inner.style.setProperty('gap', '16px', 'important');
+                                inner.style.display = 'block';
+                                inner.style.textAlign = 'left';
+                                Array.from(inner.children).forEach((child: any, idx) => {
+                                    child.style.display = 'inline-block';
+                                    child.style.verticalAlign = 'middle';
+                                    if (idx > 0) child.style.marginLeft = '20px';
+                                });
                             }
                         }
 
-                        // 4. Center Legends for all charts
+                        // 4. Fix Chart Legends - Force Centering via block + inline-block
                         el.querySelectorAll('.recharts-legend-wrapper').forEach((node: any) => {
                             node.style.setProperty('width', '100%', 'important');
-                            node.style.setProperty('display', 'flex', 'important');
-                            node.style.setProperty('justify-content', 'center', 'important');
                             node.style.setProperty('position', 'relative', 'important');
+                            node.style.setProperty('left', '0', 'important');
+                            node.style.setProperty('right', '0', 'important');
+                            node.style.textAlign = 'center';
+
                             const ul = node.querySelector('ul');
                             if (ul) {
-                                ul.style.setProperty('display', 'flex', 'important');
-                                ul.style.setProperty('justify-content', 'center', 'important');
-                                ul.style.setProperty('width', '100%', 'important');
-                                ul.style.setProperty('margin', '0', 'important');
-                                ul.style.setProperty('padding', '0', 'important');
+                                ul.style.display = 'block';
+                                ul.style.width = '100%';
+                                ul.style.textAlign = 'center';
+                                ul.style.margin = '0 auto';
+                                ul.style.padding = '0';
+
+                                ul.querySelectorAll('li').forEach((li: any) => {
+                                    li.style.display = 'inline-block';
+                                    li.style.margin = '0 10px';
+                                    li.style.float = 'none';
+                                });
                             }
                         });
 
                         // 5. Fix for text clipping
                         el.querySelectorAll('.truncate, .line-clamp-1, .line-clamp-2').forEach((node: any) => {
                             node.classList.remove('truncate', 'line-clamp-1', 'line-clamp-2');
-                            node.style.setProperty('white-space', 'normal', 'important');
-                            node.style.setProperty('overflow', 'visible', 'important');
-                            node.style.setProperty('height', 'auto', 'important');
+                            node.style.whiteSpace = 'normal';
+                            node.style.overflow = 'visible';
+                            node.style.height = 'auto';
                         });
 
                         // 6. Ensure all internal chart text is visible
                         el.querySelectorAll('text').forEach((node: any) => {
-                            node.style.setProperty('visibility', 'visible', 'important');
-                            node.style.setProperty('opacity', '1', 'important');
+                            node.style.visibility = 'visible';
+                            node.style.opacity = '1';
                         });
 
                         // 7. Remove shadow/effects
                         el.querySelectorAll('.glass-effect').forEach((node: any) => {
-                            node.style.setProperty('backdrop-filter', 'none', 'important');
-                            node.style.setProperty('background', theme === 'dark' ? 'rgba(15, 23, 42, 1)' : 'rgba(255, 255, 255, 1)', 'important');
+                            node.style.backdropFilter = 'none';
+                            node.style.background = theme === 'dark' ? 'rgba(15, 23, 42, 1)' : 'rgba(255, 255, 255, 1)';
                         });
                     }
                 },
