@@ -487,92 +487,144 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                 scrollX: 0,
                 scrollY: -window.scrollY,
                 onclone: (clonedDoc) => {
-                    const elOriginal = document.getElementById('dashboard-container');
-                    const elCloned = clonedDoc.getElementById('dashboard-container');
+                    const el = clonedDoc.getElementById('dashboard-container');
+                    if (el) {
+                        el.style.width = originalWidth + 'px';
+                        el.style.transform = 'none';
+                        el.style.fontFamily = 'Inter, system-ui, sans-serif';
+                        el.style.fontSize = '14px'; // Force stable base size
 
-                    if (elOriginal && elCloned) {
-                        elCloned.style.width = originalWidth + 'px';
-                        elCloned.style.transform = 'none';
-
-                        // 1. Recursive helper to sync layout from original to clone
-                        const syncLayout = (orig: HTMLElement, cloned: HTMLElement) => {
-                            const style = window.getComputedStyle(orig);
-
-                            // Transform flex/gap to block/margin for html2canvas compatibility
-                            if (style.display.includes('flex')) {
-                                cloned.style.display = 'block';
-                                cloned.style.textAlign = 'left';
-
-                                // Extract gap from original computed style
-                                const gap = parseInt(style.gap) || 0;
-
-                                Array.from(orig.children).forEach((origChild, idx) => {
-                                    const clonedChild = cloned.children[idx] as HTMLElement;
-                                    if (clonedChild) {
-                                        clonedChild.style.display = 'inline-block';
-                                        clonedChild.style.verticalAlign = 'middle';
-                                        if (gap > 0 && idx > 0) {
-                                            clonedChild.style.marginLeft = gap + 'px';
-                                        }
-
-                                        // Recurse deeper
-                                        if (origChild instanceof HTMLElement) {
-                                            syncLayout(origChild, clonedChild);
-                                        }
-                                    }
-                                });
-                            } else {
-                                // For non-flex items, still check children for nested flex
-                                Array.from(orig.children).forEach((origChild, idx) => {
-                                    const clonedChild = cloned.children[idx] as HTMLElement;
-                                    if (origChild instanceof HTMLElement && clonedChild) {
-                                        syncLayout(origChild, clonedChild);
-                                    }
-                                });
+                        // Disable all animations/transitions
+                        const style = clonedDoc.createElement('style');
+                        style.innerHTML = `
+                            * { 
+                                transition: none !important; 
+                                animation: none !important; 
+                                transform: none !important;
+                                letter-spacing: normal !important;
                             }
-                        };
+                            .recharts-responsive-container {
+                                width: 100% !important;
+                                height: 100% !important;
+                            }
+                            .recharts-legend-item {
+                                display: inline-block !important;
+                                vertical-align: middle !important;
+                            }
+                        `;
+                        clonedDoc.head.appendChild(style);
 
-                        // 2. Clear Sticky elements FIRST
-                        elCloned.querySelectorAll('.sticky, .fixed').forEach((node: any) => {
+                        // 1. Reset all sticky/fixed to static flow
+                        el.querySelectorAll('.sticky, .fixed, [data-pdf-filter-bar]').forEach((node: any) => {
                             node.style.position = 'static';
                             node.style.top = 'auto';
+                            node.style.width = '100%';
                         });
 
-                        // 3. Execution - walk the whole tree
-                        syncLayout(elOriginal, elCloned);
+                        // 2. Fix Header / Title and Badge Alignment
+                        const titleH1 = el.querySelector('[data-pdf-title]') as HTMLElement;
+                        if (titleH1) {
+                            titleH1.style.display = 'block';
+                            titleH1.style.textAlign = 'left';
+                            titleH1.style.marginBottom = '8px';
 
-                        // 4. Force Chart Legend alignment
-                        elCloned.querySelectorAll('.recharts-legend-wrapper').forEach((node: any) => {
+                            const spans = titleH1.querySelectorAll('span');
+                            spans.forEach((span: any, idx) => {
+                                span.style.display = 'inline-block';
+                                span.style.verticalAlign = 'middle';
+                                span.style.whiteSpace = 'nowrap';
+                                span.style.gap = '0';
+                                if (idx > 0) span.style.marginLeft = '10px';
+                            });
+                        }
+
+                        // 3. Fix Filter Bar Alignment
+                        const filterBar = el.querySelector('[data-pdf-filter-bar]') as HTMLElement;
+                        if (filterBar) {
+                            filterBar.style.display = 'block';
+                            filterBar.style.padding = '16px 32px';
+                            const inner = filterBar.querySelector('.max-w-7xl') as HTMLElement;
+                            if (inner) {
+                                inner.style.display = 'block';
+                                inner.style.width = '100%';
+
+                                // Fix the "Active Filters" group
+                                const filterGroup = inner.children[0] as HTMLElement;
+                                if (filterGroup) {
+                                    filterGroup.style.display = 'inline-block';
+                                    filterGroup.style.verticalAlign = 'middle';
+                                    filterGroup.style.marginRight = '20px';
+                                    Array.from(filterGroup.children).forEach((child: any, idx) => {
+                                        child.style.display = 'inline-block';
+                                        child.style.verticalAlign = 'middle';
+                                        if (idx > 0) child.style.marginLeft = '8px';
+                                    });
+                                }
+
+                                // Fix the "Add Filter" button within the clone
+                                const addFilterBtn = inner.querySelector('button') as HTMLElement;
+                                if (addFilterBtn) {
+                                    addFilterBtn.style.display = 'inline-block';
+                                    addFilterBtn.style.verticalAlign = 'middle';
+                                    addFilterBtn.style.textAlign = 'center';
+                                    Array.from(addFilterBtn.children).forEach((child: any, idx) => {
+                                        child.style.display = 'inline-block';
+                                        child.style.verticalAlign = 'middle';
+                                        if (idx > 0) child.style.marginLeft = '6px';
+                                    });
+                                }
+                            }
+                        }
+
+                        // 4. Fix Chart Legends - Massive force centering
+                        el.querySelectorAll('.recharts-legend-wrapper').forEach((node: any) => {
                             node.style.setProperty('width', '100%', 'important');
-                            node.style.setProperty('display', 'block', 'important');
+                            node.style.setProperty('position', 'relative', 'important');
+                            node.style.setProperty('left', '0', 'important');
+                            node.style.setProperty('top', '0', 'important');
                             node.style.textAlign = 'center';
 
                             const ul = node.querySelector('ul');
                             if (ul) {
                                 ul.style.display = 'block';
-                                ul.style.margin = '0 auto';
-                                ul.querySelectorAll('li').forEach((li: any) => {
+                                ul.style.margin = '10px auto 0';
+                                ul.style.padding = '0';
+                                ul.style.textAlign = 'center';
+
+                                ul.querySelectorAll('.recharts-legend-item').forEach((li: any) => {
                                     li.style.display = 'inline-block';
-                                    li.style.margin = '0 10px';
-                                    li.style.float = 'none';
+                                    li.style.margin = '0 12px';
+                                    li.style.verticalAlign = 'middle';
+
+                                    // Fix legend item internal content
+                                    Array.from(li.children).forEach((child: any) => {
+                                        child.style.display = 'inline-block';
+                                        child.style.verticalAlign = 'middle';
+                                        child.style.marginRight = '4px';
+                                    });
                                 });
                             }
                         });
 
-                        // 5. Cleanup visibility
-                        elCloned.querySelectorAll('text').forEach((node: any) => {
-                            node.style.setProperty('visibility', 'visible', 'important');
-                            node.style.setProperty('opacity', '1', 'important');
-                        });
-
-                        elCloned.querySelectorAll('.truncate, .line-clamp-1, .line-clamp-2').forEach((node: any) => {
+                        // 5. Fix for text clipping
+                        el.querySelectorAll('.truncate, .line-clamp-1, .line-clamp-2').forEach((node: any) => {
                             node.classList.remove('truncate', 'line-clamp-1', 'line-clamp-2');
                             node.style.whiteSpace = 'normal';
                             node.style.overflow = 'visible';
+                            node.style.height = 'auto';
                         });
 
-                        elCloned.querySelectorAll('.glass-effect').forEach((node: any) => {
+                        // 6. Ensure all chart text elements are properly styled for capture
+                        el.querySelectorAll('text').forEach((node: any) => {
+                            node.style.visibility = 'visible';
+                            node.style.opacity = '1';
+                            node.style.fontSize = '11px';
+                        });
+
+                        // 7. Remove shadow/effects
+                        el.querySelectorAll('.glass-effect').forEach((node: any) => {
                             node.style.backdropFilter = 'none';
+                            node.style.boxShadow = 'none';
                             node.style.background = theme === 'dark' ? 'rgba(15, 23, 42, 1)' : 'rgba(255, 255, 255, 1)';
                         });
                     }
@@ -801,7 +853,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                     </header>
 
                     {/* --- NEW: Interactive Filter Bar --- */}
-                    <div data-pdf-filter-bar className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2 sticky top-[57px] sm:top-[65px] md:top-[73px] z-20 shadow-sm print:hidden no-export`}>
+                    <div data-pdf-filter-bar className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2 sticky top-[57px] sm:top-[65px] md:top-[73px] z-20 shadow-sm print:hidden`}>
                         <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 sm:gap-4">
                             <div className="flex items-center gap-2 text-indigo-400">
                                 <Filter className="w-4 h-4" />
