@@ -503,7 +503,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                             <select
                                                                 value={join.leftTableId}
                                                                 onChange={(e) => updateJoin(join.id, 'leftTableId', e.target.value)}
-                                                                className="w-full bg-transparent responsive-text-sm text-white outline-none cursor-pointer"
+                                                                className={`w-full bg-transparent responsive-text-sm ${colors.textPrimary} outline-none cursor-pointer`}
                                                             >
                                                                 {tables.map(t => <option key={t.id} value={t.id} className="text-slate-900">{t.name}</option>)}
                                                             </select>

@@ -139,6 +139,61 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
 
     const showBrush = data.length > 15;
 
+    const ChartLegend = ({ payload }: any) => {
+        if (!payload || payload.length === 0) return null;
+
+        return (
+            <div
+                style={{
+                    width: '100%',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: '20px',
+                    paddingTop: '2px',
+                    paddingBottom: '10px',
+                    flexWrap: 'wrap',
+                    height: '24px'
+                }}
+            >
+                {payload.map((entry: any, index: number) => {
+                    const legendColor =
+                        entry?.color ||
+                        entry?.payload?.fill ||
+                        config.color ||
+                        COLORS[index % COLORS.length];
+
+                    return (
+                        <div
+                            key={`legend-${index}`}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontSize: '12px',
+                                color: themeColors.chartLegendText,
+                                lineHeight: '1'
+                            }}
+                        >
+                            <div
+                                data-legend-dot
+                                style={{
+                                    width: '10px',
+                                    height: '10px',
+                                    borderRadius: '2px',
+                                    backgroundColor: legendColor,
+                                    flexShrink: 0
+                                }}
+                            />
+                            <span>
+                                {entry?.value || config.dataKey}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
     switch (config.type) {
         case ChartType.BAR:
             return (
@@ -151,11 +206,11 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                             tickFormatter={xAxisFormatter}
                             angle={-25}
                             textAnchor="end"
-                            height={50}
+                            height={90}
                         />
                         <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
                         <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={36} iconType="square" wrapperStyle={{ fontSize: '12px', color: themeColors.chartLegendText, paddingBottom: '10px' }} />
+                        <Legend verticalAlign="top" height={24} content={<ChartLegend />} />
                         <Bar
                             dataKey={config.dataKey}
                             radius={[4, 4, 0, 0]}
@@ -201,11 +256,11 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                             tickFormatter={xAxisFormatter}
                             angle={-25}
                             textAnchor="end"
-                            height={50}
+                            height={90}
                         />
                         <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
                         <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={36} iconType="line" wrapperStyle={{ fontSize: '12px', color: themeColors.chartLegendText, paddingBottom: '10px' }} />
+                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
                         <Line
                             type="monotone"
                             dataKey={config.dataKey}
@@ -251,11 +306,11 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                             tickFormatter={xAxisFormatter}
                             angle={-25}
                             textAnchor="end"
-                            height={50}
+                            height={90}
                         />
                         <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
                         <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={36} iconType="rect" wrapperStyle={{ fontSize: '12px', color: themeColors.chartLegendText, paddingBottom: '10px' }} />
+                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
                         <defs>
                             <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor={COLORS[4]} stopOpacity={0.4} />
@@ -291,8 +346,8 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
             );
         case ChartType.PIE:
             return (
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
+                <ResponsiveContainer width="100%" height={280}>
+                    <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                         <Pie
                             data={data}
                             cx="50%"
@@ -315,7 +370,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                                         displayName = excelSerialToDate(num);
                                     }
                                 }
-                                return `${displayName}: ${formattedValue} (${(percent * 100).toFixed(0)}%)`;
+                                return `${formattedValue} (${(percent * 100).toFixed(0)}%)`;
                             }}
                             labelLine={{ stroke: themeColors.chartLabelText, strokeWidth: 1 }}
                         >
@@ -460,176 +515,175 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
 
     const handleExportPDF = async () => {
         setIsExporting(true);
-        // Wait longer (animation duration) to ensure all charts are fully rendered and animations are finished/disabled
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1500));
 
         try {
             const element = document.getElementById('dashboard-container');
             if (!element) throw new Error("Dashboard container not found");
 
-            // Lock dimensions and prepare for capture
             const originalWidth = element.offsetWidth;
-            const originalHeight = element.scrollHeight;
+            const bgColor = theme === 'dark' ? '#0f172a' : '#f8fafc';
+            const textPrimary = theme === 'dark' ? '#f1f5f9' : '#0f172a';
+            const textMuted = theme === 'dark' ? '#64748b' : '#94a3b8';
+            const borderColor = theme === 'dark' ? '#1e293b' : '#e2e8f0';
 
-            // Capture with high quality settings
+            const siteHeaderEl = element.querySelector('header') as HTMLElement;
+            const filterBarEl = element.querySelector('[data-pdf-filter-bar]') as HTMLElement;
+            const headerH = siteHeaderEl ? siteHeaderEl.offsetHeight : 0;
+            const filterH = filterBarEl ? filterBarEl.offsetHeight : 0;
+            const reportHeaderH = 160;
+            const contentHeight = element.scrollHeight + reportHeaderH - headerH - filterH + 140;
+
             const canvas = await html2canvas(element, {
                 scale: 2,
-                backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                backgroundColor: bgColor,
                 useCORS: true,
                 allowTaint: true,
                 logging: false,
                 width: originalWidth,
-                height: originalHeight,
+                height: contentHeight,
                 windowWidth: originalWidth,
-                windowHeight: originalHeight,
-                x: 0,
-                y: 0,
+                windowHeight: contentHeight,
                 scrollX: 0,
                 scrollY: -window.scrollY,
                 onclone: (clonedDoc) => {
                     const el = clonedDoc.getElementById('dashboard-container');
-                    if (el) {
-                        el.style.width = originalWidth + 'px';
-                        el.style.transform = 'none';
-                        el.style.fontFamily = 'Inter, system-ui, sans-serif';
-                        el.style.fontSize = '14px'; // Force stable base size
+                    if (!el) return;
 
-                        // Disable all animations/transitions
-                        const style = clonedDoc.createElement('style');
-                        style.innerHTML = `
-                            * { 
-                                transition: none !important; 
-                                animation: none !important; 
-                                transform: none !important;
-                                letter-spacing: normal !important;
-                            }
-                            .recharts-responsive-container {
-                                width: 100% !important;
-                                height: 100% !important;
-                            }
-                            .recharts-legend-item {
-                                display: inline-block !important;
-                                vertical-align: middle !important;
-                            }
-                        `;
-                        clonedDoc.head.appendChild(style);
+                    el.style.width = originalWidth + 'px';
+                    el.style.transform = 'none';
+                    el.style.fontFamily = 'Inter, system-ui, sans-serif';
+                    el.style.background = bgColor;
 
-                        // 1. Reset all sticky/fixed to static flow
-                        el.querySelectorAll('.sticky, .fixed, [data-pdf-filter-bar]').forEach((node: any) => {
-                            node.style.position = 'static';
-                            node.style.top = 'auto';
-                            node.style.width = '100%';
-                        });
+                    const siteHeader = el.querySelector('header');
+                    if (siteHeader) (siteHeader as HTMLElement).style.display = 'none';
 
-                        // 2. Fix Header / Title and Badge Alignment
-                        const titleH1 = el.querySelector('[data-pdf-title]') as HTMLElement;
-                        if (titleH1) {
-                            titleH1.style.display = 'block';
-                            titleH1.style.textAlign = 'left';
-                            titleH1.style.marginBottom = '8px';
+                    const filterBar = el.querySelector('[data-pdf-filter-bar]');
+                    if (filterBar) (filterBar as HTMLElement).style.display = 'none';
 
-                            const spans = titleH1.querySelectorAll('span');
-                            spans.forEach((span: any, idx) => {
-                                span.style.display = 'inline-block';
-                                span.style.verticalAlign = 'middle';
-                                span.style.whiteSpace = 'nowrap';
-                                span.style.gap = '0';
-                                if (idx > 0) span.style.marginLeft = '10px';
-                            });
-                        }
+                    const hiddenPrintHeader = el.querySelector('.print\\:block') as HTMLElement;
+                    if (hiddenPrintHeader) hiddenPrintHeader.style.display = 'none';
 
-                        // 3. Fix Filter Bar Alignment
-                        const filterBar = el.querySelector('[data-pdf-filter-bar]') as HTMLElement;
-                        if (filterBar) {
-                            filterBar.style.display = 'block';
-                            filterBar.style.padding = '16px 32px';
-                            const inner = filterBar.querySelector('.max-w-7xl') as HTMLElement;
-                            if (inner) {
-                                inner.style.display = 'block';
-                                inner.style.width = '100%';
+                    const reportHeader = clonedDoc.createElement('div');
+                    reportHeader.style.cssText = `
+                        padding: 40px 48px 28px 48px;
+                        border-bottom: 2px solid ${borderColor};
+                        margin-bottom: 0;
+                        background: ${bgColor};
+                    `;
 
-                                // Fix the "Active Filters" group
-                                const filterGroup = inner.children[0] as HTMLElement;
-                                if (filterGroup) {
-                                    filterGroup.style.display = 'inline-block';
-                                    filterGroup.style.verticalAlign = 'middle';
-                                    filterGroup.style.marginRight = '20px';
-                                    Array.from(filterGroup.children).forEach((child: any, idx) => {
-                                        child.style.display = 'inline-block';
-                                        child.style.verticalAlign = 'middle';
-                                        if (idx > 0) child.style.marginLeft = '8px';
-                                    });
-                                }
+                    const titleEl = clonedDoc.createElement('h1');
+                    titleEl.style.cssText = `
+                        font-size: 30px;
+                        font-weight: 800;
+                        color: ${textPrimary};
+                        margin: 0 0 6px 0;
+                        letter-spacing: -0.5px;
+                        line-height: 1.2;
+                    `;
+                    titleEl.textContent = dataModel.name;
 
-                                // Fix the "Add Filter" button within the clone
-                                const addFilterBtn = inner.querySelector('button') as HTMLElement;
-                                if (addFilterBtn) {
-                                    addFilterBtn.style.display = 'inline-block';
-                                    addFilterBtn.style.verticalAlign = 'middle';
-                                    addFilterBtn.style.textAlign = 'center';
-                                    Array.from(addFilterBtn.children).forEach((child: any, idx) => {
-                                        child.style.display = 'inline-block';
-                                        child.style.verticalAlign = 'middle';
-                                        if (idx > 0) child.style.marginLeft = '6px';
-                                    });
-                                }
-                            }
-                        }
+                    const subtitleEl = clonedDoc.createElement('p');
+                    subtitleEl.style.cssText = `
+                        font-size: 13px;
+                        color: ${textMuted};
+                        margin: 0 0 4px 0;
+                        font-weight: 500;
+                    `;
+                    subtitleEl.textContent = 'AnalyticCore Generated Report';
 
-                        // 4. Fix Chart Legends - Massive force centering
-                        el.querySelectorAll('.recharts-legend-wrapper').forEach((node: any) => {
-                            node.style.setProperty('width', '100%', 'important');
-                            node.style.setProperty('position', 'relative', 'important');
-                            node.style.setProperty('left', '0', 'important');
-                            node.style.setProperty('top', '0', 'important');
-                            node.style.textAlign = 'center';
+                    const dateEl = clonedDoc.createElement('p');
+                    dateEl.style.cssText = `
+                        font-size: 11px;
+                        color: ${textMuted};
+                        margin: 6px 0 0 0;
+                        opacity: 0.7;
+                    `;
+                    dateEl.textContent = `Generated on ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })} · ${dataModel.data.length.toLocaleString()} records`;
 
-                            const ul = node.querySelector('ul');
-                            if (ul) {
-                                ul.style.display = 'block';
-                                ul.style.margin = '10px auto 0';
-                                ul.style.padding = '0';
-                                ul.style.textAlign = 'center';
+                    reportHeader.appendChild(titleEl);
+                    reportHeader.appendChild(subtitleEl);
+                    reportHeader.appendChild(dateEl);
 
-                                ul.querySelectorAll('.recharts-legend-item').forEach((li: any) => {
-                                    li.style.display = 'inline-block';
-                                    li.style.margin = '0 12px';
-                                    li.style.verticalAlign = 'middle';
-
-                                    // Fix legend item internal content
-                                    Array.from(li.children).forEach((child: any) => {
-                                        child.style.display = 'inline-block';
-                                        child.style.verticalAlign = 'middle';
-                                        child.style.marginRight = '4px';
-                                    });
-                                });
-                            }
-                        });
-
-                        // 5. Fix for text clipping
-                        el.querySelectorAll('.truncate, .line-clamp-1, .line-clamp-2').forEach((node: any) => {
-                            node.classList.remove('truncate', 'line-clamp-1', 'line-clamp-2');
-                            node.style.whiteSpace = 'normal';
-                            node.style.overflow = 'visible';
-                            node.style.height = 'auto';
-                        });
-
-                        // 6. Ensure all chart text elements are properly styled for capture
-                        el.querySelectorAll('text').forEach((node: any) => {
-                            node.style.visibility = 'visible';
-                            node.style.opacity = '1';
-                            node.style.fontSize = '11px';
-                        });
-
-                        // 7. Remove shadow/effects
-                        el.querySelectorAll('.glass-effect').forEach((node: any) => {
-                            node.style.backdropFilter = 'none';
-                            node.style.boxShadow = 'none';
-                            node.style.background = theme === 'dark' ? 'rgba(15, 23, 42, 1)' : 'rgba(255, 255, 255, 1)';
-                        });
+                    const mainEl = el.querySelector('main');
+                    if (mainEl) {
+                        (mainEl as HTMLElement).style.paddingBottom = '72px';
+                        el.insertBefore(reportHeader, mainEl);
+                    } else {
+                        el.insertBefore(reportHeader, el.firstChild);
                     }
+
+                    const exportSpacer = clonedDoc.createElement('div');
+                    exportSpacer.style.height = '72px';
+                    exportSpacer.style.width = '100%';
+                    exportSpacer.style.display = 'block';
+                    el.appendChild(exportSpacer);
+
+                    el.querySelectorAll('.sticky, .fixed').forEach((node: any) => {
+                        (node as HTMLElement).style.position = 'relative';
+                        (node as HTMLElement).style.top = 'auto';
+                        (node as HTMLElement).style.zIndex = 'auto';
+                    });
+
+                    el.querySelectorAll('.chart-controls, .no-print, .no-export').forEach((node: any) => {
+                        (node as HTMLElement).style.display = 'none';
+                    });
+
+                    el.querySelectorAll('.truncate, .line-clamp-1, .line-clamp-2').forEach((node: any) => {
+                        node.classList.remove('truncate', 'line-clamp-1', 'line-clamp-2');
+                        (node as HTMLElement).style.whiteSpace = 'normal';
+                        (node as HTMLElement).style.overflow = 'visible';
+                        (node as HTMLElement).style.height = 'auto';
+                    });
+
+                    // 🔥 Fix ResponsiveContainer reflow for Pie charts
+                    el.querySelectorAll('.recharts-responsive-container').forEach((node: any) => {
+                        const container = node as HTMLElement;
+
+                        const rect = container.getBoundingClientRect();
+
+                        container.style.width = rect.width + 'px';
+                        container.style.height = rect.height + 'px';
+                        container.style.maxWidth = 'none';
+                    });
+
+                    el.querySelectorAll('.recharts-wrapper').forEach((node: any) => {
+                        const wrapper = node as HTMLElement;
+                        wrapper.style.paddingTop = '0';
+                        wrapper.style.marginTop = '0';
+                    });
+
+                    el.querySelectorAll('[data-legend-dot]').forEach((node: any) => {
+                        (node as HTMLElement).style.display = 'none';
+                    });
+
+                    
+
+                    // Improve legend item spacing
+                    el.querySelectorAll('.recharts-default-legend').forEach((node: any) => {
+                        const list = node as HTMLElement;
+                        list.style.display = 'flex';
+                        list.style.justifyContent = 'center';
+                        list.style.gap = '12px';
+                    });
+
+                    el.querySelectorAll('svg.recharts-surface').forEach((svg: any) => {
+                        svg.style.overflow = 'visible';
+                    });
+
+                    el.querySelectorAll('text').forEach((node: any) => {
+                        (node as HTMLElement).style.visibility = 'visible';
+                        (node as HTMLElement).style.opacity = '1';
+                    });
+
+                    el.querySelectorAll('.glass-effect').forEach((node: any) => {
+                        (node as HTMLElement).style.backdropFilter = 'none';
+                        (node as HTMLElement).style.background = bgColor;
+                    });
                 },
                 ignoreElements: (node) => {
+                    if (node.tagName === 'HEADER') return true;
+                    if ((node as HTMLElement).hasAttribute && (node as HTMLElement).hasAttribute('data-pdf-filter-bar')) return true;
                     return node.classList && (
                         node.classList.contains('no-export') ||
                         node.classList.contains('chart-controls') ||
@@ -639,8 +693,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
             });
 
             const imgData = canvas.toDataURL('image/png', 1.0);
-
-            // Use custom page size that matches content
             const imgWidth = canvas.width;
             const imgHeight = canvas.height;
 
@@ -651,9 +703,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                 compress: true
             });
 
-            // Add image at full size
             pdf.addImage(imgData, 'PNG', 0, 0, imgWidth / 2, imgHeight / 2, undefined, 'FAST');
-
             pdf.save(`${dataModel.name.replace(/\s+/g, '_')}_Dashboard.pdf`);
 
         } catch (error) {
