@@ -824,6 +824,10 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                       <code className="block mt-2 p-2 bg-black/20 rounded font-mono text-indigo-300 break-all">
                         dashboard-sheets-reader@diesel-skyline-479213-f1.iam.gserviceaccount.com
                       </code>
+                      <br />
+                      <span className="text-[10px] opacity-70 italic mt-2 block">
+                        Note: If your file is in Excel format (.xlsx) in Drive, you must first open it in Sheets and click <b>File &gt; Save as Google Sheets</b>.
+                      </span>
                     </p>
                   </div>
 
