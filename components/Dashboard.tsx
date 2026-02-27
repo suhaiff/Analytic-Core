@@ -1254,14 +1254,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
             let position = 0;
             let pageLeft = scaledHeight;
 
+            // Fill background for first page
+            pdf.setFillColor(bgColor);
+            pdf.rect(0, 0, A4_WIDTH, A4_HEIGHT, 'F');
+
             // Add first page
             pdf.addImage(imgData, 'PNG', 0, position, scaledWidth, scaledHeight, undefined, 'FAST');
             pageLeft -= A4_HEIGHT;
 
             // Add subsequent pages if content overflows A4 height
-            while (pageLeft >= 0 && position > -scaledHeight) {
+            while (pageLeft > 0 && position > -scaledHeight) {
                 position = position - A4_HEIGHT; // Move the image up by exactly 1 page height
                 pdf.addPage();
+
+                // Fill background for subsequent pages
+                pdf.setFillColor(bgColor);
+                pdf.rect(0, 0, A4_WIDTH, A4_HEIGHT, 'F');
+
                 pdf.addImage(imgData, 'PNG', 0, position, scaledWidth, scaledHeight, undefined, 'FAST');
                 pageLeft -= A4_HEIGHT;
             }
