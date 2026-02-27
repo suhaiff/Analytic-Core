@@ -785,77 +785,140 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                     </PieChart>
                 </ResponsiveContainer>
             );
-        case ChartType.TABLE:
+        case ChartType.TABLE: {
+            const tableTotal = data.reduce((acc, row) => acc + (Number(row[config.dataKey]) || 0), 0);
+            const tableTotal2 = config.dataKey2 ? data.reduce((acc, row) => acc + (Number(row[config.dataKey2]) || 0), 0) : 0;
+            const fmtNum = (v: number) => isCurrency ? formatCurrency(v) : v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
             return (
-                <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '12px' }}>
+                <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '0' }} className="relative">
                     <table className="w-full text-left border-collapse">
                         <thead className="sticky top-0 z-10">
-                            <tr className={theme === 'dark' ? 'bg-slate-800' : 'bg-slate-100'}>
-                                <th className={`px-4 py-3 font-bold text-xs uppercase tracking-wider border-b ${theme === 'dark' ? 'border-slate-700 text-slate-300' : 'border-slate-300 text-slate-600'}`}>{config.xAxisKey}</th>
-                                <th className={`px-4 py-3 font-bold text-xs uppercase tracking-wider border-b ${theme === 'dark' ? 'border-slate-700 text-slate-300' : 'border-slate-300 text-slate-600'} text-right`}>{config.dataKey}</th>
-                                {config.dataKey2 && <th className={`px-4 py-3 font-bold text-xs uppercase tracking-wider border-b ${theme === 'dark' ? 'border-slate-700 text-slate-300' : 'border-slate-300 text-slate-600'} text-right`}>{config.dataKey2}</th>}
+                            <tr style={{ background: theme === 'dark' ? '#1e293b' : '#e2e8f0' }}>
+                                <th className={`px-3 py-2.5 font-bold text-[10px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/40 text-slate-400' : 'border-indigo-400/40 text-slate-500'} text-center w-12`}>#</th>
+                                <th className={`px-4 py-2.5 font-bold text-[10px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/40 text-slate-400' : 'border-indigo-400/40 text-slate-500'}`}>{config.xAxisKey}</th>
+                                <th className={`px-4 py-2.5 font-bold text-[10px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/40 text-slate-400' : 'border-indigo-400/40 text-slate-500'} text-right`}>{config.dataKey}</th>
+                                {config.dataKey2 && <th className={`px-4 py-2.5 font-bold text-[10px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/40 text-slate-400' : 'border-indigo-400/40 text-slate-500'} text-right`}>{config.dataKey2}</th>}
                             </tr>
                         </thead>
-                        <tbody className={`divide-y ${theme === 'dark' ? 'divide-slate-800' : 'divide-slate-200'}`}>
+                        <tbody>
                             {data.map((row, i) => (
-                                <tr key={i} className={`hover:${theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-50'} transition-colors`}>
-                                    <td className={`px-4 py-3 text-sm font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{row[config.xAxisKey]}</td>
-                                    <td className={`px-4 py-3 text-sm font-bold text-right ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{isCurrency ? formatCurrency(row[config.dataKey]) : row[config.dataKey]}</td>
-                                    {config.dataKey2 && <td className={`px-4 py-3 text-sm font-bold text-right ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>{isCurrency ? formatCurrency(row[config.dataKey2]) : row[config.dataKey2]}</td>}
+                                <tr key={i}
+                                    style={{ background: i % 2 === 0 ? (theme === 'dark' ? 'rgba(30,41,59,0.3)' : 'rgba(241,245,249,0.5)') : 'transparent' }}
+                                    className="transition-colors cursor-pointer"
+                                    onClick={() => onItemClick && onItemClick(row[config.xAxisKey])}
+                                >
+                                    <td className={`px-3 py-2 text-[10px] text-center ${theme === 'dark' ? 'text-slate-600' : 'text-slate-400'} font-mono`}>{i + 1}</td>
+                                    <td className={`px-4 py-2 text-xs font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{row[config.xAxisKey]}</td>
+                                    <td className={`px-4 py-2 text-xs font-bold text-right font-mono ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{fmtNum(Number(row[config.dataKey]) || 0)}</td>
+                                    {config.dataKey2 && <td className={`px-4 py-2 text-xs font-bold text-right font-mono ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>{fmtNum(Number(row[config.dataKey2]) || 0)}</td>}
                                 </tr>
                             ))}
                         </tbody>
+                        <tfoot className="sticky bottom-0 z-10">
+                            <tr style={{ background: theme === 'dark' ? '#0f172a' : '#f1f5f9', borderTop: `2px solid ${theme === 'dark' ? '#6366f1' : '#818cf8'}` }}>
+                                <td className={`px-3 py-2.5 text-[10px] font-bold text-center ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Σ</td>
+                                <td className={`px-4 py-2.5 text-xs font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>{data.length} rows</td>
+                                <td className={`px-4 py-2.5 text-xs font-black text-right font-mono ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-700'}`}>{fmtNum(tableTotal)}</td>
+                                {config.dataKey2 && <td className={`px-4 py-2.5 text-xs font-black text-right font-mono ${theme === 'dark' ? 'text-emerald-300' : 'text-emerald-700'}`}>{fmtNum(tableTotal2)}</td>}
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             );
+        }
 
         case ChartType.MATRIX: {
             if (!data || data.length === 0) return <div className={`flex items-center justify-center h-full ${colors.textMuted} text-sm`}>No Data Available</div>;
 
-            const xVals = Array.from(new Set(data.map((d: any) => d.x))).sort();
-            const yVals = Array.from(new Set(data.map((d: any) => d.y))).sort();
+            const mxVals = Array.from(new Set(data.map((d: any) => d.x))).sort();
+            const myVals = Array.from(new Set(data.map((d: any) => d.y))).sort();
+            const allValues = data.map((d: any) => d.value);
+            const mMinVal = Math.min(...allValues);
+            const mMaxVal = Math.max(...allValues);
+            const mRange = mMaxVal - mMinVal || 1;
+            const fmtMatrixNum = (v: number) => isCurrency ? formatCurrency(v) : v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+            // Compute row and column totals
+            const rowTotals: { [key: string]: number } = {};
+            const colTotals: { [key: string]: number } = {};
+            myVals.forEach(y => { rowTotals[y as string] = 0; });
+            mxVals.forEach(x => { colTotals[x as string] = 0; });
+            data.forEach((d: any) => {
+                rowTotals[d.y] = (rowTotals[d.y] || 0) + d.value;
+                colTotals[d.x] = (colTotals[d.x] || 0) + d.value;
+            });
+            const grandTotal = Object.values(rowTotals).reduce((a, b) => a + b, 0);
+
+            const getCellBg = (val: number) => {
+                const t = (val - mMinVal) / mRange;
+                if (theme === 'dark') {
+                    return `rgba(99, 102, 241, ${0.08 + t * 0.55})`;
+                } else {
+                    return `rgba(99, 102, 241, ${0.05 + t * 0.35})`;
+                }
+            };
 
             return (
-                <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '12px' }}>
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: `minmax(120px, 1fr) repeat(${xVals.length}, minmax(80px, 1fr))`,
-                        fontSize: '11px',
-                        border: `1px solid ${themeColors.chartGrid}`,
-                        borderRadius: '8px',
-                        overflow: 'hidden'
-                    }}>
-                        {/* Corner Header */}
-                        <div className={`p-3 font-bold uppercase tracking-wider ${theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'} border-b border-r`} style={{ borderColor: themeColors.chartGrid }}>
-                            {config.yAxisKey} \ {config.xAxisKey}
-                        </div>
-                        {/* X Headers */}
-                        {xVals.map(x => (
-                            <div key={x} className={`p-3 font-bold text-center uppercase tracking-wider ${theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'} border-b border-r`} style={{ borderColor: themeColors.chartGrid }}>
-                                {x}
-                            </div>
-                        ))}
-
-                        {/* Rows */}
-                        {yVals.map(y => (
-                            <React.Fragment key={y}>
-                                {/* Y Header */}
-                                <div className={`p-3 font-bold ${theme === 'dark' ? 'bg-slate-800/40 text-slate-300' : 'bg-slate-50 text-slate-600'} border-b border-r`} style={{ borderColor: themeColors.chartGrid }}>
-                                    {y}
-                                </div>
-                                {/* Cells */}
-                                {xVals.map(x => {
-                                    const cell = data.find((d: any) => d.x === x && d.y === y);
-                                    const val = cell?.value ?? 0;
-                                    return (
-                                        <div key={`${x}-${y}`} className={`p-3 text-center border-b border-r flex items-center justify-center font-bold ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`} style={{ borderColor: themeColors.chartGrid }}>
-                                            {isCurrency ? formatCurrency(val) : val}
-                                        </div>
-                                    );
-                                })}
-                            </React.Fragment>
-                        ))}
-                    </div>
+                <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '0' }}>
+                    <table className="w-full border-collapse" style={{ fontSize: '11px' }}>
+                        <thead className="sticky top-0 z-10">
+                            <tr style={{ background: theme === 'dark' ? '#1e293b' : '#e2e8f0' }}>
+                                <th className={`px-3 py-2.5 text-left font-bold text-[9px] uppercase tracking-widest border-b-2 border-r ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`} style={{ borderColor: themeColors.chartGrid }}>
+                                    {config.yAxisKey} ↓ / {config.xAxisKey} →
+                                </th>
+                                {mxVals.map(x => (
+                                    <th key={x} className={`px-2 py-2.5 text-center font-bold text-[9px] uppercase tracking-wider border-b-2 border-r ${theme === 'dark' ? 'border-indigo-500/30 text-slate-400' : 'border-indigo-400/30 text-slate-500'}`} style={{ borderColor: themeColors.chartGrid }}>
+                                        {String(x).length > 10 ? String(x).substring(0, 8) + '..' : x}
+                                    </th>
+                                ))}
+                                <th className={`px-3 py-2.5 text-center font-bold text-[9px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-indigo-400' : 'border-indigo-400/30 text-indigo-600'}`}>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {myVals.map((y, ri) => (
+                                <tr key={y} style={{ background: ri % 2 === 0 ? (theme === 'dark' ? 'rgba(30,41,59,0.2)' : 'rgba(241,245,249,0.4)') : 'transparent' }}>
+                                    <td className={`px-3 py-2 font-bold text-xs border-r ${theme === 'dark' ? 'text-slate-300 bg-slate-800/30' : 'text-slate-600 bg-slate-50/60'}`} style={{ borderColor: themeColors.chartGrid }}>
+                                        {String(y).length > 14 ? String(y).substring(0, 12) + '..' : y}
+                                    </td>
+                                    {mxVals.map(x => {
+                                        const cell = data.find((d: any) => d.x === x && d.y === y);
+                                        const val = cell?.value ?? 0;
+                                        const t = (val - mMinVal) / mRange;
+                                        return (
+                                            <td key={`${x}-${y}`}
+                                                className={`px-2 py-2 text-center font-bold border-r cursor-pointer transition-all`}
+                                                style={{
+                                                    borderColor: themeColors.chartGrid,
+                                                    backgroundColor: getCellBg(val),
+                                                    color: t > 0.6 ? '#ffffff' : (theme === 'dark' ? '#94a3b8' : '#475569'),
+                                                }}
+                                                title={`${config.yAxisKey}: ${y}\n${config.xAxisKey}: ${x}\n${config.dataKey}: ${val}`}
+                                                onClick={() => onItemClick && onItemClick(x)}
+                                            >
+                                                {fmtMatrixNum(val)}
+                                            </td>
+                                        );
+                                    })}
+                                    <td className={`px-3 py-2 text-center font-black text-xs ${theme === 'dark' ? 'text-indigo-300 bg-slate-800/40' : 'text-indigo-700 bg-slate-100/60'}`}>
+                                        {fmtMatrixNum(rowTotals[y as string] || 0)}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot className="sticky bottom-0 z-10">
+                            <tr style={{ background: theme === 'dark' ? '#0f172a' : '#f1f5f9', borderTop: `2px solid ${theme === 'dark' ? '#6366f1' : '#818cf8'}` }}>
+                                <td className={`px-3 py-2.5 font-bold text-[9px] uppercase tracking-widest border-r ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`} style={{ borderColor: themeColors.chartGrid }}>Total</td>
+                                {mxVals.map(x => (
+                                    <td key={x} className={`px-2 py-2.5 text-center font-black text-xs border-r ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-700'}`} style={{ borderColor: themeColors.chartGrid }}>
+                                        {fmtMatrixNum(colTotals[x as string] || 0)}
+                                    </td>
+                                ))}
+                                <td className={`px-3 py-2.5 text-center font-black text-xs ${theme === 'dark' ? 'text-amber-400' : 'text-amber-600'}`}>
+                                    {fmtMatrixNum(grandTotal)}
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
             );
         }
@@ -1166,17 +1229,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
             });
 
             const imgData = canvas.toDataURL('image/png', 1.0);
-            const imgWidth = canvas.width;
-            const imgHeight = canvas.height;
+
+            // Standard A4 dimensions in pixels at 72 DPI
+            const A4_WIDTH = 595.28;
+            const A4_HEIGHT = 841.89;
+
+            // Calculate scale to fit A4 width
+            // Using canvas.width / 2 because of html2canvas scale: 2 factor
+            const imgWidth = canvas.width / 2;
+            const imgHeight = canvas.height / 2;
+
+            const ratio = A4_WIDTH / imgWidth;
+            const scaledWidth = imgWidth * ratio;
+            const scaledHeight = imgHeight * ratio;
 
             const pdf = new jsPDF({
-                orientation: imgWidth > imgHeight ? 'landscape' : 'portrait',
-                unit: 'px',
-                format: [imgWidth / 2, imgHeight / 2],
+                orientation: 'portrait',
+                unit: 'pt',
+                format: 'a4',
                 compress: true
             });
 
-            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth / 2, imgHeight / 2, undefined, 'FAST');
+            // How many pages do we need?
+            let position = 0;
+            let pageLeft = scaledHeight;
+
+            // Add first page
+            pdf.addImage(imgData, 'PNG', 0, position, scaledWidth, scaledHeight, undefined, 'FAST');
+            pageLeft -= A4_HEIGHT;
+
+            // Add subsequent pages if content overflows A4 height
+            while (pageLeft >= 0 && position > -scaledHeight) {
+                position = position - A4_HEIGHT; // Move the image up by exactly 1 page height
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, scaledWidth, scaledHeight, undefined, 'FAST');
+                pageLeft -= A4_HEIGHT;
+            }
+
             pdf.save(`${dataModel.name.replace(/\s+/g, '_')}_Dashboard.pdf`);
 
         } catch (error) {
