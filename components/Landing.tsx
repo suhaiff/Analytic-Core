@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, Clock, LayoutDashboard, Sparkles, ChevronRight, FileSpreadsheet, Trash2, FolderOpen, PlusCircle, Settings, LogOut, Database, Globe, X } from 'lucide-react';
+import { Upload, FileText, Clock, LayoutDashboard, Sparkles, ChevronRight, FileSpreadsheet, Trash2, FolderOpen, PlusCircle, Settings, LogOut, Database, Globe, X, Info } from 'lucide-react';
 import { SavedDashboard, User } from '../types';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
@@ -28,6 +28,9 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
 
   // UI State for Grouping
   const [showImportMenu, setShowImportMenu] = useState(false);
+
+  // Info Guide State
+  const [showInfoGuide, setShowInfoGuide] = useState<'GS' | 'SQL' | 'SP' | null>(null);
 
   // Google Sheets State
   const [showGSModal, setShowGSModal] = useState(false);
@@ -438,6 +441,63 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
     }
   };
 
+  // Info guide content for each import type
+  const infoGuideContent: Record<'GS' | 'SQL' | 'SP', {
+    title: string;
+    iconBg: string;
+    icon: React.ReactNode;
+    stepBadgeBg: string;
+    stepBadgeText: string;
+    hoverBorder: string;
+    steps: { title: string; desc: string }[];
+  }> = {
+    GS: {
+      title: 'Google Sheets Import Guide',
+      iconBg: 'bg-green-500/10',
+      icon: <FileSpreadsheet className="w-6 h-6 text-green-500" />,
+      stepBadgeBg: 'bg-green-500/15',
+      stepBadgeText: 'text-green-400',
+      hoverBorder: 'hover:border-green-500/40',
+      steps: [
+        { title: 'Open your Google Sheet', desc: 'Go to the Google Sheet you want to import data from.' },
+        { title: 'Share with our service account', desc: 'Click "Share" → paste the service account email shown in the modal → set to "Viewer".' },
+        { title: 'Copy the Sheet URL', desc: 'Copy the full URL from your browser\'s address bar.' },
+        { title: 'Paste URL & Connect', desc: 'Paste the URL into the input field and click "Connect Sheet".' },
+        { title: 'Select Sheets & Import', desc: 'Choose one or more sheet tabs and click "Import Sheet" to load the data.' },
+      ]
+    },
+    SQL: {
+      title: 'SQL Database Import Guide',
+      iconBg: 'bg-blue-500/10',
+      icon: <Database className="w-6 h-6 text-blue-500" />,
+      stepBadgeBg: 'bg-blue-500/15',
+      stepBadgeText: 'text-blue-400',
+      hoverBorder: 'hover:border-blue-500/40',
+      steps: [
+        { title: 'Choose Database Type', desc: 'Select MySQL or PostgreSQL from the dropdown.' },
+        { title: 'Enter Connection Details', desc: 'Fill in Host, Port, Database Name, Username, and Password.' },
+        { title: 'Test the Connection', desc: 'Click "Test Connection" to verify your credentials are correct.' },
+        { title: 'Fetch & Select Tables', desc: 'Once connected, click "Fetch Tables" and select the tables you need.' },
+        { title: 'Import Data', desc: 'Click "Import Table" to load the selected table data into your dashboard.' },
+      ]
+    },
+    SP: {
+      title: 'SharePoint Import Guide',
+      iconBg: 'bg-orange-500/10',
+      icon: <Globe className="w-6 h-6 text-orange-500" />,
+      stepBadgeBg: 'bg-orange-500/15',
+      stepBadgeText: 'text-orange-400',
+      hoverBorder: 'hover:border-orange-500/40',
+      steps: [
+        { title: 'Connect SharePoint Account', desc: 'Click "Connect SharePoint Account" to sign in via Microsoft OAuth.' },
+        { title: 'Authorize Access', desc: 'Sign in with your Microsoft account and grant the required permissions.' },
+        { title: 'Select a Site', desc: 'After authentication, pick the SharePoint site containing your data.' },
+        { title: 'Select a List', desc: 'Choose the specific list you want to import from the site.' },
+        { title: 'Confirm & Import', desc: 'Review your selection and click "Import SharePoint Data" to load it.' },
+      ]
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col relative overflow-x-hidden">
       {/* Background Ambience */}
@@ -721,12 +781,21 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                   </div>
                   <h3 className={`text-xl font-bold ${colors.textPrimary}`}>Connect Google Sheet</h3>
                 </div>
-                <button
-                  onClick={() => { setShowGSModal(false); setGsMetadata(null); setGsError(''); }}
-                  className={`p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} transition`}
-                >
-                  <LogOut className="w-5 h-5 rotate-180" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowInfoGuide('GS')}
+                    className={`p-2 rounded-lg hover:bg-green-500/10 ${colors.textMuted} hover:text-green-400 transition`}
+                    title="How to use Google Sheets Import"
+                  >
+                    <Info className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => { setShowGSModal(false); setGsMetadata(null); setGsError(''); }}
+                    className={`p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} transition`}
+                  >
+                    <LogOut className="w-5 h-5 rotate-180" />
+                  </button>
+                </div>
               </div>
 
               {!gsMetadata ? (
@@ -844,12 +913,21 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                   </div>
                   <h3 className={`text-xl font-bold ${colors.textPrimary}`}>Import from SharePoint</h3>
                 </div>
-                <button
-                  onClick={() => { setShowSPModal(false); resetSPState(); }}
-                  className={`p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} transition`}
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowInfoGuide('SP')}
+                    className={`p-2 rounded-lg hover:bg-orange-500/10 ${colors.textMuted} hover:text-orange-400 transition`}
+                    title="How to use SharePoint Import"
+                  >
+                    <Info className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => { setShowSPModal(false); resetSPState(); }}
+                    className={`p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} transition`}
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               {!spConfigured ? (
@@ -1021,17 +1099,26 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                   </div>
                   <h3 className={`text-xl font-bold ${colors.textPrimary}`}>Connect SQL Database</h3>
                 </div>
-                <button
-                  onClick={() => {
-                    setShowSqlDbModal(false);
-                    setSqlDbConnected(false);
-                    setSqlDbTables([]);
-                    setSqlDbError('');
-                  }}
-                  className={`p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} transition`}
-                >
-                  <LogOut className="w-5 h-5 rotate-180" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowInfoGuide('SQL')}
+                    className={`p-2 rounded-lg hover:bg-blue-500/10 ${colors.textMuted} hover:text-blue-400 transition`}
+                    title="How to use SQL Database Import"
+                  >
+                    <Info className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSqlDbModal(false);
+                      setSqlDbConnected(false);
+                      setSqlDbTables([]);
+                      setSqlDbError('');
+                    }}
+                    className={`p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} transition`}
+                  >
+                    <LogOut className="w-5 h-5 rotate-180" />
+                  </button>
+                </div>
               </div>
 
               {!sqlDbConnected ? (
@@ -1249,6 +1336,61 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
           </div>
         )}
       </main>
+
+      {/* Info Guide Modal */}
+      {showInfoGuide && (() => {
+        const guide = infoGuideContent[showInfoGuide];
+        return (
+          <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowInfoGuide(null)}>
+            <div
+              className={`${colors.modalBg} border ${colors.borderPrimary} rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl transform scale-100 max-h-[85vh] overflow-y-auto`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 ${guide.iconBg} rounded-lg`}>
+                    {guide.icon}
+                  </div>
+                  <h3 className={`text-lg font-bold ${colors.textPrimary}`}>{guide.title}</h3>
+                </div>
+                <button
+                  onClick={() => setShowInfoGuide(null)}
+                  className={`p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:text-red-400 transition`}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Steps */}
+              <div className="space-y-3">
+                {guide.steps.map((step, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex items-start gap-3 p-3 rounded-xl border ${colors.borderPrimary} ${colors.bgTertiary} transition-all ${guide.hoverBorder}`}
+                  >
+                    <div className={`flex-shrink-0 w-7 h-7 rounded-full ${guide.stepBadgeBg} flex items-center justify-center`}>
+                      <span className={`text-xs font-bold ${guide.stepBadgeText}`}>{idx + 1}</span>
+                    </div>
+                    <div>
+                      <div className={`text-sm font-semibold ${colors.textPrimary}`}>{step.title}</div>
+                      <div className={`text-xs ${colors.textMuted} mt-0.5 leading-relaxed`}>{step.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Footer */}
+              <button
+                onClick={() => setShowInfoGuide(null)}
+                className={`w-full mt-6 py-2.5 rounded-xl border ${colors.borderPrimary} ${colors.textSecondary} font-medium text-sm hover:${colors.bgTertiary} transition`}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
     BarChart, Bar, LineChart, Line, PieChart, Pie, AreaChart, Area,
-    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, Brush, LabelList
+    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, Brush, LabelList,
+    ScatterChart, Scatter, ZAxis, ComposedChart
 } from 'recharts';
 import { DataModel, ChartConfig, ChartType } from '../types';
 import { aggregateData } from '../utils/aggregator';
@@ -29,7 +30,7 @@ interface DashboardProps {
 }
 
 // Vibrant dark mode palette
-const COLORS = ['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4'];
+const COLORS = ['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6', '#f97316', '#84cc16'];
 
 const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean }) => {
     const colors = getThemeClasses(theme);
@@ -210,7 +211,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                         />
                         <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
                         <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={24} content={<ChartLegend />} />
+                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
                         <Bar
                             dataKey={config.dataKey}
                             radius={[4, 4, 0, 0]}
@@ -245,6 +246,183 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                     </BarChart>
                 </ResponsiveContainer>
             );
+
+        case ChartType.HORIZONTAL_BAR:
+            return (
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart {...commonProps} layout="vertical" margin={{ top: 20, right: 40, left: 80, bottom: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={themeColors.chartGrid} />
+                        <XAxis type="number" {...AxisProps} tickFormatter={yAxisFormatter} />
+                        <YAxis
+                            type="category"
+                            dataKey={config.xAxisKey}
+                            {...AxisProps}
+                            width={70}
+                            tickFormatter={(val: any) => {
+                                const str = String(val);
+                                return str.length > 10 ? str.substring(0, 8) + '..' : str;
+                            }}
+                        />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+                        <Bar
+                            dataKey={config.dataKey}
+                            radius={[0, 4, 4, 0]}
+                            onClick={(d: any) => {
+                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                if (value !== undefined && onItemClick) onItemClick(value);
+                            }}
+                            cursor="pointer"
+                            isAnimationActive={isAnimationActive}
+                        >
+                            {data.map((entry, index) => (
+                                <Cell
+                                    key={`cell-${index}`}
+                                    fill={activeFilterValue && entry[config.xAxisKey] === activeFilterValue
+                                        ? '#f59e0b'
+                                        : (config.multicolor ? COLORS[index % COLORS.length] : (config.color || COLORS[0]))}
+                                    fillOpacity={activeFilterValue && entry[config.xAxisKey] !== activeFilterValue ? 0.4 : 1}
+                                    style={{ transition: 'all 0.3s ease' }}
+                                />
+                            ))}
+                            <LabelList dataKey={config.dataKey} position="right" fill={themeColors.chartLabelText} fontSize={11} formatter={labelFormatter} />
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            );
+
+        case ChartType.GROUPED_BAR:
+            return (
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart {...commonProps}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                        <XAxis
+                            dataKey={config.xAxisKey}
+                            {...AxisProps}
+                            tickFormatter={xAxisFormatter}
+                            angle={-25}
+                            textAnchor="end"
+                            height={90}
+                        />
+                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+                        <Bar
+                            dataKey={config.dataKey}
+                            fill={config.color || COLORS[0]}
+                            radius={[4, 4, 0, 0]}
+                            isAnimationActive={isAnimationActive}
+                            cursor="pointer"
+                            onClick={(d: any) => {
+                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                if (value !== undefined && onItemClick) onItemClick(value);
+                            }}
+                        />
+                        {config.dataKey2 && (
+                            <Bar
+                                dataKey={config.dataKey2}
+                                fill={COLORS[1]}
+                                radius={[4, 4, 0, 0]}
+                                isAnimationActive={isAnimationActive}
+                                cursor="pointer"
+                            />
+                        )}
+                        {showBrush && (
+                            <Brush dataKey={config.xAxisKey} height={30} stroke="#6366f1" fill="#1e293b" tickFormatter={() => ''} />
+                        )}
+                    </BarChart>
+                </ResponsiveContainer>
+            );
+
+        case ChartType.STACKED_BAR:
+            return (
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart {...commonProps}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                        <XAxis
+                            dataKey={config.xAxisKey}
+                            {...AxisProps}
+                            tickFormatter={xAxisFormatter}
+                            angle={-25}
+                            textAnchor="end"
+                            height={90}
+                        />
+                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+                        <Bar
+                            dataKey={config.dataKey}
+                            stackId="stack"
+                            fill={config.color || COLORS[0]}
+                            radius={config.dataKey2 ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+                            isAnimationActive={isAnimationActive}
+                            cursor="pointer"
+                            onClick={(d: any) => {
+                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                if (value !== undefined && onItemClick) onItemClick(value);
+                            }}
+                        />
+                        {config.dataKey2 && (
+                            <Bar
+                                dataKey={config.dataKey2}
+                                stackId="stack"
+                                fill={COLORS[1]}
+                                radius={[4, 4, 0, 0]}
+                                isAnimationActive={isAnimationActive}
+                                cursor="pointer"
+                            />
+                        )}
+                        {showBrush && (
+                            <Brush dataKey={config.xAxisKey} height={30} stroke="#6366f1" fill="#1e293b" tickFormatter={() => ''} />
+                        )}
+                    </BarChart>
+                </ResponsiveContainer>
+            );
+
+        case ChartType.COMBO:
+            return (
+                <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart {...commonProps}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                        <XAxis
+                            dataKey={config.xAxisKey}
+                            {...AxisProps}
+                            tickFormatter={xAxisFormatter}
+                            angle={-25}
+                            textAnchor="end"
+                            height={90}
+                        />
+                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+                        <Bar
+                            dataKey={config.dataKey}
+                            fill={config.color || COLORS[0]}
+                            radius={[4, 4, 0, 0]}
+                            isAnimationActive={isAnimationActive}
+                            cursor="pointer"
+                            onClick={(d: any) => {
+                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                if (value !== undefined && onItemClick) onItemClick(value);
+                            }}
+                        />
+                        {config.dataKey2 && (
+                            <Line
+                                type="monotone"
+                                dataKey={config.dataKey2}
+                                stroke={COLORS[2]}
+                                strokeWidth={3}
+                                dot={{ fill: theme === 'dark' ? '#0f172a' : '#ffffff', stroke: COLORS[2], strokeWidth: 2, r: 4 }}
+                                isAnimationActive={isAnimationActive}
+                            />
+                        )}
+                        {showBrush && (
+                            <Brush dataKey={config.xAxisKey} height={30} stroke="#6366f1" fill="#1e293b" tickFormatter={() => ''} />
+                        )}
+                    </ComposedChart>
+                </ResponsiveContainer>
+            );
+
         case ChartType.LINE:
             return (
                 <ResponsiveContainer width="100%" height="100%">
@@ -276,7 +454,6 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                             }}
                             activeDot={{ r: 6, fill: config.color || COLORS[1], cursor: 'pointer' }}
                             onClick={(d: any) => {
-                                // For Line charts, we usually want the payload's x-axis value
                                 const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
                                 if (value !== undefined && onItemClick) onItemClick(value);
                             }}
@@ -312,18 +489,25 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                         <Tooltip content={<CustomTooltip />} />
                         <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
                         <defs>
-                            <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor={COLORS[4]} stopOpacity={0.4} />
-                                <stop offset="95%" stopColor={COLORS[4]} stopOpacity={0} />
+                            <linearGradient id={`areaGradient-${config.id}`} x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={config.color || COLORS[4]} stopOpacity={0.8} />
+                                <stop offset="95%" stopColor={config.color || COLORS[4]} stopOpacity={0.15} />
                             </linearGradient>
                         </defs>
                         <Area
                             type="monotone"
                             dataKey={config.dataKey}
-                            stroke={COLORS[4]}
-                            fill="url(#colorGradient)"
-                            strokeWidth={2}
+                            stroke={config.color || COLORS[4]}
+                            fill={`url(#areaGradient-${config.id})`}
+                            strokeWidth={2.5}
                             isAnimationActive={isAnimationActive}
+                            dot={data.length > 50 ? false : {
+                                fill: theme === 'dark' ? '#0f172a' : '#ffffff',
+                                stroke: config.color || COLORS[4],
+                                strokeWidth: 2,
+                                r: 3,
+                            }}
+                            activeDot={{ r: 5, fill: config.color || COLORS[4], cursor: 'pointer' }}
                             onClick={(d: any) => {
                                 const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
                                 if (value !== undefined && onItemClick) onItemClick(value);
@@ -344,6 +528,220 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                     </AreaChart>
                 </ResponsiveContainer>
             );
+
+        case ChartType.SCATTER:
+            return (
+                <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart margin={{ top: 30, right: 40, left: 20, bottom: 25 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={themeColors.chartGrid} />
+                        <XAxis
+                            type="number"
+                            dataKey={config.xAxisKey}
+                            name={config.xAxisKey}
+                            {...AxisProps}
+                            tickFormatter={yAxisFormatter}
+                        />
+                        <YAxis
+                            type="number"
+                            dataKey={config.dataKey}
+                            name={config.dataKey}
+                            {...AxisProps}
+                            width={80}
+                            tickFormatter={yAxisFormatter}
+                        />
+                        <ZAxis range={[40, 200]} />
+                        <Tooltip
+                            cursor={{ strokeDasharray: '3 3' }}
+                            content={({ active, payload }: any) => {
+                                if (active && payload && payload.length) {
+                                    const d = payload[0].payload;
+                                    return (
+                                        <div style={{
+                                            backgroundColor: themeColors.chartTooltipBg,
+                                            border: `1px solid ${themeColors.chartTooltipBorder}`,
+                                            borderRadius: '8px',
+                                            padding: '8px 12px',
+                                            boxShadow: theme === 'dark' ? '0 10px 15px -3px rgba(0,0,0,0.5)' : '0 10px 15px -3px rgba(0,0,0,0.1)',
+                                        }}>
+                                            <p style={{ color: themeColors.chartTooltipText, fontSize: '11px', margin: '2px 0' }}>
+                                                {config.xAxisKey}: <strong>{isCurrency ? formatCurrency(d[config.xAxisKey]) : d[config.xAxisKey]}</strong>
+                                            </p>
+                                            <p style={{ color: config.color || COLORS[0], fontSize: '11px', margin: '2px 0' }}>
+                                                {config.dataKey}: <strong>{isCurrency ? formatCurrency(d[config.dataKey]) : d[config.dataKey]}</strong>
+                                            </p>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            }}
+                        />
+                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+                        <Scatter
+                            name={config.dataKey}
+                            data={data}
+                            fill={config.color || COLORS[0]}
+                            fillOpacity={0.7}
+                            isAnimationActive={isAnimationActive}
+                        />
+                    </ScatterChart>
+                </ResponsiveContainer>
+            );
+
+        case ChartType.WATERFALL: {
+            const waterfallColor = (entry: any) => entry._isPositive ? '#10b981' : '#f43f5e';
+            return (
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart {...commonProps}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                        <XAxis
+                            dataKey={config.xAxisKey}
+                            {...AxisProps}
+                            tickFormatter={xAxisFormatter}
+                            angle={-25}
+                            textAnchor="end"
+                            height={90}
+                        />
+                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
+                        <Tooltip
+                            content={({ active, payload, label }: any) => {
+                                if (active && payload && payload.length) {
+                                    const d = payload[0]?.payload;
+                                    return (
+                                        <div style={{
+                                            backgroundColor: themeColors.chartTooltipBg,
+                                            border: `1px solid ${themeColors.chartTooltipBorder}`,
+                                            borderRadius: '8px',
+                                            padding: '8px 12px',
+                                            boxShadow: theme === 'dark' ? '0 10px 15px -3px rgba(0,0,0,0.5)' : '0 10px 15px -3px rgba(0,0,0,0.1)',
+                                        }}>
+                                            <p style={{ color: themeColors.chartTooltipText, fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>{label}</p>
+                                            <p style={{ color: d?._isPositive ? '#10b981' : '#f43f5e', fontSize: '11px', margin: '2px 0' }}>
+                                                Change: <strong>{isCurrency ? formatCurrency(d?.[config.dataKey]) : d?.[config.dataKey]}</strong>
+                                            </p>
+                                            <p style={{ color: themeColors.chartTooltipText, fontSize: '11px', margin: '2px 0' }}>
+                                                Running Total: <strong>{isCurrency ? formatCurrency(d?._total) : d?._total?.toFixed(2)}</strong>
+                                            </p>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            }}
+                        />
+                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+                        {/* Invisible base bar */}
+                        <Bar dataKey="_base" stackId="waterfall" fill="transparent" isAnimationActive={false} />
+                        {/* Visible delta bar */}
+                        <Bar
+                            dataKey={config.dataKey}
+                            stackId="waterfall"
+                            radius={[4, 4, 0, 0]}
+                            isAnimationActive={isAnimationActive}
+                            cursor="pointer"
+                            onClick={(d: any) => {
+                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                if (value !== undefined && onItemClick) onItemClick(value);
+                            }}
+                        >
+                            {data.map((entry, index) => (
+                                <Cell key={`wf-${index}`} fill={waterfallColor(entry)} />
+                            ))}
+                            <LabelList dataKey={config.dataKey} position="top" fill={themeColors.chartLabelText} fontSize={11} formatter={labelFormatter} />
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            );
+        }
+
+        case ChartType.HEATMAP: {
+            if (!data || data.length === 0) return <div className={`flex items-center justify-center h-full ${colors.textMuted} text-sm`}>No Data Available</div>;
+
+            const xVals = Array.from(new Set(data.map((d: any) => d.x)));
+            const yVals = Array.from(new Set(data.map((d: any) => d.y)));
+            const values = data.map((d: any) => d.value);
+            const minVal = Math.min(...values);
+            const maxVal = Math.max(...values);
+            const range = maxVal - minVal || 1;
+
+            const getHeatColor = (val: number) => {
+                const t = (val - minVal) / range;
+                // indigo gradient: light → dark
+                const r = Math.round(99 - t * 60);
+                const g = Math.round(102 - t * 60);
+                const b = Math.round(241);
+                return `rgba(${r}, ${g}, ${b}, ${0.15 + t * 0.85})`;
+            };
+
+            return (
+                <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '8px' }}>
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: `80px repeat(${xVals.length}, 1fr)`,
+                        gap: '2px',
+                        fontSize: '10px',
+                        minWidth: xVals.length > 8 ? `${xVals.length * 60}px` : undefined,
+                    }}>
+                        {/* Header row */}
+                        <div style={{ padding: '6px 4px', fontWeight: 700, color: themeColors.chartAxisText }} />
+                        {xVals.map((x: any) => (
+                            <div key={x} style={{
+                                padding: '6px 4px',
+                                fontWeight: 600,
+                                color: themeColors.chartAxisText,
+                                textAlign: 'center',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                            }}>{String(x).length > 8 ? String(x).substring(0, 6) + '..' : x}</div>
+                        ))}
+                        {/* Data rows */}
+                        {yVals.map((y: any) => (
+                            <React.Fragment key={y}>
+                                <div style={{
+                                    padding: '6px 4px',
+                                    fontWeight: 600,
+                                    color: themeColors.chartAxisText,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                }}>{String(y).length > 10 ? String(y).substring(0, 8) + '..' : y}</div>
+                                {xVals.map((x: any) => {
+                                    const cell = data.find((d: any) => d.x === x && d.y === y);
+                                    const val = cell?.value ?? 0;
+                                    return (
+                                        <div
+                                            key={`${x}-${y}`}
+                                            style={{
+                                                padding: '6px 4px',
+                                                backgroundColor: getHeatColor(val),
+                                                borderRadius: '4px',
+                                                textAlign: 'center',
+                                                color: (val - minVal) / range > 0.5
+                                                    ? '#ffffff'
+                                                    : themeColors.chartAxisText,
+                                                fontWeight: 600,
+                                                transition: 'all 0.2s ease',
+                                                cursor: 'pointer',
+                                                minHeight: '28px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                            title={`${config.xAxisKey}: ${x}\n${config.yAxisKey}: ${y}\n${config.dataKey}: ${val}`}
+                                            onClick={() => onItemClick && onItemClick(x)}
+                                        >
+                                            {isCurrency ? formatCurrency(val) : val}
+                                        </div>
+                                    );
+                                })}
+                            </React.Fragment>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
         case ChartType.PIE:
             return (
                 <ResponsiveContainer width="100%" height={280}>
@@ -657,7 +1055,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                         (node as HTMLElement).style.display = 'none';
                     });
 
-                    
+
 
                     // Improve legend item spacing
                     el.querySelectorAll('.recharts-default-legend').forEach((node: any) => {

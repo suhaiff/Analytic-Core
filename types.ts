@@ -45,7 +45,14 @@ export enum ChartType {
   LINE = 'LINE',
   AREA = 'AREA',
   PIE = 'PIE',
-  KPI = 'KPI'
+  KPI = 'KPI',
+  HORIZONTAL_BAR = 'HORIZONTAL_BAR',
+  GROUPED_BAR = 'GROUPED_BAR',
+  STACKED_BAR = 'STACKED_BAR',
+  COMBO = 'COMBO',
+  SCATTER = 'SCATTER',
+  WATERFALL = 'WATERFALL',
+  HEATMAP = 'HEATMAP'
 }
 
 export enum AggregationType {
@@ -61,7 +68,9 @@ export interface ChartConfig {
   description: string;
   type: ChartType;
   xAxisKey: string; // Dimension
-  dataKey: string; // Metric
+  dataKey: string; // Metric (primary)
+  dataKey2?: string; // Metric (secondary) — for grouped/stacked/combo charts
+  yAxisKey?: string; // Second dimension — for heatmap
   aggregation: AggregationType;
   color?: string;
   multicolor?: boolean;

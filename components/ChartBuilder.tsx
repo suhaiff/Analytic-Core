@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DataModel, ChartConfig } from '../types';
 import { analyzeDataAndSuggestKPIs, generateChartFromPrompt } from '../services/geminiService';
-import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, Filter, Check, ChevronDown, Palette } from 'lucide-react';
+import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, Filter, Check, ChevronDown, Palette, GitBranch, Layers, BarChartHorizontal, ScatterChart as ScatterChartIcon, Droplets, Grid3x3 } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
@@ -50,8 +50,8 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    const isBAR = chart.type === 'BAR';
-    const isLINE = chart.type === 'LINE';
+    const isBAR = chart.type === 'BAR' || chart.type === 'HORIZONTAL_BAR' || chart.type === 'GROUPED_BAR' || chart.type === 'STACKED_BAR';
+    const isLINE = chart.type === 'LINE' || chart.type === 'AREA' || chart.type === 'COMBO';
     const showColorOption = isBAR || isLINE;
     const activeColor = chart.color || CHART_COLOR_OPTIONS[0].value;
 
@@ -343,9 +343,16 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     const getIcon = (type: string) => {
         switch (type) {
             case 'BAR': return <BarChart3 className="w-5 h-5" />;
+            case 'HORIZONTAL_BAR': return <BarChartHorizontal className="w-5 h-5" />;
+            case 'GROUPED_BAR': return <GitBranch className="w-5 h-5" />;
+            case 'STACKED_BAR': return <Layers className="w-5 h-5" />;
+            case 'COMBO': return <Activity className="w-5 h-5" />;
             case 'PIE': return <PieChart className="w-5 h-5" />;
             case 'LINE': return <LineChart className="w-5 h-5" />;
             case 'AREA': return <Activity className="w-5 h-5" />;
+            case 'SCATTER': return <ScatterChartIcon className="w-5 h-5" />;
+            case 'WATERFALL': return <Droplets className="w-5 h-5" />;
+            case 'HEATMAP': return <Grid3x3 className="w-5 h-5" />;
             case 'KPI': return <div className="text-xs font-bold border border-current px-1 rounded">123</div>;
             default: return <BarChart3 className="w-5 h-5" />;
         }
