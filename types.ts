@@ -52,7 +52,9 @@ export enum ChartType {
   COMBO = 'COMBO',
   SCATTER = 'SCATTER',
   WATERFALL = 'WATERFALL',
-  HEATMAP = 'HEATMAP'
+  HEATMAP = 'HEATMAP',
+  TABLE = 'TABLE',
+  MATRIX = 'MATRIX'
 }
 
 export enum AggregationType {

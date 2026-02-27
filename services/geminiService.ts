@@ -26,10 +26,12 @@ Chart type guidelines:
 - SCATTER: For showing correlation between two numeric columns. xAxisKey and dataKey must both be numeric.
 - WATERFALL: For showing cumulative effect of sequential positive/negative values.
 - HEATMAP: For showing intensity across two categorical dimensions. Requires xAxisKey, yAxisKey, and dataKey.
+- MATRIX: For a cross-tabulation of two categorical dimensions with numeric values in cells. Requires xAxisKey, yAxisKey, and dataKey.
+- TABLE: For displaying aggregated data in a list format.
 - KPI: For displaying a single key metric value.
 
 When suggesting GROUPED_BAR, STACKED_BAR, or COMBO charts, always provide both dataKey and dataKey2 (two different numeric columns).
-When suggesting HEATMAP, always provide xAxisKey, yAxisKey (both categorical), and dataKey (numeric).
+When suggesting HEATMAP or MATRIX, always provide xAxisKey, yAxisKey (both categorical), and dataKey (numeric).
 When suggesting SCATTER, use two numeric columns for xAxisKey and dataKey.
 `;
 
@@ -44,11 +46,11 @@ const chartSchema = {
         properties: {
           title: { type: Type.STRING, description: "Short title for the chart" },
           description: { type: Type.STRING, description: "Explanation of why this insight is useful" },
-          type: { type: Type.STRING, enum: ["BAR", "LINE", "AREA", "PIE", "KPI", "HORIZONTAL_BAR", "GROUPED_BAR", "STACKED_BAR", "COMBO", "SCATTER", "WATERFALL", "HEATMAP"] },
+          type: { type: Type.STRING, enum: ["BAR", "LINE", "AREA", "PIE", "KPI", "HORIZONTAL_BAR", "GROUPED_BAR", "STACKED_BAR", "COMBO", "SCATTER", "WATERFALL", "HEATMAP", "TABLE", "MATRIX"] },
           xAxisKey: { type: Type.STRING, description: "The column for X Axis (categorical for most, numeric for SCATTER)" },
           dataKey: { type: Type.STRING, description: "The primary numeric column for the data (Metric 1)" },
           dataKey2: { type: Type.STRING, description: "Optional second numeric column (Metric 2) — required for GROUPED_BAR, STACKED_BAR, COMBO" },
-          yAxisKey: { type: Type.STRING, description: "Optional second categorical column — required for HEATMAP" },
+          yAxisKey: { type: Type.STRING, description: "Optional second categorical column — required for HEATMAP, MATRIX" },
           aggregation: { type: Type.STRING, enum: ["SUM", "COUNT", "AVERAGE", "NONE"] },
         },
         required: ["title", "type", "xAxisKey", "dataKey", "aggregation", "description"]
@@ -72,9 +74,9 @@ export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<Chart
     ${JSON.stringify(model.data.slice(0, 3))}
 
     Please suggest 6 to 10 meaningful Key Performance Indicators (KPIs) and Charts that would make a great executive dashboard.
-    Use a diverse mix of chart types — include at least a few of the advanced chart types (HORIZONTAL_BAR, GROUPED_BAR, STACKED_BAR, COMBO, SCATTER, WATERFALL, HEATMAP) where they make sense for this dataset.
+    Use a diverse mix of chart types — include at least a few of the advanced chart types (HORIZONTAL_BAR, GROUPED_BAR, STACKED_BAR, COMBO, SCATTER, WATERFALL, HEATMAP, TABLE, MATRIX) where they make sense for this dataset.
     Only suggest GROUPED_BAR, STACKED_BAR, or COMBO if there are at least two numeric columns.
-    Only suggest HEATMAP if there are at least two categorical columns and one numeric column.
+    Only suggest HEATMAP or MATRIX if there are at least two categorical columns and one numeric column.
     Only suggest SCATTER if there are at least two numeric columns.
   `;
 
@@ -116,9 +118,9 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
     User Request: "${prompt}"
     
     Create a single chart configuration that best satisfies the user request.
-    You may use any chart type: BAR, LINE, AREA, PIE, KPI, HORIZONTAL_BAR, GROUPED_BAR, STACKED_BAR, COMBO, SCATTER, WATERFALL, HEATMAP.
+    You may use any chart type: BAR, LINE, AREA, PIE, KPI, HORIZONTAL_BAR, GROUPED_BAR, STACKED_BAR, COMBO, SCATTER, WATERFALL, HEATMAP, TABLE, MATRIX.
     For GROUPED_BAR, STACKED_BAR, or COMBO, provide both dataKey and dataKey2.
-    For HEATMAP, provide xAxisKey, yAxisKey, and dataKey.
+    For HEATMAP or MATRIX, provide xAxisKey, yAxisKey, and dataKey.
     For SCATTER, use two numeric columns.
   `;
 
@@ -128,11 +130,11 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
     properties: {
       title: { type: Type.STRING },
       description: { type: Type.STRING },
-      type: { type: Type.STRING, enum: ["BAR", "LINE", "AREA", "PIE", "KPI", "HORIZONTAL_BAR", "GROUPED_BAR", "STACKED_BAR", "COMBO", "SCATTER", "WATERFALL", "HEATMAP"] },
+      type: { type: Type.STRING, enum: ["BAR", "LINE", "AREA", "PIE", "KPI", "HORIZONTAL_BAR", "GROUPED_BAR", "STACKED_BAR", "COMBO", "SCATTER", "WATERFALL", "HEATMAP", "TABLE", "MATRIX"] },
       xAxisKey: { type: Type.STRING },
       dataKey: { type: Type.STRING },
       dataKey2: { type: Type.STRING, description: "Optional second metric for GROUPED_BAR, STACKED_BAR, COMBO" },
-      yAxisKey: { type: Type.STRING, description: "Optional second categorical dimension for HEATMAP" },
+      yAxisKey: { type: Type.STRING, description: "Optional second categorical dimension for HEATMAP, MATRIX" },
       aggregation: { type: Type.STRING, enum: ["SUM", "COUNT", "AVERAGE", "NONE"] },
     },
     required: ["title", "type", "xAxisKey", "dataKey", "aggregation"]

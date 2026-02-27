@@ -31,8 +31,8 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
       }));
   }
 
-  // --- HEATMAP: Cross-tabulate two categorical columns ---
-  if (config.type === 'HEATMAP' && config.yAxisKey) {
+  // --- HEATMAP & MATRIX: Cross-tabulate two categorical columns ---
+  if ((config.type === 'HEATMAP' || config.type === 'MATRIX') && config.yAxisKey) {
     const matrix: { [key: string]: { [key: string]: { sum: number; count: number } } } = {};
     const xValues = new Set<string>();
     const yValues = new Set<string>();
@@ -75,8 +75,8 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
   }
 
   if (config.aggregation === AggregationType.NONE) {
-    // For Trend charts (Line/Area), we want more data points to show the full story.
-    if (config.type === 'LINE' || config.type === 'AREA') {
+    // For Trend charts and Tables, we want more data points to show the full story.
+    if (config.type === 'LINE' || config.type === 'AREA' || config.type === 'TABLE') {
       return data.slice(0, 2000);
     }
     // For Bar/Pie, too many slices look bad, so we keep a tighter limit

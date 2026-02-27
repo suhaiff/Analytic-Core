@@ -9,7 +9,7 @@ import { aggregateData } from '../utils/aggregator';
 import {
     LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2,
     X, Home, Save, Edit, RefreshCw, Plus, ArrowRight, Filter, Trash2,
-    ChevronDown, Check, MousePointer2
+    ChevronDown, Check, MousePointer2, Table as TableIcon, Grid3x3
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -785,6 +785,81 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                     </PieChart>
                 </ResponsiveContainer>
             );
+        case ChartType.TABLE:
+            return (
+                <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '12px' }}>
+                    <table className="w-full text-left border-collapse">
+                        <thead className="sticky top-0 z-10">
+                            <tr className={theme === 'dark' ? 'bg-slate-800' : 'bg-slate-100'}>
+                                <th className={`px-4 py-3 font-bold text-xs uppercase tracking-wider border-b ${theme === 'dark' ? 'border-slate-700 text-slate-300' : 'border-slate-300 text-slate-600'}`}>{config.xAxisKey}</th>
+                                <th className={`px-4 py-3 font-bold text-xs uppercase tracking-wider border-b ${theme === 'dark' ? 'border-slate-700 text-slate-300' : 'border-slate-300 text-slate-600'} text-right`}>{config.dataKey}</th>
+                                {config.dataKey2 && <th className={`px-4 py-3 font-bold text-xs uppercase tracking-wider border-b ${theme === 'dark' ? 'border-slate-700 text-slate-300' : 'border-slate-300 text-slate-600'} text-right`}>{config.dataKey2}</th>}
+                            </tr>
+                        </thead>
+                        <tbody className={`divide-y ${theme === 'dark' ? 'divide-slate-800' : 'divide-slate-200'}`}>
+                            {data.map((row, i) => (
+                                <tr key={i} className={`hover:${theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-50'} transition-colors`}>
+                                    <td className={`px-4 py-3 text-sm font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{row[config.xAxisKey]}</td>
+                                    <td className={`px-4 py-3 text-sm font-bold text-right ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{isCurrency ? formatCurrency(row[config.dataKey]) : row[config.dataKey]}</td>
+                                    {config.dataKey2 && <td className={`px-4 py-3 text-sm font-bold text-right ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>{isCurrency ? formatCurrency(row[config.dataKey2]) : row[config.dataKey2]}</td>}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+
+        case ChartType.MATRIX: {
+            if (!data || data.length === 0) return <div className={`flex items-center justify-center h-full ${colors.textMuted} text-sm`}>No Data Available</div>;
+
+            const xVals = Array.from(new Set(data.map((d: any) => d.x))).sort();
+            const yVals = Array.from(new Set(data.map((d: any) => d.y))).sort();
+
+            return (
+                <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '12px' }}>
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: `minmax(120px, 1fr) repeat(${xVals.length}, minmax(80px, 1fr))`,
+                        fontSize: '11px',
+                        border: `1px solid ${themeColors.chartGrid}`,
+                        borderRadius: '8px',
+                        overflow: 'hidden'
+                    }}>
+                        {/* Corner Header */}
+                        <div className={`p-3 font-bold uppercase tracking-wider ${theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'} border-b border-r`} style={{ borderColor: themeColors.chartGrid }}>
+                            {config.yAxisKey} \ {config.xAxisKey}
+                        </div>
+                        {/* X Headers */}
+                        {xVals.map(x => (
+                            <div key={x} className={`p-3 font-bold text-center uppercase tracking-wider ${theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'} border-b border-r`} style={{ borderColor: themeColors.chartGrid }}>
+                                {x}
+                            </div>
+                        ))}
+
+                        {/* Rows */}
+                        {yVals.map(y => (
+                            <React.Fragment key={y}>
+                                {/* Y Header */}
+                                <div className={`p-3 font-bold ${theme === 'dark' ? 'bg-slate-800/40 text-slate-300' : 'bg-slate-50 text-slate-600'} border-b border-r`} style={{ borderColor: themeColors.chartGrid }}>
+                                    {y}
+                                </div>
+                                {/* Cells */}
+                                {xVals.map(x => {
+                                    const cell = data.find((d: any) => d.x === x && d.y === y);
+                                    const val = cell?.value ?? 0;
+                                    return (
+                                        <div key={`${x}-${y}`} className={`p-3 text-center border-b border-r flex items-center justify-center font-bold ${theme === 'dark' ? 'text-slate-400' : 'text-slate-700'}`} style={{ borderColor: themeColors.chartGrid }}>
+                                            {isCurrency ? formatCurrency(val) : val}
+                                        </div>
+                                    );
+                                })}
+                            </React.Fragment>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
         default:
             return null;
     }

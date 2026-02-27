@@ -162,8 +162,12 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
                     <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.dataKey}>{chart.dataKey}</div>
                 </div>
                 <div className={`text-center p-1.5 sm:p-2 ${theme === 'dark' ? 'bg-slate-950/50' : 'bg-slate-100'} rounded-md sm:rounded-lg overflow-hidden`}>
-                    <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>Agg</div>
-                    <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.aggregation}>{chart.aggregation}</div>
+                    <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>
+                        {(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? 'Y-Axis' : 'Agg'}
+                    </div>
+                    <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? chart.yAxisKey : chart.aggregation}>
+                        {(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? (chart.yAxisKey || "-") : chart.aggregation}
+                    </div>
                 </div>
             </div>
         </div>
@@ -273,6 +277,13 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
             if (normalize(c.aggregation) !== normalize(chart.aggregation)) return false;
             // For KPI charts, xAxisKey doesn't affect the output — skip it
             if (chart.type === 'KPI') return true;
+
+            // For Heatmap and Matrix, also compare yAxisKey
+            if (chart.type === 'HEATMAP' || chart.type === 'MATRIX') {
+                return normalize(c.xAxisKey) === normalize(chart.xAxisKey) &&
+                    normalize(c.yAxisKey) === normalize(chart.yAxisKey);
+            }
+
             return normalize(c.xAxisKey) === normalize(chart.xAxisKey);
         });
     };
@@ -353,6 +364,8 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
             case 'SCATTER': return <ScatterChartIcon className="w-5 h-5" />;
             case 'WATERFALL': return <Droplets className="w-5 h-5" />;
             case 'HEATMAP': return <Grid3x3 className="w-5 h-5" />;
+            case 'MATRIX': return <Grid3x3 className="w-5 h-5" />;
+            case 'TABLE': return <TableIcon className="w-5 h-5" />;
             case 'KPI': return <div className="text-xs font-bold border border-current px-1 rounded">123</div>;
             default: return <BarChart3 className="w-5 h-5" />;
         }
