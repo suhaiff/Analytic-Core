@@ -9,7 +9,7 @@ import { Welcome } from './components/Welcome';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { processFile } from './utils/fileParser';
 import { DashboardLoader } from './components/DashboardLoader';
-import { DataModel, ChartConfig, DataTable, SavedDashboard, User, ProcessedRow } from './types';
+import { DataModel, ChartConfig, DataTable, SavedDashboard, User, ProcessedRow, DashboardSection } from './types';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import { getThemeClasses } from './theme';
@@ -327,8 +327,11 @@ function AppContent() {
     setDashboardSections([]);
   };
 
-  const handleSaveDashboard = async (name: string, currentCharts: ChartConfig[], currentSections?: DashboardSection[]) => {
+  const handleSaveDashboard = async (name: string, currentCharts: ChartConfig[], currentSections?: DashboardSection[], updatedFilterColumns?: string[]) => {
     if (!dataModel || !currentUser) return;
+
+    // Use updated filter columns if provided (from Dashboard state), otherwise fall back to App state
+    const finalFilterColumns = updatedFilterColumns || filterColumns;
 
     const newDash: SavedDashboard = {
       id: Date.now().toString(),
@@ -337,8 +340,13 @@ function AppContent() {
       dataModel: dataModel,
       chartConfigs: currentCharts,
       sections: currentSections,
-      filterColumns: filterColumns
+      filterColumns: finalFilterColumns
     };
+
+    // Also update current App state so the UI stays in sync
+    if (updatedFilterColumns) {
+      setFilterColumns(updatedFilterColumns);
+    }
 
     try {
       await dashboardService.saveDashboard(currentUser.id, newDash);

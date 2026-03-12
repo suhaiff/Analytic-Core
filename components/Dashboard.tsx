@@ -27,7 +27,7 @@ interface DashboardProps {
     sections?: DashboardSection[];
     filterColumns?: string[];
     onHome: () => void;
-    onSave: (name: string, charts: ChartConfig[], sections?: DashboardSection[]) => void;
+    onSave: (name: string, charts: ChartConfig[], sections?: DashboardSection[], filterColumns?: string[]) => void;
     onRefresh?: () => Promise<void>;
 }
 
@@ -130,14 +130,16 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
     // Custom Tooltip Content
     const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
-            let displayLabel = label || 'Not Specified';
-            if (label && isXDate) {
-                const num = typeof label === 'number' ? label : parseFloat(label);
+            // For Pie charts, the name is in payload[0].name, while label might be missing
+            let displayLabel = label || payload[0].name || payload[0].payload?.name || 'Not Specified';
+            
+            if (displayLabel !== 'Not Specified' && isXDate) {
+                const num = typeof displayLabel === 'number' ? displayLabel : parseFloat(displayLabel);
                 if (!isNaN(num) && isExcelSerialDate(num)) {
                     displayLabel = excelSerialToDate(num);
                 }
-            } else if (label && isXCurrency && typeof label === 'number') {
-                displayLabel = formatCurrency(label);
+            } else if (displayLabel !== 'Not Specified' && isXCurrency && typeof displayLabel === 'number') {
+                displayLabel = formatCurrency(displayLabel);
             }
 
             return (
@@ -998,7 +1000,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
             const tableTotal2 = config.dataKey2 ? data.reduce((acc, row) => acc + (Number(row[config.dataKey2]) || 0), 0) : 0;
             const fmtNum = (v: number, key: string) => formatByColumn(v, key);
             return (
-                <div style={{ width: '100%', height: '100%', overflow: 'hidden' }} className="custom-chart-scrollbar">
+                <div style={{ width: '100%', height: '100%', overflow: 'auto' }} className="custom-chart-scrollbar">
                     <table className="w-full border-collapse" style={{ fontSize: isExporting ? '7.5px' : '11px' }}>
                         <thead>
                             <tr style={{ background: theme === 'dark' ? '#1e293b' : '#e2e8f0' }}>
@@ -1072,7 +1074,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
             const matrixFontSize = isExporting ? (mxVals.length > 15 ? '6px' : (mxVals.length > 8 ? '7.5px' : '9px')) : '11px';
 
             return (
-                <div style={{ width: '100%', height: '100%', overflow: 'hidden', padding: '0' }}>
+                <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '0' }}>
                     <table className="w-full border-collapse" style={{ fontSize: matrixFontSize, tableLayout: isExporting && mxVals.length > 8 ? 'fixed' : 'auto' }}>
                         <thead>
                             <tr style={{ background: theme === 'dark' ? '#1e293b' : '#e2e8f0' }}>
@@ -1329,6 +1331,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     // Local state for charts allows editing/adding charts in-place
     const [currentCharts, setCurrentCharts] = useState<ChartConfig[]>(Array.isArray(chartConfigs) ? chartConfigs : []);
     const [currentSections, setCurrentSections] = useState<DashboardSection[]>(explicitSections);
+    const [currentFilterColumns, setCurrentFilterColumns] = useState<string[]>(filterColumns);
     const [isEditing, setIsEditing] = useState(false);
 
     // UI State
@@ -1463,15 +1466,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         if (!dataModel || !dataModel.columns) return [];
         // If specific filter columns were chosen in ChartBuilder, use only those.
         // Otherwise fall back to all columns present in data.
-        const sourceColumns = filterColumns.length > 0
-            ? filterColumns.filter(col => dataModel.columns.includes(col))
+        const sourceColumns = currentFilterColumns.length > 0
+            ? currentFilterColumns.filter(col => dataModel.columns.includes(col))
             : dataModel.columns;
         return sourceColumns.filter(col => {
             if (!col) return false;
             const firstRow = dataModel.data && dataModel.data[0];
             return firstRow && (col in firstRow);
         });
-    }, [dataModel, filterColumns]);
+    }, [dataModel, currentFilterColumns]);
 
     const getUniqueValues = useCallback((column: string): string[] => {
         if (!column || !dataModel || !dataModel.data) return [];
@@ -1510,9 +1513,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     useEffect(() => {
         if (dataModel) {
             setCurrentCharts(chartConfigs);
+            setCurrentFilterColumns(filterColumns);
             setDashboardName(dataModel.name);
         }
-    }, [chartConfigs, dataModel?.name]);
+    }, [chartConfigs, filterColumns, dataModel?.name]);
 
     const kpis = useMemo(() => {
         if (!Array.isArray(currentCharts)) return [];
@@ -1806,12 +1810,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
             alert("Please enter a valid name");
             return;
         }
-        onSave(dashboardName, currentCharts, currentSections);
+        onSave(dashboardName, currentCharts, currentSections, currentFilterColumns);
         setIsSaveModalOpen(false);
     };
 
-    const handleUpdateFromBuilder = (updatedCharts: ChartConfig[], updatedSections?: DashboardSection[]) => {
+    const handleUpdateFromBuilder = (updatedCharts: ChartConfig[], updatedFilterCols: string[], updatedSections?: DashboardSection[]) => {
         setCurrentCharts(updatedCharts);
+        setCurrentFilterColumns(updatedFilterCols);
         if (updatedSections) setCurrentSections(updatedSections);
         setIsEditing(false);
     };
@@ -1869,10 +1874,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                     <div className="fixed inset-0 z-50 bg-slate-950 animate-fade-in">
                         <ChartBuilder
                             dataModel={dataModel}
-                            onGenerateReport={(updatedCharts, _cols, updatedSections) => handleUpdateFromBuilder(updatedCharts, updatedSections)}
+                            onGenerateReport={(updatedCharts, updatedFilterCols, updatedSections) => handleUpdateFromBuilder(updatedCharts, updatedFilterCols, updatedSections)}
                             onHome={() => setIsEditing(false)}
                             initialBucket={currentCharts}
-                            initialFilterColumns={filterColumns}
+                            initialFilterColumns={currentFilterColumns}
                             sections={currentSections}
                             mode="update"
                         />
@@ -2024,7 +2029,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                             )}
 
                             {/* Manual 'Add Filter' Dropdown — only shown when no sidebar filter columns are configured */}
-                            {filterColumns.length === 0 && (
+                            {currentFilterColumns.length === 0 && (
                             <div className="relative ml-2 border-l border-slate-700/50 pl-4">
                                 <button
                                     onClick={() => {
@@ -2157,7 +2162,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                     <div className="flex flex-1 min-h-0 print:block">
 
                     {/* --- Filter Sidebar (only when filterColumns are configured) --- */}
-                    {filterColumns.length > 0 && (
+                    {currentFilterColumns.length > 0 && (
                         <FilterSidebar
                             filterableColumns={filterableColumns}
                             activeFilters={activeFilters}
