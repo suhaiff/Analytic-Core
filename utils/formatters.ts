@@ -34,6 +34,38 @@ export const formatCurrency = (value: number | string | null | undefined, decima
 };
 
 /**
+ * Formats a number as Indian Rupee with compact notation (K, L, Cr)
+ * Useful for axis labels and small spaces
+ * @param value - The numeric value to format
+ * @returns Formatted compact currency string
+ */
+export const formatCompactCurrency = (value: number | string | null | undefined): string => {
+    if (value === null || value === undefined || value === '') {
+        return '₹0';
+    }
+
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+
+    if (isNaN(numValue)) {
+        return '₹0';
+    }
+
+    const absValue = Math.abs(numValue);
+    const sign = numValue < 0 ? '-' : '';
+
+    if (absValue >= 10000000) return `${sign}₹${(absValue / 10000000).toFixed(1)}Cr`;
+    if (absValue >= 100000) return `${sign}₹${(absValue / 100000).toFixed(1)}L`;
+    if (absValue >= 1000) return `${sign}₹${(absValue / 1000).toFixed(1)}K`;
+
+    // For small numbers, use standard formatting with auto-decimals
+    const hasDecimals = absValue % 1 !== 0;
+    return `${sign}₹${new Intl.NumberFormat('en-IN', {
+        minimumFractionDigits: hasDecimals ? 2 : 0,
+        maximumFractionDigits: hasDecimals ? 2 : 0,
+    }).format(absValue)}`;
+};
+
+/**
  * Formats a number with commas (Indian numbering system) without currency symbol
  * @param value - The numeric value to format
  * @param decimals - Number of decimal places
@@ -104,7 +136,7 @@ export const isDateTimeColumn = (columnName: string): boolean => {
 export const isCountColumn = (columnName: string): boolean => {
     const countKeywords = [
         'count', 'quantity', 'qty', 'number', 'num', 'index',
-        'rank', 'position', 'sequence', 'order'
+        'rank', 'position', 'sequence', 'order', 'medals', 'points', 'goals', 'votes', 'score', 'gold', 'silver', 'bronze', 'tally', 'total medals'
     ];
 
     const lowerName = columnName.toLowerCase();
@@ -117,10 +149,16 @@ export const isCountColumn = (columnName: string): boolean => {
  * @returns true if it's likely a currency field
  */
 export const isCurrencyColumn = (columnName: string): boolean => {
-    // First, exclude non-currency columns
+    // ID columns never take currency format
     if (isIdColumn(columnName)) return false;
-    if (isDateTimeColumn(columnName)) return false;
-    if (isCountColumn(columnName)) return false;
+
+    // Normalize column name for keyword matching
+    const lowerName = columnName.toLowerCase();
+    const normalizedName = lowerName.replace(/[\s_-]/g, '');
+
+    // Category, status, or text columns should NOT be currency
+    const categoryKeywords = ['mode', 'type', 'method', 'category', 'status', 'description', 'remark', 'note', 'name', 'title'];
+    if (categoryKeywords.some(keyword => lowerName.includes(keyword))) return false;
 
     const currencyKeywords = [
         'price', 'cost', 'amount', 'total', 'revenue', 'sales',
@@ -128,17 +166,31 @@ export const isCurrencyColumn = (columnName: string): boolean => {
         'income', 'expense', 'balance', 'rate', 'mrp', 'discount',
         'earning', 'wage', 'commission', 'bonus', 'refund', 'tax',
         'gst', 'vat', 'duty', 'bill', 'invoice', 'due', 'paid',
-        'receivable', 'payable', 'credit', 'debit'
+        'receivable', 'payable', 'credit', 'debit', 'rupees', 'inr',
+        'shipping', 'ship'
     ];
 
-    // Normalize column name: lowercase, replace spaces/underscores with empty string for partial matching
-    const lowerName = columnName.toLowerCase();
-    const normalizedName = lowerName.replace(/[\s_-]/g, '');
-
-    // Check both original and normalized versions
-    return currencyKeywords.some(keyword =>
+    // Priority 1: If it contains currency keywords, it's likely currency
+    const hasCurrencyKeyword = currencyKeywords.some(keyword =>
         lowerName.includes(keyword) || normalizedName.includes(keyword)
     );
+    if (hasCurrencyKeyword) {
+        if (isDateTimeColumn(columnName)) return false;
+        // If it's explicitly a count column, it should NOT be currency, even if 'total' is present.
+        if (isCountColumn(columnName)) return false;
+
+        // CRITICAL: If the name is ONLY "total" (no context like "Total Sales"), 
+        // it's highly ambiguous. Default to false here and let AI/User decide.
+        if (lowerName === 'total') return false;
+
+        return true;
+    }
+
+    // Priority 2: Exclusions for other numeric columns
+    if (isDateTimeColumn(columnName)) return false;
+    if (isCountColumn(columnName)) return false;
+
+    return false;
 };
 
 /**
@@ -164,6 +216,21 @@ export const excelSerialToDate = (serial: number): string => {
 };
 
 /**
+ * Formats an Excel serial date for use in chart ticks (concise)
+ * @param serial - Excel serial date
+ * @returns Short formatted date string like '15 Jan'
+ */
+export const formatDateForTick = (serial: number): string => {
+    const excelEpoch = new Date(1899, 11, 30);
+    const date = new Date(excelEpoch.getTime() + Math.floor(serial) * 86400000);
+
+    return date.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short'
+    });
+};
+
+/**
  * Checks if a number is likely an Excel serial date
  * Excel dates are typically between 1 (1900-01-01) and 50000+ (current dates)
  * @param value - Number to check
@@ -176,11 +243,9 @@ export const isExcelSerialDate = (value: number): boolean => {
 };
 
 /**
- * Formats a value based on its column name
- * If the column seems currency-related, formats as currency
- * Otherwise formats as regular number or keeps original format for IDs/dates
+ * Formats a value based on its column name and optional DataModel metadata
  */
-export const smartFormat = (value: any, columnName: string): string => {
+export const smartFormat = (value: any, columnName: string, columnMetadata?: any): string => {
     if (value === null || value === undefined || value === '') {
         return '-';
     }
@@ -194,8 +259,42 @@ export const smartFormat = (value: any, columnName: string): string => {
     const numValue = typeof value === 'number' ? value : parseFloat(value);
     const isNumeric = !isNaN(numValue);
 
+    // If we have AI-driven metadata, prioritize it
+    if (columnMetadata && columnMetadata[columnName]) {
+        const meta = columnMetadata[columnName];
+        const type = meta.finalType || meta.detectedType;
+
+        if (isNumeric) {
+            switch (type) {
+                case 'CURRENCY':
+                    return formatCurrency(numValue);
+                case 'INTEGER':
+                    return formatNumber(numValue, 0);
+                case 'PERCENT':
+                    return `${formatNumber(numValue, 1)}%`;
+                case 'DECIMAL':
+                    return formatNumber(numValue, 2);
+            }
+        }
+
+        if (type === 'DATE') {
+            if (isNumeric && isExcelSerialDate(numValue)) {
+                return excelSerialToDate(numValue);
+            }
+            return String(value);
+        }
+
+        if (type === 'BOOLEAN') {
+            return String(value).toUpperCase();
+        }
+
+        if (type === 'TEXT') {
+            return String(value);
+        }
+    }
+
+    // Fallback to Rule-based detection if no metadata or metadata is UNKNOWN
     // IMPORTANT: Check currency BEFORE date/time to prevent amounts from being converted to dates
-    // For currency columns, format with rupee symbol
     if (isNumeric && isCurrencyColumn(columnName)) {
         return formatCurrency(numValue);
     }

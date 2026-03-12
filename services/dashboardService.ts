@@ -19,7 +19,9 @@ export const dashboardService = {
                 dashboard: {
                     name: dashboard.name,
                     dataModel: dashboard.dataModel,
-                    chartConfigs: dashboard.chartConfigs
+                    chartConfigs: dashboard.chartConfigs,
+                    sections: dashboard.sections,
+                    filterColumns: dashboard.filterColumns
                 }
             })
         });

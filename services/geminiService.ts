@@ -70,6 +70,9 @@ export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<Chart
     Numeric columns: ${model.numericColumns.join(', ')}.
     Categorical columns: ${model.categoricalColumns.join(', ')}.
     
+    Column Context (Detected Types & Intents):
+    ${JSON.stringify(model.columnMetadata, null, 2)}
+    
     Here are the first 3 rows of data for context:
     ${JSON.stringify(model.data.slice(0, 3))}
 
@@ -78,6 +81,7 @@ export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<Chart
     Only suggest GROUPED_BAR, STACKED_BAR, or COMBO if there are at least two numeric columns.
     Only suggest HEATMAP or MATRIX if there are at least two categorical columns and one numeric column.
     Only suggest SCATTER if there are at least two numeric columns.
+    Use the "Column Context" above to determine if a column is a price (CURRENCY), a count (INTEGER), or a percentage (PERCENT) to choose better titles and aggregations.
   `;
 
   try {
@@ -114,6 +118,9 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
     Columns: ${model.columns.join(', ')}.
     Numeric: ${model.numericColumns.join(', ')}.
     Categorical: ${model.categoricalColumns.join(', ')}.
+    
+    Column Context (Types & Intents):
+    ${JSON.stringify(model.columnMetadata, null, 2)}
     
     User Request: "${prompt}"
     
@@ -163,5 +170,87 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
   } catch (error) {
     console.error("Gemini Custom Generation Error:", error);
     return null;
+  }
+};
+
+/**
+ * AI Schema Audit: Deterministic data classification
+ */
+export const auditSchema = async (
+  datasetName: string,
+  headers: string[],
+  sampleRows: any[]
+): Promise<any> => {
+  const ai = getAI();
+
+  const auditSchemaDefinition = {
+    type: Type.OBJECT,
+    properties: {
+      table_intent: {
+        type: Type.OBJECT,
+        properties: {
+          value: { type: Type.STRING, enum: ["FINANCIAL", "LEADERBOARD", "SALES", "HR", "INVENTORY", "ACADEMIC", "GENERIC", "UNKNOWN"] },
+          confidence: { type: Type.NUMBER }
+        },
+        required: ["value", "confidence"]
+      },
+      columns: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            type: { type: Type.STRING, enum: ["TEXT", "INTEGER", "DECIMAL", "CURRENCY", "PERCENT", "DATE", "BOOLEAN", "UNKNOWN"] },
+            confidence: { type: Type.NUMBER }
+          },
+          required: ["name", "type", "confidence"]
+        }
+      }
+    },
+    required: ["table_intent", "columns"]
+  };
+
+  const auditSystemInstruction = `
+You are a deterministic data schema classification engine.
+Your job is to analyze a tabular dataset and generate a schema definition.
+STRICT RULES:
+1. Determine table_intent based on dataset_name, headers, and sample_rows.
+2. Classify each column into allowed types: TEXT, INTEGER, DECIMAL, CURRENCY, PERCENT, DATE, BOOLEAN, UNKNOWN.
+3. Assign confidence scores (0.0 to 1.0).
+4. Use contextual reasoning (sibling columns, dataset name, value patterns).
+5. If evidence is weak, reduce confidence. If unclear, use UNKNOWN.
+6. Rule: monetary meaning (salary, cost, revenue, incentive, total in financial context) => CURRENCY.
+7. Rule: counts (count, quantity, qty, number, num, index, rank, position, sequence, order, medals, points, goals, votes, score, gold, silver, bronze, tally, total medals) => INTEGER.
+8. Leaderboard Context: If 'TOTAL' is present alongside 'GOLD', 'SILVER', 'BRONZE', or 'RANK', it MUST be INTEGER.
+9. Rule: vague names (A, B, C) => UNKNOWN with low confidence.
+10. OUTPUT STRICT VALID JSON ONLY. NO MARKDOWN. NO COMMENTARY.
+    Temperature is 0.1 for high determinism.
+    If headers contain 'gold', 'silver', 'bronze', the table_intent is 'LEADERBOARD'.
+11. If a column is named exactly 'TOTAL' and values are integers, prefer INTEGER over CURRENCY unless there is strong 'SALES' or 'FINANCIAL' intent.
+  `;
+
+  const inputContext = {
+    dataset_name: datasetName,
+    headers: headers,
+    sample_rows: sampleRows
+  };
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash', // Optimized for speed and deterministic tasks
+      contents: JSON.stringify(inputContext),
+      config: {
+        systemInstruction: auditSystemInstruction,
+        temperature: 0.1, // Very low for determinism
+        responseMimeType: 'application/json',
+        responseSchema: auditSchemaDefinition
+      }
+    });
+
+    const jsonText = response.text || "{}";
+    return JSON.parse(jsonText);
+  } catch (error) {
+    console.error("AI Schema Audit error:", error);
+    throw error;
   }
 };

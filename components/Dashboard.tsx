@@ -1,10 +1,10 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
     BarChart, Bar, LineChart, Line, PieChart, Pie, AreaChart, Area,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, Brush, LabelList,
     ScatterChart, Scatter, ZAxis, ComposedChart
 } from 'recharts';
-import { DataModel, ChartConfig, ChartType } from '../types';
+import { DataModel, ChartConfig, ChartType, DashboardSection } from '../types';
 import { aggregateData } from '../utils/aggregator';
 import {
     LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2,
@@ -17,22 +17,24 @@ import { ChartBuilder } from './ChartBuilder';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses, type Theme } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
-import { formatCurrency, isCurrencyColumn, isDateTimeColumn, isExcelSerialDate, excelSerialToDate } from '../utils/formatters';
+import { formatCurrency, formatCompactCurrency, isCurrencyColumn, isCountColumn, isDateTimeColumn, isExcelSerialDate, excelSerialToDate, smartFormat, formatDateForTick } from '../utils/formatters';
 import { DashboardLoader } from './DashboardLoader';
+
 
 interface DashboardProps {
     dataModel: DataModel;
     chartConfigs: ChartConfig[];
+    sections?: DashboardSection[];
     filterColumns?: string[];
     onHome: () => void;
-    onSave: (name: string, charts: ChartConfig[]) => void;
+    onSave: (name: string, charts: ChartConfig[], sections?: DashboardSection[]) => void;
     onRefresh?: () => Promise<void>;
 }
 
 // Vibrant dark mode palette
 const COLORS = ['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6', '#f97316', '#84cc16'];
 
-const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean }) => {
+const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true, columnMetadata, isExporting = false }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean, columnMetadata?: any, isExporting?: boolean }) => {
     const colors = getThemeClasses(theme);
     if (!data || data.length === 0) return <div className={`flex items-center justify-center h-full ${colors.textMuted} text-sm`}>No Data Available</div>;
 
@@ -46,49 +48,81 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
         }
     };
 
-    // Detect if this is a currency field
-    const isCurrency = isCurrencyColumn(config.dataKey);
-    // Detect if x-axis is a date field
-    const isDateAxis = isDateTimeColumn(config.xAxisKey);
+    // Helper to check if a column is of a certain type in metadata
+    const isColumnType = (colName: string, type: 'CURRENCY' | 'DATE' | 'INTEGER' | 'PERCENT') => {
+        if (columnMetadata && columnMetadata[colName]) {
+            const meta = columnMetadata[colName];
+            const finalType = meta.finalType || meta.detectedType;
+            return finalType === type;
+        }
+        // Fallback to rule-based
+        if (type === 'CURRENCY') return isCurrencyColumn(colName);
+        if (type === 'DATE') return isDateTimeColumn(colName);
+        if (type === 'INTEGER') return isCountColumn(colName);
+        return false;
+    };
+
+    // Better detection: check BOTH axes independently
+    const isXCurrency = isColumnType(config.xAxisKey, 'CURRENCY');
+    const isYCurrency = isColumnType(config.dataKey, 'CURRENCY');
+    const isY2Currency = config.dataKey2 ? isColumnType(config.dataKey2, 'CURRENCY') : false;
+
+    // Detect if axes are date fields
+    const isXDate = isColumnType(config.xAxisKey, 'DATE');
+    const isYDate = isColumnType(config.dataKey, 'DATE');
 
     const commonProps = {
         data: data,
-        margin: { top: 30, right: 40, left: 20, bottom: 25 }
+        margin: isExporting
+            ? { top: 5, right: 30, left: 25, bottom: 65 } // Minimized top margin for PDF export
+            : { top: 30, right: 40, left: 20, bottom: 25 }
     };
 
     const themeColors = getThemeClasses(theme);
 
-    // Custom formatter for labels
+    // Helper to format any value based on column name
+    const formatByColumn = (value: any, key: string, compact = false) => {
+        return smartFormat(value, key, columnMetadata);
+    };
+
+    // Custom formatter for labels (usually for dataKey)
     const labelFormatter = (value: any) => {
-        if (isCurrency) {
-            return formatCurrency(value);
-        }
+        if (isYCurrency) return formatCurrency(value);
         return value;
+    };
+
+    // Helper to check if a value is in the active filter (supports arrays)
+    const isValueFiltered = (value: any): boolean => {
+        if (!activeFilterValue) return false;
+        if (Array.isArray(activeFilterValue)) {
+            return activeFilterValue.some(v => String(v) === String(value));
+        }
+        return String(value) === String(activeFilterValue);
     };
 
     // Custom formatter for Y-axis
     const yAxisFormatter = (value: any) => {
-        if (isCurrency) {
-            // Shorten large numbers for Y-axis
-            const num = parseFloat(value);
-            if (num >= 10000000) return `₹${(num / 10000000).toFixed(1)}Cr`;
-            if (num >= 100000) return `₹${(num / 100000).toFixed(1)}L`;
-            if (num >= 1000) return `₹${(num / 1000).toFixed(1)}K`;
-            return `₹${num}`;
+        if (isYCurrency) return formatCompactCurrency(value);
+        if (typeof value === 'number') {
+            if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+            if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
         }
         return value;
     };
 
     // Custom formatter for X-axis
     const xAxisFormatter = (value: any) => {
-        if (isDateAxis) {
+        if (value === null || value === undefined || value === '') return 'Not Specified';
+        if (isXDate) {
             const num = typeof value === 'number' ? value : parseFloat(value);
-            if (!isNaN(num) && isExcelSerialDate(num)) {
-                return excelSerialToDate(num);
-            }
+            if (!isNaN(num) && isExcelSerialDate(num)) return formatDateForTick(num);
         }
+        if (isXCurrency) return formatCompactCurrency(value);
 
         const str = String(value);
+        if (isExporting) {
+            return str.length > 22 ? str.substring(0, 20) + '..' : str;
+        }
         if (str.length > 12) return str.substring(0, 10) + '..';
         return str;
     };
@@ -96,12 +130,14 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
     // Custom Tooltip Content
     const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
-            let displayLabel = label;
-            if (isDateAxis) {
+            let displayLabel = label || 'Not Specified';
+            if (label && isXDate) {
                 const num = typeof label === 'number' ? label : parseFloat(label);
                 if (!isNaN(num) && isExcelSerialDate(num)) {
                     displayLabel = excelSerialToDate(num);
                 }
+            } else if (label && isXCurrency && typeof label === 'number') {
+                displayLabel = formatCurrency(label);
             }
 
             return (
@@ -117,7 +153,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                     </p>
                     {payload.map((entry: any, index: number) => (
                         <p key={index} style={{ color: entry.color, fontSize: '11px', margin: '2px 0' }}>
-                            {entry.name}: <strong>{isCurrency ? formatCurrency(entry.value) : entry.value}</strong>
+                            {entry.name}: <strong>{formatByColumn(entry.value, entry.dataKey || config.dataKey)}</strong>
                         </p>
                     ))}
                 </div>
@@ -129,11 +165,13 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
     const AxisProps = {
         axisLine: false,
         tickLine: false,
-        tick: { fontSize: 11, fill: themeColors.chartAxisText },
-        minTickGap: 20,
+        tick: { fontSize: isExporting ? 9 : 10, fill: themeColors.chartAxisText },
+        minTickGap: isExporting ? 2 : 5,
         tickFormatter: (val: any) => {
+            if (val === null || val === undefined || val === '') return '';
             const str = String(val);
-            if (str.length > 12) return str.substring(0, 10) + '..';
+            if (isExporting) return str.length > 20 ? str.substring(0, 18) + '..' : str;
+            if (str.length > 15) return str.substring(0, 12) + '..';
             return str;
         }
     };
@@ -154,7 +192,8 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                     paddingTop: '2px',
                     paddingBottom: '10px',
                     flexWrap: 'wrap',
-                    height: '24px'
+                    height: isExporting ? 'auto' : '24px',
+                    minHeight: isExporting ? '20px' : '24px'
                 }}
             >
                 {payload.map((entry: any, index: number) => {
@@ -176,16 +215,18 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                                 lineHeight: '1'
                             }}
                         >
-                            <div
-                                data-legend-dot
-                                style={{
-                                    width: '10px',
-                                    height: '10px',
-                                    borderRadius: '2px',
-                                    backgroundColor: legendColor,
-                                    flexShrink: 0
-                                }}
-                            />
+                            {!isExporting && (
+                                <div
+                                    data-legend-dot
+                                    style={{
+                                        width: '10px',
+                                        height: '10px',
+                                        borderRadius: '2px',
+                                        backgroundColor: legendColor,
+                                        flexShrink: 0
+                                    }}
+                                />
+                            )}
                             <span>
                                 {entry?.value || config.dataKey}
                             </span>
@@ -196,459 +237,607 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
         );
     };
     switch (config.type) {
-        case ChartType.BAR:
+        case ChartType.BAR: {
+            const minWidth = Math.max(100, data.length * (isExpanded ? 45 : 35));
             return (
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart {...commonProps}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
-                        <XAxis
-                            dataKey={config.xAxisKey}
-                            {...AxisProps}
-                            tickFormatter={xAxisFormatter}
-                            angle={-25}
-                            textAnchor="end"
-                            height={90}
-                        />
-                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
-                        <Bar
-                            dataKey={config.dataKey}
-                            radius={[4, 4, 0, 0]}
-                            onClick={(d: any) => {
-                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
-                                if (value !== undefined && onItemClick) onItemClick(value);
-                            }}
-                            cursor="pointer"
-                            isAnimationActive={isAnimationActive}
-                        >
-                            {data.map((entry, index) => (
-                                <Cell
-                                    key={`cell-${index}`}
-                                    fill={activeFilterValue && entry[config.xAxisKey] === activeFilterValue
-                                        ? '#f59e0b'
-                                        : (config.multicolor ? COLORS[index % COLORS.length] : (config.color || COLORS[0]))}
-                                    fillOpacity={activeFilterValue && entry[config.xAxisKey] !== activeFilterValue ? 0.4 : 1}
-                                    style={{ transition: 'all 0.3s ease' }}
+                <div style={{ width: '100%', height: '100%', overflowX: data.length > 15 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
+                    <div style={{ minWidth: data.length > 15 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart {...commonProps}>
+                                <defs>
+                                    <linearGradient id={`barGradient-${config.id}`} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor={config.color || COLORS[0]} stopOpacity={0.9} />
+                                        <stop offset="100%" stopColor={config.color || COLORS[0]} stopOpacity={0.6} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                                <XAxis
+                                    dataKey={config.xAxisKey}
+                                    {...AxisProps}
+                                    tickFormatter={xAxisFormatter}
+                                    angle={-25}
+                                    textAnchor="end"
+                                    height={isExporting ? 75 : 90}
+                                    interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
-                            ))}
-                            <LabelList dataKey={config.dataKey} position="top" fill={themeColors.chartLabelText} fontSize={11} formatter={labelFormatter} />
-                        </Bar>
-                        {showBrush && (
-                            <Brush
-                                dataKey={config.xAxisKey}
-                                height={30}
-                                stroke="#6366f1"
-                                fill="#1e293b"
-                                tickFormatter={() => ''}
-                            />
-                        )}
-                    </BarChart>
-                </ResponsiveContainer>
+                                <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Legend verticalAlign="top" height={isExporting ? 28 : 36} content={<ChartLegend />} />
+                                <Bar
+                                    dataKey={config.dataKey}
+                                    radius={0}
+                                    onClick={(d: any) => {
+                                        const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                        if (value !== undefined && onItemClick) onItemClick(value);
+                                    }}
+                                    cursor="pointer"
+                                    isAnimationActive={isAnimationActive}
+                                    barSize={data.length > 40 ? undefined : (isExpanded ? 30 : 25)}
+                                >
+                                    {data.map((entry, index) => (
+                                        <Cell
+                                            key={`cell-${index}`}
+                                            fill={activeFilterValue && isValueFiltered(entry[config.xAxisKey])
+                                                ? '#f59e0b'
+                                                : (config.multicolor ? COLORS[index % COLORS.length] : `url(#barGradient-${config.id})`)}
+                                            fillOpacity={activeFilterValue && !isValueFiltered(entry[config.xAxisKey]) ? 0.4 : 1}
+                                            style={{ transition: 'all 0.3s ease' }}
+                                        />
+                                    ))}
+                                    <LabelList
+                                        dataKey={config.dataKey}
+                                        position="top"
+                                        fill={themeColors.chartLabelText}
+                                        fontSize={data.length > 20 ? 8 : 10}
+                                        fontWeight={600}
+                                        formatter={labelFormatter}
+                                        offset={10}
+                                    />
+                                </Bar>
+                                {showBrush && !isExpanded && (
+                                    <Brush
+                                        dataKey={config.xAxisKey}
+                                        height={30}
+                                        stroke="#6366f1"
+                                        fill={theme === 'dark' ? '#1e293b' : '#f8fafc'}
+                                        tickFormatter={() => ''}
+                                    />
+                                )}
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             );
+        }
 
         case ChartType.HORIZONTAL_BAR:
+            const horizontalBarHeight = Math.max(isExpanded ? 500 : 320, data.length * (isExpanded ? 40 : 35) + 80);
             return (
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart {...commonProps} layout="vertical" margin={{ top: 20, right: 40, left: 80, bottom: 10 }}>
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={themeColors.chartGrid} />
-                        <XAxis type="number" {...AxisProps} tickFormatter={yAxisFormatter} />
-                        <YAxis
-                            type="category"
-                            dataKey={config.xAxisKey}
-                            {...AxisProps}
-                            width={70}
-                            tickFormatter={(val: any) => {
-                                const str = String(val);
-                                return str.length > 10 ? str.substring(0, 8) + '..' : str;
-                            }}
-                        />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
-                        <Bar
-                            dataKey={config.dataKey}
-                            radius={[0, 4, 4, 0]}
-                            onClick={(d: any) => {
-                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
-                                if (value !== undefined && onItemClick) onItemClick(value);
-                            }}
-                            cursor="pointer"
-                            isAnimationActive={isAnimationActive}
-                        >
-                            {data.map((entry, index) => (
-                                <Cell
-                                    key={`cell-${index}`}
-                                    fill={activeFilterValue && entry[config.xAxisKey] === activeFilterValue
-                                        ? '#f59e0b'
-                                        : (config.multicolor ? COLORS[index % COLORS.length] : (config.color || COLORS[0]))}
-                                    fillOpacity={activeFilterValue && entry[config.xAxisKey] !== activeFilterValue ? 0.4 : 1}
-                                    style={{ transition: 'all 0.3s ease' }}
+                <div style={{ width: '100%', height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
+                    <div style={{ height: horizontalBarHeight, width: '100%', minHeight: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart
+                                {...commonProps}
+                                layout="vertical"
+                                margin={{ top: 20, right: 60, left: 20, bottom: 20 }}
+                            >
+                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={themeColors.chartGrid} />
+                                <XAxis type="number" {...AxisProps} hide={data.length > 20 && !isExpanded} tickFormatter={yAxisFormatter} />
+                                <YAxis
+                                    type="category"
+                                    dataKey={config.xAxisKey}
+                                    {...AxisProps}
+                                    width={isExporting ? 150 : 120}
+                                    interval={0}
+                                    tickFormatter={(val: any) => {
+                                        const str = (val === null || val === undefined || val === '') ? 'Not Specified' : String(val);
+                                        if (isExporting) return str.length > 25 ? str.substring(0, 22) + '..' : str;
+                                        return str.length > 20 ? str.substring(0, 17) + '..' : str;
+                                    }}
                                 />
-                            ))}
-                            <LabelList dataKey={config.dataKey} position="right" fill={themeColors.chartLabelText} fontSize={11} formatter={labelFormatter} />
-                        </Bar>
-                    </BarChart>
-                </ResponsiveContainer>
+                                <Tooltip content={<CustomTooltip />} />
+                                <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+                                <Bar
+                                    dataKey={config.dataKey}
+                                    radius={0}
+                                    onClick={(d: any) => {
+                                        const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                        if (value !== undefined && onItemClick) onItemClick(value);
+                                    }}
+                                    cursor="pointer"
+                                    isAnimationActive={isAnimationActive}
+                                    barSize={isExpanded ? 24 : 18}
+                                >
+                                    {data.map((entry, index) => (
+                                        <Cell
+                                            key={`cell-${index}`}
+                                            fill={activeFilterValue && isValueFiltered(entry[config.xAxisKey])
+                                                ? '#f59e0b'
+                                                : (config.multicolor ? COLORS[index % COLORS.length] : (config.color || COLORS[0]))}
+                                            fillOpacity={activeFilterValue && !isValueFiltered(entry[config.xAxisKey]) ? 0.4 : 1}
+                                            style={{ transition: 'all 0.3s ease' }}
+                                        />
+                                    ))}
+                                    <LabelList
+                                        dataKey={config.dataKey}
+                                        position="right"
+                                        fill={themeColors.chartLabelText}
+                                        fontSize={data.length > 20 ? 8 : 10}
+                                        fontWeight={600}
+                                        formatter={labelFormatter}
+                                        offset={8}
+                                    />
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             );
 
-        case ChartType.GROUPED_BAR:
+        case ChartType.GROUPED_BAR: {
+            const minWidth = Math.max(100, data.length * (isExpanded ? 50 : 40));
             return (
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart {...commonProps}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
-                        <XAxis
-                            dataKey={config.xAxisKey}
-                            {...AxisProps}
-                            tickFormatter={xAxisFormatter}
-                            angle={-25}
-                            textAnchor="end"
-                            height={90}
-                        />
-                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
-                        <Bar
-                            dataKey={config.dataKey}
-                            fill={config.color || COLORS[0]}
-                            radius={[4, 4, 0, 0]}
-                            isAnimationActive={isAnimationActive}
-                            cursor="pointer"
-                            onClick={(d: any) => {
-                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
-                                if (value !== undefined && onItemClick) onItemClick(value);
-                            }}
-                        />
-                        {config.dataKey2 && (
-                            <Bar
-                                dataKey={config.dataKey2}
-                                fill={COLORS[1]}
-                                radius={[4, 4, 0, 0]}
-                                isAnimationActive={isAnimationActive}
-                                cursor="pointer"
-                            />
-                        )}
-                        {showBrush && (
-                            <Brush dataKey={config.xAxisKey} height={30} stroke="#6366f1" fill="#1e293b" tickFormatter={() => ''} />
-                        )}
-                    </BarChart>
-                </ResponsiveContainer>
+                <div style={{ width: '100%', height: '100%', overflowX: data.length > 12 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
+                    <div style={{ minWidth: data.length > 12 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart {...commonProps}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                                <XAxis
+                                    dataKey={config.xAxisKey}
+                                    {...AxisProps}
+                                    tickFormatter={xAxisFormatter}
+                                    angle={-25}
+                                    textAnchor="end"
+                                    height={isExporting ? 75 : 90}
+                                    interval={data.length > 30 ? 'preserveStartEnd' : 0}
+                                />
+                                <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Legend verticalAlign="top" height={isExporting ? 28 : 36} content={<ChartLegend />} />
+                                <Bar
+                                    dataKey={config.dataKey}
+                                    fill={config.color || COLORS[0]}
+                                    radius={0}
+                                    isAnimationActive={isAnimationActive}
+                                    cursor="pointer"
+                                    barSize={data.length > 25 ? undefined : (isExpanded ? 25 : 20)}
+                                    onClick={(d: any) => {
+                                        const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                        if (value !== undefined && onItemClick) onItemClick(value);
+                                    }}
+                                >
+                                    <LabelList
+                                        dataKey={config.dataKey}
+                                        position="top"
+                                        fill={themeColors.chartLabelText}
+                                        fontSize={8}
+                                        fontWeight={600}
+                                        formatter={labelFormatter}
+                                        offset={8}
+                                    />
+                                </Bar>
+                                {config.dataKey2 && (
+                                    <Bar
+                                        dataKey={config.dataKey2}
+                                        fill={config.color2 || COLORS[1]}
+                                        radius={0}
+                                        isAnimationActive={isAnimationActive}
+                                        cursor="pointer"
+                                        barSize={data.length > 25 ? undefined : (isExpanded ? 25 : 20)}
+                                    >
+                                        <LabelList
+                                            dataKey={config.dataKey2}
+                                            position="top"
+                                            fill={themeColors.chartLabelText}
+                                            fontSize={8}
+                                            fontWeight={600}
+                                            formatter={((val: any) => smartFormat(val, config.dataKey2!, columnMetadata)) as any}
+                                            offset={8}
+                                        />
+                                    </Bar>
+                                )}
+                                {showBrush && !isExpanded && (
+                                    <Brush dataKey={config.xAxisKey} height={30} stroke="#6366f1" fill="#1e293b" tickFormatter={() => ''} />
+                                )}
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             );
+        }
 
-        case ChartType.STACKED_BAR:
+        case ChartType.STACKED_BAR: {
+            const minWidth = Math.max(100, data.length * (isExpanded ? 45 : 35));
             return (
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart {...commonProps}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
-                        <XAxis
-                            dataKey={config.xAxisKey}
-                            {...AxisProps}
-                            tickFormatter={xAxisFormatter}
-                            angle={-25}
-                            textAnchor="end"
-                            height={90}
-                        />
-                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
-                        <Bar
-                            dataKey={config.dataKey}
-                            stackId="stack"
-                            fill={config.color || COLORS[0]}
-                            radius={config.dataKey2 ? [0, 0, 0, 0] : [4, 4, 0, 0]}
-                            isAnimationActive={isAnimationActive}
-                            cursor="pointer"
-                            onClick={(d: any) => {
-                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
-                                if (value !== undefined && onItemClick) onItemClick(value);
-                            }}
-                        />
-                        {config.dataKey2 && (
-                            <Bar
-                                dataKey={config.dataKey2}
-                                stackId="stack"
-                                fill={COLORS[1]}
-                                radius={[4, 4, 0, 0]}
-                                isAnimationActive={isAnimationActive}
-                                cursor="pointer"
-                            />
-                        )}
-                        {showBrush && (
-                            <Brush dataKey={config.xAxisKey} height={30} stroke="#6366f1" fill="#1e293b" tickFormatter={() => ''} />
-                        )}
-                    </BarChart>
-                </ResponsiveContainer>
+                <div style={{ width: '100%', height: '100%', overflowX: data.length > 15 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
+                    <div style={{ minWidth: data.length > 15 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart {...commonProps}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                                <XAxis
+                                    dataKey={config.xAxisKey}
+                                    {...AxisProps}
+                                    tickFormatter={xAxisFormatter}
+                                    angle={-25}
+                                    textAnchor="end"
+                                    height={isExporting ? 75 : 90}
+                                    interval={data.length > 30 ? 'preserveStartEnd' : 0}
+                                />
+                                <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Legend verticalAlign="top" height={isExporting ? 28 : 36} content={<ChartLegend />} />
+                                <Bar
+                                    dataKey={config.dataKey}
+                                    stackId="stack"
+                                    fill={config.color || COLORS[0]}
+                                    radius={0}
+                                    isAnimationActive={isAnimationActive}
+                                    cursor="pointer"
+                                    barSize={data.length > 40 ? undefined : (isExpanded ? 35 : 30)}
+                                    onClick={(d: any) => {
+                                        const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                        if (value !== undefined && onItemClick) onItemClick(value);
+                                    }}
+                                />
+                                {config.dataKey2 && (
+                                    <Bar
+                                        dataKey={config.dataKey2}
+                                        stackId="stack"
+                                        fill={config.color2 || COLORS[1]}
+                                        radius={0}
+                                        isAnimationActive={isAnimationActive}
+                                        cursor="pointer"
+                                        barSize={data.length > 40 ? undefined : (isExpanded ? 35 : 30)}
+                                    />
+                                )}
+                                {showBrush && !isExpanded && (
+                                    <Brush dataKey={config.xAxisKey} height={30} stroke="#6366f1" fill="#1e293b" tickFormatter={() => ''} />
+                                )}
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             );
+        }
 
-        case ChartType.COMBO:
+        case ChartType.COMBO: {
+            const minWidth = Math.max(100, data.length * (isExpanded ? 45 : 35));
             return (
-                <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart {...commonProps}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
-                        <XAxis
-                            dataKey={config.xAxisKey}
-                            {...AxisProps}
-                            tickFormatter={xAxisFormatter}
-                            angle={-25}
-                            textAnchor="end"
-                            height={90}
-                        />
-                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
-                        <Bar
-                            dataKey={config.dataKey}
-                            fill={config.color || COLORS[0]}
-                            radius={[4, 4, 0, 0]}
-                            isAnimationActive={isAnimationActive}
-                            cursor="pointer"
-                            onClick={(d: any) => {
-                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
-                                if (value !== undefined && onItemClick) onItemClick(value);
-                            }}
-                        />
-                        {config.dataKey2 && (
-                            <Line
-                                type="monotone"
-                                dataKey={config.dataKey2}
-                                stroke={COLORS[2]}
-                                strokeWidth={3}
-                                dot={{ fill: theme === 'dark' ? '#0f172a' : '#ffffff', stroke: COLORS[2], strokeWidth: 2, r: 4 }}
-                                isAnimationActive={isAnimationActive}
-                            />
-                        )}
-                        {showBrush && (
-                            <Brush dataKey={config.xAxisKey} height={30} stroke="#6366f1" fill="#1e293b" tickFormatter={() => ''} />
-                        )}
-                    </ComposedChart>
-                </ResponsiveContainer>
+                <div style={{ width: '100%', height: '100%', overflowX: data.length > 15 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
+                    <div style={{ minWidth: data.length > 15 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <ComposedChart {...commonProps}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                                <XAxis
+                                    dataKey={config.xAxisKey}
+                                    {...AxisProps}
+                                    tickFormatter={xAxisFormatter}
+                                    angle={-25}
+                                    textAnchor="end"
+                                    height={isExporting ? 75 : 90}
+                                    interval={data.length > 30 ? 'preserveStartEnd' : 0}
+                                />
+                                <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Legend verticalAlign="top" height={isExporting ? 28 : 36} content={<ChartLegend />} />
+                                <Bar
+                                    dataKey={config.dataKey}
+                                    fill={config.color || COLORS[0]}
+                                    radius={0}
+                                    isAnimationActive={isAnimationActive}
+                                    cursor="pointer"
+                                    barSize={data.length > 40 ? undefined : (isExpanded ? 30 : 25)}
+                                    onClick={(d: any) => {
+                                        const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                        if (value !== undefined && onItemClick) onItemClick(value);
+                                    }}
+                                >
+                                    <LabelList
+                                        dataKey={config.dataKey}
+                                        position="top"
+                                        fill={themeColors.chartLabelText}
+                                        fontSize={9}
+                                        fontWeight={600}
+                                        formatter={labelFormatter}
+                                        offset={8}
+                                    />
+                                </Bar>
+                                {config.dataKey2 && (
+                                    <Line
+                                        type="monotone"
+                                        dataKey={config.dataKey2}
+                                        stroke={config.color2 || COLORS[2]}
+                                        strokeWidth={2.5}
+                                        dot={data.length > (isExpanded ? 60 : 40) ? false : {
+                                            fill: theme === 'dark' ? '#0f172a' : '#ffffff',
+                                            stroke: config.color2 || COLORS[2],
+                                            strokeWidth: 2,
+                                            r: 3
+                                        }}
+                                        isAnimationActive={isAnimationActive}
+                                    />
+                                )}
+                                {showBrush && !isExpanded && (
+                                    <Brush dataKey={config.xAxisKey} height={30} stroke="#6366f1" fill="#1e293b" tickFormatter={() => ''} />
+                                )}
+                            </ComposedChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             );
+        }
 
-        case ChartType.LINE:
+        case ChartType.LINE: {
+            const minWidth = Math.max(100, data.length * (isExpanded ? 40 : 30));
             return (
-                <ResponsiveContainer width="100%" height="100%">
-                    <LineChart {...commonProps}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
-                        <XAxis
-                            dataKey={config.xAxisKey}
-                            {...AxisProps}
-                            tickFormatter={xAxisFormatter}
-                            angle={-25}
-                            textAnchor="end"
-                            height={90}
-                        />
-                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
-                        <Line
-                            type="monotone"
-                            dataKey={config.dataKey}
-                            stroke={config.color || COLORS[1]}
-                            strokeWidth={3}
-                            isAnimationActive={isAnimationActive}
-                            dot={data.length > 50 ? false : {
-                                fill: theme === 'dark' ? '#0f172a' : '#ffffff',
-                                stroke: config.color || COLORS[1],
-                                strokeWidth: 2,
-                                r: 4,
-                                cursor: 'pointer'
-                            }}
-                            activeDot={{ r: 6, fill: config.color || COLORS[1], cursor: 'pointer' }}
-                            onClick={(d: any) => {
-                                const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
-                                if (value !== undefined && onItemClick) onItemClick(value);
-                            }}
-                        >
-                            {data.length <= 20 && <LabelList dataKey={config.dataKey} position="top" fill={themeColors.chartLabelText} fontSize={11} formatter={labelFormatter} />}
-                        </Line>
-                        {showBrush && (
-                            <Brush
-                                dataKey={config.xAxisKey}
-                                height={30}
-                                stroke="#6366f1"
-                                fill="#1e293b"
-                                tickFormatter={() => ''}
-                            />
-                        )}
-                    </LineChart>
-                </ResponsiveContainer>
+                <div style={{ width: '100%', height: '100%', overflowX: data.length > 20 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
+                    <div style={{ minWidth: data.length > 20 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart {...commonProps}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                                <XAxis
+                                    dataKey={config.xAxisKey}
+                                    {...AxisProps}
+                                    tickFormatter={xAxisFormatter}
+                                    angle={-25}
+                                    textAnchor="end"
+                                    height={90}
+                                    interval={data.length > 30 ? 'preserveStartEnd' : 0}
+                                />
+                                <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+                                <Line
+                                    type="monotone"
+                                    dataKey={config.dataKey}
+                                    stroke={config.color || COLORS[1]}
+                                    strokeWidth={2.5}
+                                    isAnimationActive={isAnimationActive}
+                                    dot={data.length > (isExpanded ? 100 : 60) ? false : {
+                                        fill: theme === 'dark' ? '#0f172a' : '#ffffff',
+                                        stroke: config.color || COLORS[1],
+                                        strokeWidth: 2,
+                                        r: 3,
+                                        cursor: 'pointer'
+                                    }}
+                                    activeDot={{ r: 5, fill: config.color || COLORS[1], stroke: '#fff', strokeWidth: 2, cursor: 'pointer' }}
+                                    onClick={(d: any) => {
+                                        const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                        if (value !== undefined && onItemClick) onItemClick(value);
+                                    }}
+                                />
+                                {showBrush && !isExpanded && (
+                                    <Brush
+                                        dataKey={config.xAxisKey}
+                                        height={30}
+                                        stroke="#6366f1"
+                                        fill={theme === 'dark' ? '#1e293b' : '#f8fafc'}
+                                        tickFormatter={() => ''}
+                                    />
+                                )}
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             );
-        case ChartType.AREA:
+        }
+        case ChartType.AREA: {
+            const minWidth = Math.max(100, data.length * (isExpanded ? 40 : 30));
             return (
-                <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart {...commonProps}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
-                        <XAxis
-                            dataKey={config.xAxisKey}
-                            {...AxisProps}
-                            tickFormatter={xAxisFormatter}
-                            angle={-25}
-                            textAnchor="end"
-                            height={90}
-                        />
-                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
-                        <defs>
-                            <linearGradient id={`areaGradient-${config.id}`} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor={config.color || COLORS[4]} stopOpacity={0.8} />
-                                <stop offset="95%" stopColor={config.color || COLORS[4]} stopOpacity={0.15} />
-                            </linearGradient>
-                        </defs>
-                        <Area
-                            type="monotone"
-                            dataKey={config.dataKey}
-                            stroke={config.color || COLORS[4]}
-                            fill={`url(#areaGradient-${config.id})`}
-                            strokeWidth={2.5}
-                            isAnimationActive={isAnimationActive}
-                            dot={data.length > 50 ? false : {
-                                fill: theme === 'dark' ? '#0f172a' : '#ffffff',
-                                stroke: config.color || COLORS[4],
-                                strokeWidth: 2,
-                                r: 3,
-                            }}
-                            activeDot={{ r: 5, fill: config.color || COLORS[4], cursor: 'pointer' }}
-                            onClick={(d: any) => {
-                                const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
-                                if (value !== undefined && onItemClick) onItemClick(value);
-                            }}
-                            cursor="pointer"
-                        >
-                            {data.length <= 20 && <LabelList dataKey={config.dataKey} position="top" fill={themeColors.chartLabelText} fontSize={11} formatter={labelFormatter} />}
-                        </Area>
-                        {showBrush && (
-                            <Brush
-                                dataKey={config.xAxisKey}
-                                height={30}
-                                stroke="#6366f1"
-                                fill="#1e293b"
-                                tickFormatter={() => ''}
-                            />
-                        )}
-                    </AreaChart>
-                </ResponsiveContainer>
+                <div style={{ width: '100%', height: '100%', overflowX: data.length > 20 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
+                    <div style={{ minWidth: data.length > 20 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart {...commonProps}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                                <XAxis
+                                    dataKey={config.xAxisKey}
+                                    {...AxisProps}
+                                    tickFormatter={xAxisFormatter}
+                                    angle={-25}
+                                    textAnchor="end"
+                                    height={90}
+                                    interval={data.length > 30 ? 'preserveStartEnd' : 0}
+                                />
+                                <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+                                <defs>
+                                    <linearGradient id={`areaGradient-${config.id}`} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor={config.color || COLORS[4]} stopOpacity={0.4} />
+                                        <stop offset="95%" stopColor={config.color || COLORS[4]} stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <Area
+                                    type="monotone"
+                                    dataKey={config.dataKey}
+                                    stroke={config.color || COLORS[4]}
+                                    fill={`url(#areaGradient-${config.id})`}
+                                    strokeWidth={2.5}
+                                    isAnimationActive={isAnimationActive}
+                                    dot={data.length > (isExpanded ? 100 : 60) ? false : {
+                                        fill: theme === 'dark' ? '#0f172a' : '#ffffff',
+                                        stroke: config.color || COLORS[4],
+                                        strokeWidth: 2,
+                                        r: 3,
+                                    }}
+                                    activeDot={{ r: 5, fill: config.color || COLORS[4], stroke: '#fff', strokeWidth: 2, cursor: 'pointer' }}
+                                    onClick={(d: any) => {
+                                        const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                        if (value !== undefined && onItemClick) onItemClick(value);
+                                    }}
+                                    cursor="pointer"
+                                >
+                                    {data.length <= 20 && <LabelList dataKey={config.dataKey} position="top" fill={themeColors.chartLabelText} fontSize={10} fontWeight={600} formatter={labelFormatter} offset={12} />}
+                                </Area>
+                                {showBrush && !isExpanded && (
+                                    <Brush
+                                        dataKey={config.xAxisKey}
+                                        height={30}
+                                        stroke="#6366f1"
+                                        fill={theme === 'dark' ? '#1e293b' : '#f8fafc'}
+                                        tickFormatter={() => ''}
+                                    />
+                                )}
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             );
+        }
 
-        case ChartType.SCATTER:
+        case ChartType.SCATTER: {
+            const minWidth = Math.max(100, data.length * (isExpanded ? 40 : 30));
             return (
-                <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 30, right: 40, left: 20, bottom: 25 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={themeColors.chartGrid} />
-                        <XAxis
-                            type="number"
-                            dataKey={config.xAxisKey}
-                            name={config.xAxisKey}
-                            {...AxisProps}
-                            tickFormatter={yAxisFormatter}
-                        />
-                        <YAxis
-                            type="number"
-                            dataKey={config.dataKey}
-                            name={config.dataKey}
-                            {...AxisProps}
-                            width={80}
-                            tickFormatter={yAxisFormatter}
-                        />
-                        <ZAxis range={[40, 200]} />
-                        <Tooltip
-                            cursor={{ strokeDasharray: '3 3' }}
-                            content={({ active, payload }: any) => {
-                                if (active && payload && payload.length) {
-                                    const d = payload[0].payload;
-                                    return (
-                                        <div style={{
-                                            backgroundColor: themeColors.chartTooltipBg,
-                                            border: `1px solid ${themeColors.chartTooltipBorder}`,
-                                            borderRadius: '8px',
-                                            padding: '8px 12px',
-                                            boxShadow: theme === 'dark' ? '0 10px 15px -3px rgba(0,0,0,0.5)' : '0 10px 15px -3px rgba(0,0,0,0.1)',
-                                        }}>
-                                            <p style={{ color: themeColors.chartTooltipText, fontSize: '11px', margin: '2px 0' }}>
-                                                {config.xAxisKey}: <strong>{isCurrency ? formatCurrency(d[config.xAxisKey]) : d[config.xAxisKey]}</strong>
-                                            </p>
-                                            <p style={{ color: config.color || COLORS[0], fontSize: '11px', margin: '2px 0' }}>
-                                                {config.dataKey}: <strong>{isCurrency ? formatCurrency(d[config.dataKey]) : d[config.dataKey]}</strong>
-                                            </p>
-                                        </div>
-                                    );
-                                }
-                                return null;
-                            }}
-                        />
-                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
-                        <Scatter
-                            name={config.dataKey}
-                            data={data}
-                            fill={config.color || COLORS[0]}
-                            fillOpacity={0.7}
-                            isAnimationActive={isAnimationActive}
-                        />
-                    </ScatterChart>
-                </ResponsiveContainer>
+                <div style={{ width: '100%', height: '100%', overflowX: data.length > 20 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
+                    <div style={{ minWidth: data.length > 20 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <ScatterChart margin={{ top: 30, right: 40, left: 20, bottom: 25 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke={themeColors.chartGrid} />
+                                <XAxis
+                                    type="number"
+                                    dataKey={config.xAxisKey}
+                                    name={config.xAxisKey}
+                                    {...AxisProps}
+                                    tickFormatter={xAxisFormatter}
+                                />
+                                <YAxis
+                                    type="number"
+                                    dataKey={config.dataKey}
+                                    name={config.dataKey}
+                                    {...AxisProps}
+                                    width={80}
+                                    tickFormatter={yAxisFormatter}
+                                />
+                                <ZAxis range={[40, 200]} />
+                                <Tooltip
+                                    cursor={{ strokeDasharray: '3 3' }}
+                                    content={({ active, payload }: any) => {
+                                        if (active && payload && payload.length) {
+                                            const d = payload[0].payload;
+                                            return (
+                                                <div style={{
+                                                    backgroundColor: themeColors.chartTooltipBg,
+                                                    border: `1px solid ${themeColors.chartTooltipBorder}`,
+                                                    borderRadius: '8px',
+                                                    padding: '8px 12px',
+                                                    boxShadow: theme === 'dark' ? '0 10px 15px -3px rgba(0,0,0,0.5)' : '0 10px 15px -3px rgba(0,0,0,0.1)',
+                                                }}>
+                                                    <p style={{ color: themeColors.chartTooltipText, fontSize: '11px', margin: '2px 0' }}>
+                                                        {config.xAxisKey}: <strong>{formatByColumn(d[config.xAxisKey], config.xAxisKey)}</strong>
+                                                    </p>
+                                                    <p style={{ color: config.color || COLORS[0], fontSize: '11px', margin: '2px 0' }}>
+                                                        {config.dataKey}: <strong>{formatByColumn(d[config.dataKey], config.dataKey)}</strong>
+                                                    </p>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    }}
+                                />
+                                <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+                                <Scatter
+                                    name={config.dataKey}
+                                    data={data}
+                                    fill={config.color || COLORS[0]}
+                                    fillOpacity={0.7}
+                                    isAnimationActive={isAnimationActive}
+                                />
+                            </ScatterChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             );
+        }
 
         case ChartType.WATERFALL: {
             const waterfallColor = (entry: any) => entry._isPositive ? '#10b981' : '#f43f5e';
+            const minWidth = Math.max(100, data.length * (isExpanded ? 50 : 40));
             return (
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart {...commonProps}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
-                        <XAxis
-                            dataKey={config.xAxisKey}
-                            {...AxisProps}
-                            tickFormatter={xAxisFormatter}
-                            angle={-25}
-                            textAnchor="end"
-                            height={90}
-                        />
-                        <YAxis {...AxisProps} width={80} tickFormatter={yAxisFormatter} />
-                        <Tooltip
-                            content={({ active, payload, label }: any) => {
-                                if (active && payload && payload.length) {
-                                    const d = payload[0]?.payload;
-                                    return (
-                                        <div style={{
-                                            backgroundColor: themeColors.chartTooltipBg,
-                                            border: `1px solid ${themeColors.chartTooltipBorder}`,
-                                            borderRadius: '8px',
-                                            padding: '8px 12px',
-                                            boxShadow: theme === 'dark' ? '0 10px 15px -3px rgba(0,0,0,0.5)' : '0 10px 15px -3px rgba(0,0,0,0.1)',
-                                        }}>
-                                            <p style={{ color: themeColors.chartTooltipText, fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>{label}</p>
-                                            <p style={{ color: d?._isPositive ? '#10b981' : '#f43f5e', fontSize: '11px', margin: '2px 0' }}>
-                                                Change: <strong>{isCurrency ? formatCurrency(d?.[config.dataKey]) : d?.[config.dataKey]}</strong>
-                                            </p>
-                                            <p style={{ color: themeColors.chartTooltipText, fontSize: '11px', margin: '2px 0' }}>
-                                                Running Total: <strong>{isCurrency ? formatCurrency(d?._total) : d?._total?.toFixed(2)}</strong>
-                                            </p>
-                                        </div>
-                                    );
-                                }
-                                return null;
-                            }}
-                        />
-                        <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
-                        {/* Invisible base bar */}
-                        <Bar dataKey="_base" stackId="waterfall" fill="transparent" isAnimationActive={false} />
-                        {/* Visible delta bar */}
-                        <Bar
-                            dataKey={config.dataKey}
-                            stackId="waterfall"
-                            radius={[4, 4, 0, 0]}
-                            isAnimationActive={isAnimationActive}
-                            cursor="pointer"
-                            onClick={(d: any) => {
-                                const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
-                                if (value !== undefined && onItemClick) onItemClick(value);
-                            }}
-                        >
-                            {data.map((entry, index) => (
-                                <Cell key={`wf-${index}`} fill={waterfallColor(entry)} />
-                            ))}
-                            <LabelList dataKey={config.dataKey} position="top" fill={themeColors.chartLabelText} fontSize={11} formatter={labelFormatter} />
-                        </Bar>
-                    </BarChart>
-                </ResponsiveContainer>
+                <div style={{ width: '100%', height: '100%', overflowX: data.length > 12 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
+                    <div style={{ minWidth: data.length > 12 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart {...commonProps}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                                <XAxis
+                                    dataKey={config.xAxisKey}
+                                    {...AxisProps}
+                                    tickFormatter={xAxisFormatter}
+                                    angle={-25}
+                                    textAnchor="end"
+                                    height={90}
+                                    interval={data.length > 30 ? 'preserveStartEnd' : 0}
+                                />
+                                <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
+                                <Tooltip
+                                    content={({ active, payload, label }: any) => {
+                                        if (active && payload && payload.length) {
+                                            const d = payload[0]?.payload;
+                                            let displayLabel = label || 'Not Specified';
+                                            if (label && isXDate) {
+                                                const num = typeof label === 'number' ? label : parseFloat(label);
+                                                if (!isNaN(num) && isExcelSerialDate(num)) {
+                                                    displayLabel = excelSerialToDate(num);
+                                                }
+                                            } else if (label && isXCurrency && typeof label === 'number') {
+                                                displayLabel = formatCurrency(label);
+                                            }
+                                            return (
+                                                <div style={{
+                                                    backgroundColor: themeColors.chartTooltipBg,
+                                                    border: `1px solid ${themeColors.chartTooltipBorder}`,
+                                                    borderRadius: '8px',
+                                                    padding: '8px 12px',
+                                                    boxShadow: theme === 'dark' ? '0 10px 15px -3px rgba(0,0,0,0.5)' : '0 10px 15px -3px rgba(0,0,0,0.1)',
+                                                }}>
+                                                    <p style={{ color: themeColors.chartTooltipText, fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>
+                                                        {displayLabel}
+                                                    </p>
+                                                    <p style={{ color: d?._isPositive ? '#10b981' : '#f43f5e', fontSize: '11px', margin: '2px 0' }}>
+                                                        Change: <strong>{formatByColumn(d?.[config.dataKey], config.dataKey)}</strong>
+                                                    </p>
+                                                    <p style={{ color: themeColors.chartTooltipText, fontSize: '11px', margin: '2px 0' }}>
+                                                        Running Total: <strong>{formatByColumn(d?._total, config.dataKey)}</strong>
+                                                    </p>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    }}
+                                />
+                                <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+                                {/* Invisible base bar */}
+                                <Bar dataKey="_base" stackId="waterfall" fill="transparent" isAnimationActive={false} />
+                                {/* Visible delta bar */}
+                                <Bar
+                                    dataKey={config.dataKey}
+                                    stackId="waterfall"
+                                    radius={0}
+                                    isAnimationActive={isAnimationActive}
+                                    cursor="pointer"
+                                    barSize={data.length > 30 ? undefined : (isExpanded ? 30 : 25)}
+                                    onClick={(d: any) => {
+                                        const value = d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
+                                        if (value !== undefined && onItemClick) onItemClick(value);
+                                    }}
+                                >
+                                    {data.map((entry, index) => (
+                                        <Cell key={`wf-${index}`} fill={waterfallColor(entry)} />
+                                    ))}
+
+                                </Bar>
+                                {showBrush && !isExpanded && (
+                                    <Brush
+                                        dataKey={config.xAxisKey}
+                                        height={30}
+                                        stroke="#6366f1"
+                                        fill={theme === 'dark' ? '#1e293b' : '#f8fafc'}
+                                        tickFormatter={() => ''}
+                                    />
+                                )}
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             );
         }
 
@@ -731,7 +920,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                                             title={`${config.xAxisKey}: ${x}\n${config.yAxisKey}: ${y}\n${config.dataKey}: ${val}`}
                                             onClick={() => onItemClick && onItemClick(x)}
                                         >
-                                            {isCurrency ? formatCurrency(val) : val}
+                                            {formatByColumn(val, config.dataKey)}
                                         </div>
                                     );
                                 })}
@@ -744,60 +933,79 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
 
         case ChartType.PIE:
             return (
-                <ResponsiveContainer width="100%" height={280}>
-                    <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <ResponsiveContainer width="100%" height={isExporting ? 280 : (isExpanded ? 500 : 300)}>
+                    <PieChart margin={{ top: 0, right: 10, bottom: 10, left: 10 }}>
                         <Pie
                             data={data}
                             cx="50%"
                             cy="50%"
-                            innerRadius={isExpanded ? 120 : 60}
-                            outerRadius={isExpanded ? 160 : 80}
-                            paddingAngle={5}
+                            innerRadius={isExporting ? 45 : (isExpanded ? 120 : 70)}
+                            outerRadius={isExporting ? 75 : (isExpanded ? 180 : 100)}
+                            paddingAngle={4}
                             dataKey={config.dataKey}
                             nameKey={config.xAxisKey}
-                            stroke="none"
+                            stroke={theme === 'dark' ? '#1e293b' : '#fff'}
+                            strokeWidth={2}
                             isAnimationActive={isAnimationActive}
                             onClick={(d) => onItemClick && onItemClick(d.name)}
                             cursor="pointer"
-                            label={({ name, value, percent }) => {
-                                const formattedValue = isCurrency ? formatCurrency(value) : value;
-                                let displayName = name;
-                                if (isDateAxis) {
-                                    const num = typeof name === 'number' ? name : parseFloat(name);
-                                    if (!isNaN(num) && isExcelSerialDate(num)) {
-                                        displayName = excelSerialToDate(num);
-                                    }
-                                }
-                                return `${formattedValue} (${(percent * 100).toFixed(0)}%)`;
+                            label={({ name, value, percent, x, y, cx }) => {
+                                const formattedValue = formatByColumn(value, config.dataKey);
+                                const isRight = x > cx;
+                                return (
+                                    <text
+                                        x={x}
+                                        y={y}
+                                        fill={themeColors.chartLabelText}
+                                        textAnchor={isRight ? 'start' : 'end'}
+                                        dominantBaseline="central"
+                                        fontSize={isExporting ? 8.5 : 11}
+                                        fontWeight={600}
+                                    >
+                                        {formattedValue} ({(percent * 100).toFixed(0)}%)
+                                    </text>
+                                );
                             }}
-                            labelLine={{ stroke: themeColors.chartLabelText, strokeWidth: 1 }}
+                            labelLine={{ stroke: themeColors.chartLabelText, strokeWidth: 1, opacity: 0.5 }}
                         >
                             {data.map((entry, index) => (
                                 <Cell
                                     key={`cell-${index}`}
-                                    fill={activeFilterValue && entry[config.xAxisKey] === activeFilterValue ? '#f59e0b' : COLORS[index % COLORS.length]}
-                                    fillOpacity={activeFilterValue && entry[config.xAxisKey] !== activeFilterValue ? 0.4 : 1}
+                                    fill={activeFilterValue && isValueFiltered(entry[config.xAxisKey]) ? '#f59e0b' : COLORS[index % COLORS.length]}
+                                    fillOpacity={activeFilterValue && !isValueFiltered(entry[config.xAxisKey]) ? 0.4 : 1}
                                 />
                             ))}
                         </Pie>
                         <Tooltip content={<CustomTooltip />} />
-                        <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px', color: themeColors.chartLegendText }} />
+                        <Legend
+                            verticalAlign="bottom"
+                            align="center"
+                            iconType={isExporting ? "none" : "circle"}
+                            iconSize={isExporting ? 0 : 10}
+                            wrapperStyle={{
+                                paddingTop: isExporting ? '8px' : '20px',
+                                fontSize: isExporting ? '9px' : '11px',
+                                fontWeight: 500,
+                                color: themeColors.chartLegendText,
+                                bottom: isExporting ? '-10px' : '0px'
+                            }}
+                        />
                     </PieChart>
                 </ResponsiveContainer>
             );
         case ChartType.TABLE: {
             const tableTotal = data.reduce((acc, row) => acc + (Number(row[config.dataKey]) || 0), 0);
             const tableTotal2 = config.dataKey2 ? data.reduce((acc, row) => acc + (Number(row[config.dataKey2]) || 0), 0) : 0;
-            const fmtNum = (v: number) => isCurrency ? formatCurrency(v) : v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+            const fmtNum = (v: number, key: string) => formatByColumn(v, key);
             return (
-                <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '0' }} className="relative">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="sticky top-0 z-10">
+                <div style={{ width: '100%', height: '100%', overflow: 'hidden' }} className="custom-chart-scrollbar">
+                    <table className="w-full border-collapse" style={{ fontSize: isExporting ? '7.5px' : '11px' }}>
+                        <thead>
                             <tr style={{ background: theme === 'dark' ? '#1e293b' : '#e2e8f0' }}>
-                                <th className={`px-3 py-2.5 font-bold text-[10px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/40 text-slate-400' : 'border-indigo-400/40 text-slate-500'} text-center w-12`}>#</th>
-                                <th className={`px-4 py-2.5 font-bold text-[10px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/40 text-slate-400' : 'border-indigo-400/40 text-slate-500'}`}>{config.xAxisKey}</th>
-                                <th className={`px-4 py-2.5 font-bold text-[10px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/40 text-slate-400' : 'border-indigo-400/40 text-slate-500'} text-right`}>{config.dataKey}</th>
-                                {config.dataKey2 && <th className={`px-4 py-2.5 font-bold text-[10px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/40 text-slate-400' : 'border-indigo-400/40 text-slate-500'} text-right`}>{config.dataKey2}</th>}
+                                <th className={`px-2 py-1 text-center font-bold text-[7.5px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`}>#</th>
+                                <th className={`px-3 py-1 text-left font-bold text-[7.5px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`}>{config.xAxisKey}</th>
+                                <th className={`px-3 py-1 text-right font-bold text-[7.5px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`}>{config.dataKey}</th>
+                                {config.dataKey2 && <th className={`px-3 py-1 text-right font-bold text-[7.5px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`}>{config.dataKey2}</th>}
                             </tr>
                         </thead>
                         <tbody>
@@ -807,19 +1015,19 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                                     className="transition-colors cursor-pointer"
                                     onClick={() => onItemClick && onItemClick(row[config.xAxisKey])}
                                 >
-                                    <td className={`px-3 py-2 text-[10px] text-center ${theme === 'dark' ? 'text-slate-600' : 'text-slate-400'} font-mono`}>{i + 1}</td>
-                                    <td className={`px-4 py-2 text-xs font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{row[config.xAxisKey]}</td>
-                                    <td className={`px-4 py-2 text-xs font-bold text-right font-mono ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{fmtNum(Number(row[config.dataKey]) || 0)}</td>
-                                    {config.dataKey2 && <td className={`px-4 py-2 text-xs font-bold text-right font-mono ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>{fmtNum(Number(row[config.dataKey2]) || 0)}</td>}
+                                    <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-[10px]'} text-center ${theme === 'dark' ? 'text-slate-600' : 'text-slate-400'} font-mono`}>{i + 1}</td>
+                                    <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{row[config.xAxisKey]}</td>
+                                    <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold text-right font-mono ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{fmtNum(Number(row[config.dataKey]) || 0, config.dataKey)}</td>
+                                    {config.dataKey2 && <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold text-right font-mono ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>{fmtNum(Number(row[config.dataKey2]) || 0, config.dataKey2)}</td>}
                                 </tr>
                             ))}
                         </tbody>
-                        <tfoot className="sticky bottom-0 z-10">
+                        <tfoot>
                             <tr style={{ background: theme === 'dark' ? '#0f172a' : '#f1f5f9', borderTop: `2px solid ${theme === 'dark' ? '#6366f1' : '#818cf8'}` }}>
-                                <td className={`px-3 py-2.5 text-[10px] font-bold text-center ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Σ</td>
-                                <td className={`px-4 py-2.5 text-xs font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>{data.length} rows</td>
-                                <td className={`px-4 py-2.5 text-xs font-black text-right font-mono ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-700'}`}>{fmtNum(tableTotal)}</td>
-                                {config.dataKey2 && <td className={`px-4 py-2.5 text-xs font-black text-right font-mono ${theme === 'dark' ? 'text-emerald-300' : 'text-emerald-700'}`}>{fmtNum(tableTotal2)}</td>}
+                                <td className={`px-2 py-1.5 ${isExporting ? 'text-[7.5px]' : 'text-[10px]'} font-bold text-center ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Σ</td>
+                                <td className={`px-3 py-1.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>{data.length} rows</td>
+                                <td className={`px-3 py-1.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-black text-right font-mono ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-700'}`}>{fmtNum(tableTotal, config.dataKey)}</td>
+                                {config.dataKey2 && <td className={`px-3 py-1.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-black text-right font-mono ${theme === 'dark' ? 'text-emerald-300' : 'text-emerald-700'}`}>{fmtNum(tableTotal2, config.dataKey2)}</td>}
                             </tr>
                         </tfoot>
                     </table>
@@ -836,7 +1044,10 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
             const mMinVal = Math.min(...allValues);
             const mMaxVal = Math.max(...allValues);
             const mRange = mMaxVal - mMinVal || 1;
-            const fmtMatrixNum = (v: number) => isCurrency ? formatCurrency(v) : v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+            const fmtMatrixNum = (v: number) => {
+                if (isExporting && mxVals.length > 8 && isYCurrency) return formatCompactCurrency(v);
+                return formatByColumn(v, config.dataKey);
+            };
 
             // Compute row and column totals
             const rowTotals: { [key: string]: number } = {};
@@ -858,17 +1069,19 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                 }
             };
 
+            const matrixFontSize = isExporting ? (mxVals.length > 15 ? '6px' : (mxVals.length > 8 ? '7.5px' : '9px')) : '11px';
+
             return (
-                <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '0' }}>
-                    <table className="w-full border-collapse" style={{ fontSize: '11px' }}>
-                        <thead className="sticky top-0 z-10">
+                <div style={{ width: '100%', height: '100%', overflow: 'hidden', padding: '0' }}>
+                    <table className="w-full border-collapse" style={{ fontSize: matrixFontSize, tableLayout: isExporting && mxVals.length > 8 ? 'fixed' : 'auto' }}>
+                        <thead>
                             <tr style={{ background: theme === 'dark' ? '#1e293b' : '#e2e8f0' }}>
-                                <th className={`px-3 py-2.5 text-left font-bold text-[9px] uppercase tracking-widest border-b-2 border-r ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`} style={{ borderColor: themeColors.chartGrid }}>
-                                    {config.yAxisKey} ↓ / {config.xAxisKey} →
+                                <th className={`px-2 py-2 text-left font-bold text-[8px] uppercase tracking-tighter border-b-2 border-r ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`} style={{ borderColor: themeColors.chartGrid, width: isExporting ? '80px' : 'auto' }}>
+                                    {isExporting ? 'Y \\ X' : `${config.yAxisKey} ↓ / ${config.xAxisKey} →`}
                                 </th>
                                 {mxVals.map(x => (
-                                    <th key={x} className={`px-2 py-2.5 text-center font-bold text-[9px] uppercase tracking-wider border-b-2 border-r ${theme === 'dark' ? 'border-indigo-500/30 text-slate-400' : 'border-indigo-400/30 text-slate-500'}`} style={{ borderColor: themeColors.chartGrid }}>
-                                        {String(x).length > 10 ? String(x).substring(0, 8) + '..' : x}
+                                    <th key={x} className={`px-1 py-1.5 text-center font-bold uppercase tracking-tighter border-b-2 border-r ${theme === 'dark' ? 'border-indigo-500/30 text-slate-400' : 'border-indigo-400/30 text-slate-500'}`} style={{ borderColor: themeColors.chartGrid, fontSize: isExporting && mxVals.length > 12 ? '6px' : 'inherit' }}>
+                                        {String(x).length > (mxVals.length > 15 ? 4 : 10) ? String(x).substring(0, (mxVals.length > 15 ? 3 : 8)) + '..' : x}
                                     </th>
                                 ))}
                                 <th className={`px-3 py-2.5 text-center font-bold text-[9px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-indigo-400' : 'border-indigo-400/30 text-indigo-600'}`}>Total</th>
@@ -877,8 +1090,8 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                         <tbody>
                             {myVals.map((y, ri) => (
                                 <tr key={y} style={{ background: ri % 2 === 0 ? (theme === 'dark' ? 'rgba(30,41,59,0.2)' : 'rgba(241,245,249,0.4)') : 'transparent' }}>
-                                    <td className={`px-3 py-2 font-bold text-xs border-r ${theme === 'dark' ? 'text-slate-300 bg-slate-800/30' : 'text-slate-600 bg-slate-50/60'}`} style={{ borderColor: themeColors.chartGrid }}>
-                                        {String(y).length > 14 ? String(y).substring(0, 12) + '..' : y}
+                                    <td className={`px-2 py-1.5 font-bold border-r ${theme === 'dark' ? 'text-slate-300 bg-slate-800/30' : 'text-slate-600 bg-slate-50/60'}`} style={{ borderColor: themeColors.chartGrid, fontSize: isExporting && mxVals.length > 12 ? '7px' : 'inherit', width: isExporting ? '60px' : 'auto' }}>
+                                        {String(y).length > (isExporting ? 10 : 14) ? String(y).substring(0, (isExporting ? 8 : 12)) + '..' : y}
                                     </td>
                                     {mxVals.map(x => {
                                         const cell = data.find((d: any) => d.x === x && d.y === y);
@@ -886,11 +1099,14 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                                         const t = (val - mMinVal) / mRange;
                                         return (
                                             <td key={`${x}-${y}`}
-                                                className={`px-2 py-2 text-center font-bold border-r cursor-pointer transition-all`}
+                                                className={`px-0.5 py-1 text-center font-bold border-r cursor-pointer transition-all`}
                                                 style={{
                                                     borderColor: themeColors.chartGrid,
                                                     backgroundColor: getCellBg(val),
                                                     color: t > 0.6 ? '#ffffff' : (theme === 'dark' ? '#94a3b8' : '#475569'),
+                                                    height: isExporting ? '24px' : 'auto',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'clip'
                                                 }}
                                                 title={`${config.yAxisKey}: ${y}\n${config.xAxisKey}: ${x}\n${config.dataKey}: ${val}`}
                                                 onClick={() => onItemClick && onItemClick(x)}
@@ -905,7 +1121,7 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
                                 </tr>
                             ))}
                         </tbody>
-                        <tfoot className="sticky bottom-0 z-10">
+                        <tfoot>
                             <tr style={{ background: theme === 'dark' ? '#0f172a' : '#f1f5f9', borderTop: `2px solid ${theme === 'dark' ? '#6366f1' : '#818cf8'}` }}>
                                 <td className={`px-3 py-2.5 font-bold text-[9px] uppercase tracking-widest border-r ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`} style={{ borderColor: themeColors.chartGrid }}>Total</td>
                                 {mxVals.map(x => (
@@ -926,14 +1142,193 @@ const RenderChart = ({ config, data, isExpanded = false, theme, onItemClick, act
         default:
             return null;
     }
-};
+});
 
-export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, filterColumns = [], onHome, onSave, onRefresh }) => {
+// ─── FilterSidebar ────────────────────────────────────────────────────────────
+// Owns ALL sidebar-internal state so its open/close/search actions never
+// trigger a Dashboard re-render.
+interface FilterSidebarProps {
+    filterableColumns: string[];
+    activeFilters: { [col: string]: any[] };
+    uniqueValuesMap: { [col: string]: string[] };
+    toggleFilter: (col: string, val: any) => void;
+    clearFilters: () => void;
+    theme: Theme;
+    colors: ReturnType<typeof getThemeClasses>;
+}
+
+const FilterSidebar = React.memo<FilterSidebarProps>(({ filterableColumns, activeFilters, uniqueValuesMap, toggleFilter, clearFilters, theme, colors }) => {
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [expandedSidebarCols, setExpandedSidebarCols] = useState<Set<string>>(new Set());
+    const [sidebarColSearch, setSidebarColSearch] = useState<{ [col: string]: string }>({});
+
+    const toggleSidebarColumn = useCallback((col: string) => {
+        setExpandedSidebarCols(prev => {
+            const next = new Set(prev);
+            if (next.has(col)) { next.delete(col); } else { next.add(col); }
+            return next;
+        });
+    }, []);
+
+    const totalActiveCount: number = (Object.values(activeFilters) as any[][]).reduce((acc: number, vals: any[]) => acc + vals.length, 0);
+
+    return (
+        <aside
+            className={`print:hidden shrink-0 flex flex-col border-r ${colors.borderPrimary} transition-all duration-300 ${isSidebarCollapsed ? 'w-12' : 'w-64'} sticky top-[57px] sm:top-[65px] md:top-[73px] self-start`}
+            style={{ height: 'calc(100vh - 73px)', overflowY: 'auto' }}
+        >
+            {/* Sidebar Header */}
+            <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'} py-3 border-b ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-900/80' : 'bg-white/80'} sticky top-0 z-10`}>
+                {!isSidebarCollapsed && (
+                    <div className="flex items-center gap-2">
+                        <Filter className="w-4 h-4 text-indigo-400" />
+                        <span className={`text-xs font-bold uppercase tracking-wider ${colors.textPrimary}`}>Filters</span>
+                        {totalActiveCount > 0 && (
+                            <span className="text-[9px] font-bold bg-indigo-500 text-white px-1.5 py-0.5 rounded-full">
+                                {totalActiveCount}
+                            </span>
+                        )}
+                    </div>
+                )}
+                <button
+                    onClick={() => setIsSidebarCollapsed(c => !c)}
+                    className={`p-1.5 rounded-lg ${colors.textMuted} hover:${colors.textPrimary} hover:${colors.bgTertiary} transition-colors`}
+                    title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                >
+                    <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isSidebarCollapsed ? '-rotate-90' : 'rotate-90'}`} />
+                </button>
+            </div>
+
+            {/* Clear All Button */}
+            {!isSidebarCollapsed && totalActiveCount > 0 && (
+                <div className={`px-4 py-2 border-b ${colors.borderPrimary}`}>
+                    <button
+                        onClick={clearFilters}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors uppercase tracking-wider"
+                    >
+                        <Trash2 className="w-3 h-3" />
+                        Clear All Filters
+                    </button>
+                </div>
+            )}
+
+            {/* Filter Columns Accordion */}
+            {!isSidebarCollapsed && (
+                <div className="flex-1 overflow-y-auto py-2 no-scrollbar">
+                    {filterableColumns.map(col => {
+                        const isExpanded = expandedSidebarCols.has(col);
+                        const colVals = Array.isArray(activeFilters[col]) ? activeFilters[col] : [];
+                        const activeCount = colVals.length;
+                        const search = sidebarColSearch[col] || '';
+                        const allVals = uniqueValuesMap[col] || [];
+                        const uniqueVals = search ? allVals.filter(v => v.toLowerCase().includes(search.toLowerCase())) : allVals;
+
+                        return (
+                            <div key={col} className={`border-b ${colors.borderPrimary} last:border-b-0`}>
+                                {/* Column Header Button */}
+                                <button
+                                    onClick={() => toggleSidebarColumn(col)}
+                                    className={`w-full flex items-center justify-between px-4 py-3 text-xs font-semibold transition-colors ${
+                                        activeCount > 0
+                                            ? 'text-indigo-400'
+                                            : `${colors.textSecondary} hover:${colors.textPrimary}`
+                                    } hover:${colors.bgTertiary}`}
+                                >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="truncate">{col.includes('.') ? col.split('.').pop() : col}</span>
+                                        {activeCount > 0 && (
+                                            <span className="shrink-0 text-[9px] font-bold bg-indigo-500 text-white px-1.5 py-0.5 rounded-full">
+                                                {activeCount}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} ${colors.textMuted}`} />
+                                </button>
+
+                                {/* Expanded Values Panel */}
+                                {isExpanded && (
+                                    <div className="pb-2">
+                                        <div className="px-3 pb-2">
+                                            <input
+                                                type="text"
+                                                placeholder="Search..."
+                                                value={search}
+                                                onChange={e => setSidebarColSearch(prev => ({ ...prev, [col]: e.target.value }))}
+                                                className={`w-full px-2.5 py-1.5 text-[11px] rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-1 focus:ring-indigo-500 outline-none transition-all`}
+                                            />
+                                        </div>
+                                        <div className="max-h-48 overflow-y-auto no-scrollbar px-2">
+                                            {uniqueVals.length === 0 ? (
+                                                <p className={`text-[10px] ${colors.textMuted} text-center py-3 italic`}>No values found</p>
+                                            ) : uniqueVals.map(val => {
+                                                const actualVal = val === '(Empty)' ? '' : val;
+                                                const isSelected = colVals.some((v: any) => String(v) === String(actualVal));
+                                                return (
+                                                    <button
+                                                        key={val}
+                                                        onClick={() => toggleFilter(col, actualVal)}
+                                                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] transition-all mb-0.5 text-left ${
+                                                            isSelected
+                                                                ? 'bg-indigo-500/15 text-indigo-300 font-semibold'
+                                                                : `${colors.textMuted} hover:${colors.bgTertiary} hover:${colors.textSecondary}`
+                                                        }`}
+                                                    >
+                                                        <span className={`shrink-0 w-3.5 h-3.5 rounded flex items-center justify-center border transition-all ${
+                                                            isSelected ? 'bg-indigo-500 border-indigo-400' : 'border-current opacity-30'
+                                                        }`}>
+                                                            {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
+                                                        </span>
+                                                        <span className="truncate">{val}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Collapsed — show filter icon badges */}
+            {isSidebarCollapsed && (
+                <div className="flex flex-col items-center gap-2 py-3">
+                    {filterableColumns.map(col => {
+                        const colVals = Array.isArray(activeFilters[col]) ? activeFilters[col] : [];
+                        const activeCount = colVals.length;
+                        return (
+                            <button
+                                key={col}
+                                onClick={() => { setIsSidebarCollapsed(false); toggleSidebarColumn(col); }}
+                                title={col}
+                                className={`relative p-2 rounded-lg transition-colors ${
+                                    activeCount > 0 ? 'bg-indigo-500/20 text-indigo-400' : `${colors.textMuted} hover:${colors.bgTertiary}`
+                                }`}
+                            >
+                                <Filter className="w-4 h-4" />
+                                {activeCount > 0 && (
+                                    <span className="absolute -top-0.5 -right-0.5 text-[8px] font-bold bg-indigo-500 text-white w-3.5 h-3.5 rounded-full flex items-center justify-center">
+                                        {activeCount}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </aside>
+    );
+});
+
+// ─── Dashboard ─────────────────────────────────────────────────────────────────
+export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, sections: explicitSections = [], filterColumns = [], onHome, onSave, onRefresh }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
 
     // Local state for charts allows editing/adding charts in-place
     const [currentCharts, setCurrentCharts] = useState<ChartConfig[]>(Array.isArray(chartConfigs) ? chartConfigs : []);
+    const [currentSections, setCurrentSections] = useState<DashboardSection[]>(explicitSections);
     const [isEditing, setIsEditing] = useState(false);
 
     // UI State
@@ -941,10 +1336,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
     const [dashboardName, setDashboardName] = useState(dataModel?.name || "Untitled Dashboard");
     const [isRefreshing, setIsRefreshing] = useState(false);
 
-    // --- NEW: Global Filtering State ---
-    const [activeFilters, setActiveFilters] = useState<{ [column: string]: any }>({});
+    // --- NEW: Per-Chart Filter Dropdown State ---
+    const [chartFilterMenuOpen, setChartFilterMenuOpen] = useState<string | null>(null);
+    const [chartFilterColumn, setChartFilterColumn] = useState<{ [chartId: string]: string | null }>({});
+    const [chartFilterSearch, setChartFilterSearch] = useState<{ [chartId: string]: string }>({});
+    const hoveredChartRef = useRef<string | null>(null); // Use ref to avoid re-renders on hover
+    
+    // Sidebar state is managed inside <FilterSidebar> — not here — to avoid Dashboard re-renders.
 
-    // Filtered data calculation
+    // --- NEW: Global Filtering State ---
+    const [activeFilters, setActiveFilters] = useState<{ [column: string]: any[] }>({});
+
+    // --- NEW: Per-Chart Filtering State (supports multiple values per column) ---
+    const [chartFilters, setChartFilters] = useState<{ [chartId: string]: { [column: string]: any[] } }>({});
+
+    // Filtered data calculation (global filters only — now supports multiple values per column)
     const filteredData = useMemo(() => {
         if (!dataModel || !dataModel.data) return [];
         if (Object.keys(activeFilters).length === 0) return dataModel.data;
@@ -952,8 +1358,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
         try {
             return dataModel.data.filter(row => {
                 if (!row) return false;
-                return Object.entries(activeFilters).every(([col, val]) => {
-                    return String(row[col]) === String(val);
+                return Object.entries(activeFilters).every(([col, vals]) => {
+                    if (!Array.isArray(vals) || vals.length === 0) return true;
+                    return vals.some(v => String(row[col]) === String(v));
                 });
             });
         } catch (e) {
@@ -962,19 +1369,88 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
         }
     }, [dataModel?.data, activeFilters]);
 
-    const toggleFilter = (column: string, value: any) => {
+    // Helper function to apply per-chart filters (supports multiple values)
+    const applyChartFilters = (data: any[], chartId: string): any[] => {
+        const filters = chartFilters[chartId];
+        if (!filters || Object.keys(filters).length === 0) return data;
+
+        try {
+            return data.filter(row => {
+                if (!row) return false;
+                return Object.entries(filters).every(([col, vals]) => {
+                    // vals is now an array of values to match
+                    if (!Array.isArray(vals) || vals.length === 0) return true;
+                    return vals.some(val => String(row[col]) === String(val));
+                });
+            });
+        } catch (e) {
+            console.error("Error in chart filtering logic:", e);
+            return data;
+        }
+    };
+
+    // Toggle per-chart filter (supports multiple values)
+    const toggleChartFilter = useCallback((chartId: string, column: string, value: any) => {
+        setChartFilters(prev => {
+            const next = { ...prev };
+            const currentChart = next[chartId] ? { ...next[chartId] } : {};
+            const currentValues = currentChart[column] ? [...currentChart[column]] : [];
+
+            const valueStr = String(value);
+            const index = currentValues.findIndex(v => String(v) === valueStr);
+
+            if (index >= 0) {
+                currentValues.splice(index, 1);
+            } else {
+                currentValues.push(value);
+            }
+
+            if (currentValues.length === 0) {
+                delete currentChart[column];
+            } else {
+                currentChart[column] = currentValues;
+            }
+
+            if (Object.keys(currentChart).length === 0) {
+                delete next[chartId];
+            } else {
+                next[chartId] = currentChart;
+            }
+
+            return next;
+        });
+    }, []);
+
+    // Clear per-chart filters
+    const clearChartFilters = useCallback((chartId: string) => {
+        setChartFilters(prev => {
+            const next = { ...prev };
+            delete next[chartId];
+            return next;
+        });
+    }, []);
+
+    const toggleFilter = useCallback((column: string, value: any) => {
         setActiveFilters(prev => {
             const next = { ...prev };
-            if (next[column] === value) {
+            const currentVals = Array.isArray(next[column]) ? [...next[column]] : [];
+            const valueStr = String(value);
+            const idx = currentVals.findIndex(v => String(v) === valueStr);
+            if (idx >= 0) {
+                currentVals.splice(idx, 1);
+            } else {
+                currentVals.push(value);
+            }
+            if (currentVals.length === 0) {
                 delete next[column];
             } else {
-                next[column] = value;
+                next[column] = currentVals;
             }
             return next;
         });
-    };
+    }, []);
 
-    const clearFilters = () => setActiveFilters({});
+    const clearFilters = useCallback(() => setActiveFilters({}), []);
 
     // --- NEW: Manual Filter Dropdown Logic ---
     const [openFilterMenu, setOpenFilterMenu] = useState(false);
@@ -997,10 +1473,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
         });
     }, [dataModel, filterColumns]);
 
-    const getUniqueValues = (column: string) => {
+    const getUniqueValues = useCallback((column: string): string[] => {
         if (!column || !dataModel || !dataModel.data) return [];
         try {
-            const rawValues = Array.from(new Set(dataModel.data.map(r => {
+            const rawValues = Array.from(new Set<string>(dataModel.data.map((r: any) => {
                 const val = r[column];
                 return val === null || val === undefined ? '' : String(val);
             })));
@@ -1011,7 +1487,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
             console.error("Error getting unique values for", column, e);
             return [];
         }
-    };
+    }, [dataModel?.data]);
+
+    // Pre-compute unique values for all sidebar filter columns once — passed as stable prop to FilterSidebar
+    const uniqueValuesMap = useMemo(() => {
+        const map: { [col: string]: string[] } = {};
+        filterableColumns.forEach(col => { map[col] = getUniqueValues(col); });
+        return map;
+    }, [filterableColumns, getUniqueValues]);
 
     const handleRefresh = async () => {
         if (!onRefresh) return;
@@ -1044,205 +1527,223 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
     const [isExporting, setIsExporting] = useState(false);
     const [expandedChartId, setExpandedChartId] = useState<string | null>(null);
 
+    // --- Section-based Tabs ---
+    const CHARTS_PER_TAB = 4;
+
+    // Words to skip when picking a section name from chart titles
+    const STOP_WORDS = new Set([
+        'by', 'of', 'the', 'and', 'or', 'in', 'on', 'at', 'to', 'a', 'an',
+        'for', 'with', 'per', 'vs', 'total', 'count', 'sum', 'average', 'avg',
+        'top', 'over', 'chart', 'graph', 'distribution', 'analysis', 'breakdown',
+        'trend', 'monthly', 'annual', 'yearly', 'weekly', 'daily', 'number',
+        'report', 'overview', 'summary', 'data', 'view', 'all', 'each'
+    ]);
+
+    // Splits chart list into sections
+    const sections = useMemo(() => {
+        if (currentSections && currentSections.length > 0) {
+            // Group by explicit sectionId
+            return currentSections.map(s =>
+                charts.filter(c => c.sectionId === s.id)
+            ).filter(group => group.length > 0 || currentSections.length > 0);
+            // We keep empty sections if they were explicitly defined
+        }
+
+        // Fallback to automatic splitting
+        const result: ChartConfig[][] = [];
+        for (let i = 0; i < charts.length; i += CHARTS_PER_TAB) {
+            result.push(charts.slice(i, i + CHARTS_PER_TAB));
+        }
+        return result;
+    }, [charts, explicitSections]);
+
+    // Derive unique names for ALL sections
+    const deriveSectionNames = (allSections: ChartConfig[][]): string[] => {
+        if (currentSections && currentSections.length > 0) {
+            return currentSections.map(s => s.name);
+        }
+
+        // Normalize a word: lowercase, strip trailing 's'/'es' for basic plural handling
+        const normalizeWord = (word: string): string => {
+            const lower = word.toLowerCase().replace(/[^a-z]/g, '');
+            if (lower.length > 5 && lower.endsWith('es')) return lower.slice(0, -2);
+            if (lower.length > 4 && lower.endsWith('s')) return lower.slice(0, -1);
+            return lower;
+        };
+
+        const usedNames = new Set<string>();
+
+        return allSections.map((sec, i) => {
+            if (!sec.length) return `Section ${i + 1}`;
+
+            // Collect candidate words from ALL chart titles in the section (prioritising first chart)
+            const candidates: string[] = [];
+            sec.forEach(chart => {
+                const words = (chart.title || '').split(/\s+/);
+                for (const word of words) {
+                    const clean = word.toLowerCase().replace(/[^a-z]/g, '');
+                    const norm = normalizeWord(word);
+                    if (clean.length > 2 && !STOP_WORDS.has(clean) && !STOP_WORDS.has(norm)) {
+                        const display = word.replace(/[^a-zA-Z]/g, '');
+                        if (display.length > 2) {
+                            const label = display.charAt(0).toUpperCase() + display.slice(1).toLowerCase();
+                            candidates.push(label);
+                        }
+                    }
+                }
+            });
+
+            // Build frequency map on normalized forms, but store display form
+            const normFreq: Record<string, { display: string; count: number }> = {};
+            candidates.forEach(label => {
+                const norm = normalizeWord(label);
+                if (!normFreq[norm]) normFreq[norm] = { display: label, count: 0 };
+                normFreq[norm].count += 1;
+            });
+
+            // Rank by frequency, then try each until we find a unique one
+            const ranked = Object.values(normFreq).sort((a, b) => b.count - a.count);
+
+            for (const { display } of ranked) {
+                const normKey = normalizeWord(display);
+                // Check uniqueness against already-used normalized forms
+                const alreadyUsed = Array.from(usedNames).some(u => normalizeWord(u) === normKey);
+                if (!alreadyUsed) {
+                    usedNames.add(display);
+                    return display;
+                }
+            }
+
+            // Fallback: Section N
+            const fallback = `Section ${i + 1}`;
+            usedNames.add(fallback);
+            return fallback;
+        });
+    };
+
+    const [activeTab, setActiveTab] = useState(0);
+    const [editingTabIndex, setEditingTabIndex] = useState<number | null>(null);
+    const [editingTabValue, setEditingTabValue] = useState('');
+    const tabInputRef = useRef<HTMLInputElement>(null);
+
+    // Preserve any tab names the user manually renamed
+    const [userRenamedTabs, setUserRenamedTabs] = useState<Record<string, string>>({});
+
+    // Compute tab names synchronously — always up to date, no async state needed
+    // userRenamedTabs is keyed by the auto-derived name so renames survive chart additions
+    const resolvedTabNames = useMemo(() => {
+        const derived = deriveSectionNames(sections);
+        return derived.map(name => userRenamedTabs[name] ?? name);
+    }, [sections, userRenamedTabs]);
+
+    // Focus tab name input when editing starts
+    useEffect(() => {
+        if (editingTabIndex !== null && tabInputRef.current) {
+            tabInputRef.current.focus();
+            tabInputRef.current.select();
+        }
+    }, [editingTabIndex]);
+
+    // Reset to first tab when chart count changes
+    useEffect(() => {
+        setActiveTab(0);
+    }, [charts.length]);
+
+    const activeSection = sections[activeTab] || [];
+
+    const saveTabName = () => {
+        if (editingTabIndex !== null) {
+            const derived = deriveSectionNames(sections);
+            const originalName = derived[editingTabIndex] || `Section ${editingTabIndex + 1}`;
+            const newName = editingTabValue.trim() || originalName;
+            // Key by the original auto-derived name so rename survives chart additions
+            setUserRenamedTabs(prev => ({ ...prev, [originalName]: newName }));
+            setEditingTabIndex(null);
+        }
+    };
+
+
     const expandedChartConfig = useMemo(() => {
         if (!currentCharts) return undefined;
         return currentCharts.find(c => c.id === expandedChartId);
     }, [expandedChartId, currentCharts]);
 
+    // --- NEW: PDF Export Logic ---
+    const [isExportingPDF, setIsExportingPDF] = useState(false);
+
+    interface PDFPageContent {
+        pageId: number;
+        tabIndex: number;
+        tabName: string;
+        charts: ChartConfig[];
+        isFirstPageOfTab: boolean;
+        isFirstPageOfPDF: boolean;
+        pageKPIs?: ChartConfig[];
+    }
+
+    const pdfExportPages = useMemo(() => {
+        if (!isExportingPDF) return [];
+
+        const pages: PDFPageContent[] = [];
+        if (sections.length === 0) return [];
+
+        // Tab 1
+        const tab1Name = resolvedTabNames[0] || "Summary";
+        const tab1Charts = sections[0] || [];
+
+        // First page of Tab 1 (and PDF)
+        pages.push({
+            pageId: 1,
+            tabIndex: 0,
+            tabName: tab1Name,
+            charts: tab1Charts.slice(0, 6),
+            isFirstPageOfTab: true,
+            isFirstPageOfPDF: true,
+            pageKPIs: kpis
+        });
+
+        // Tab 1 Overflow
+        if (tab1Charts.length > 6) {
+            for (let i = 6; i < tab1Charts.length; i += 6) {
+                pages.push({
+                    pageId: pages.length + 1,
+                    tabIndex: 0,
+                    tabName: tab1Name,
+                    charts: tab1Charts.slice(i, i + 6),
+                    isFirstPageOfTab: false,
+                    isFirstPageOfPDF: false
+                });
+            }
+        }
+
+        // Subsquent Tabs
+        for (let t = 1; t < sections.length; t++) {
+            const tabName = resolvedTabNames[t] || `Section ${t + 1}`;
+            const tabCharts = sections[t] || [];
+
+            for (let i = 0; i < tabCharts.length; i += 6) {
+                pages.push({
+                    pageId: pages.length + 1,
+                    tabIndex: t,
+                    tabName: tabName,
+                    charts: tabCharts.slice(i, i + 6),
+                    isFirstPageOfTab: i === 0,
+                    isFirstPageOfPDF: false
+                });
+            }
+        }
+
+        return pages;
+    }, [isExportingPDF, sections, kpis, resolvedTabNames]);
+
     const handleExportPDF = async () => {
         setIsExporting(true);
+        setIsExportingPDF(true);
+
+        // Wait for all charts to render in the hidden export view
         await new Promise(resolve => setTimeout(resolve, 1500));
 
         try {
-            const element = document.getElementById('dashboard-container');
-            if (!element) throw new Error("Dashboard container not found");
-
-            const originalWidth = element.offsetWidth;
-            const bgColor = theme === 'dark' ? '#0f172a' : '#f8fafc';
-            const textPrimary = theme === 'dark' ? '#f1f5f9' : '#0f172a';
-            const textMuted = theme === 'dark' ? '#64748b' : '#94a3b8';
-            const borderColor = theme === 'dark' ? '#1e293b' : '#e2e8f0';
-
-            const siteHeaderEl = element.querySelector('header') as HTMLElement;
-            const filterBarEl = element.querySelector('[data-pdf-filter-bar]') as HTMLElement;
-            const headerH = siteHeaderEl ? siteHeaderEl.offsetHeight : 0;
-            const filterH = filterBarEl ? filterBarEl.offsetHeight : 0;
-            const reportHeaderH = 160;
-            const contentHeight = element.scrollHeight + reportHeaderH - headerH - filterH + 140;
-
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                backgroundColor: bgColor,
-                useCORS: true,
-                allowTaint: true,
-                logging: false,
-                width: originalWidth,
-                height: contentHeight,
-                windowWidth: originalWidth,
-                windowHeight: contentHeight,
-                scrollX: 0,
-                scrollY: -window.scrollY,
-                onclone: (clonedDoc) => {
-                    const el = clonedDoc.getElementById('dashboard-container');
-                    if (!el) return;
-
-                    el.style.width = originalWidth + 'px';
-                    el.style.transform = 'none';
-                    el.style.fontFamily = 'Inter, system-ui, sans-serif';
-                    el.style.background = bgColor;
-
-                    const siteHeader = el.querySelector('header');
-                    if (siteHeader) (siteHeader as HTMLElement).style.display = 'none';
-
-                    const filterBar = el.querySelector('[data-pdf-filter-bar]');
-                    if (filterBar) (filterBar as HTMLElement).style.display = 'none';
-
-                    const hiddenPrintHeader = el.querySelector('.print\\:block') as HTMLElement;
-                    if (hiddenPrintHeader) hiddenPrintHeader.style.display = 'none';
-
-                    const reportHeader = clonedDoc.createElement('div');
-                    reportHeader.style.cssText = `
-                        padding: 40px 48px 28px 48px;
-                        border-bottom: 2px solid ${borderColor};
-                        margin-bottom: 0;
-                        background: ${bgColor};
-                    `;
-
-                    const titleEl = clonedDoc.createElement('h1');
-                    titleEl.style.cssText = `
-                        font-size: 30px;
-                        font-weight: 800;
-                        color: ${textPrimary};
-                        margin: 0 0 6px 0;
-                        letter-spacing: -0.5px;
-                        line-height: 1.2;
-                    `;
-                    titleEl.textContent = dataModel.name;
-
-                    const subtitleEl = clonedDoc.createElement('p');
-                    subtitleEl.style.cssText = `
-                        font-size: 13px;
-                        color: ${textMuted};
-                        margin: 0 0 4px 0;
-                        font-weight: 500;
-                    `;
-                    subtitleEl.textContent = 'AnalyticCore Generated Report';
-
-                    const dateEl = clonedDoc.createElement('p');
-                    dateEl.style.cssText = `
-                        font-size: 11px;
-                        color: ${textMuted};
-                        margin: 6px 0 0 0;
-                        opacity: 0.7;
-                    `;
-                    dateEl.textContent = `Generated on ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })} · ${dataModel.data.length.toLocaleString()} records`;
-
-                    reportHeader.appendChild(titleEl);
-                    reportHeader.appendChild(subtitleEl);
-                    reportHeader.appendChild(dateEl);
-
-                    const mainEl = el.querySelector('main');
-                    if (mainEl) {
-                        (mainEl as HTMLElement).style.paddingBottom = '72px';
-                        el.insertBefore(reportHeader, mainEl);
-                    } else {
-                        el.insertBefore(reportHeader, el.firstChild);
-                    }
-
-                    const exportSpacer = clonedDoc.createElement('div');
-                    exportSpacer.style.height = '72px';
-                    exportSpacer.style.width = '100%';
-                    exportSpacer.style.display = 'block';
-                    el.appendChild(exportSpacer);
-
-                    el.querySelectorAll('.sticky, .fixed').forEach((node: any) => {
-                        (node as HTMLElement).style.position = 'relative';
-                        (node as HTMLElement).style.top = 'auto';
-                        (node as HTMLElement).style.zIndex = 'auto';
-                    });
-
-                    el.querySelectorAll('.chart-controls, .no-print, .no-export').forEach((node: any) => {
-                        (node as HTMLElement).style.display = 'none';
-                    });
-
-                    el.querySelectorAll('.truncate, .line-clamp-1, .line-clamp-2').forEach((node: any) => {
-                        node.classList.remove('truncate', 'line-clamp-1', 'line-clamp-2');
-                        (node as HTMLElement).style.whiteSpace = 'normal';
-                        (node as HTMLElement).style.overflow = 'visible';
-                        (node as HTMLElement).style.height = 'auto';
-                    });
-
-                    // 🔥 Fix ResponsiveContainer reflow for Pie charts
-                    el.querySelectorAll('.recharts-responsive-container').forEach((node: any) => {
-                        const container = node as HTMLElement;
-
-                        const rect = container.getBoundingClientRect();
-
-                        container.style.width = rect.width + 'px';
-                        container.style.height = rect.height + 'px';
-                        container.style.maxWidth = 'none';
-                    });
-
-                    el.querySelectorAll('.recharts-wrapper').forEach((node: any) => {
-                        const wrapper = node as HTMLElement;
-                        wrapper.style.paddingTop = '0';
-                        wrapper.style.marginTop = '0';
-                    });
-
-                    el.querySelectorAll('[data-legend-dot]').forEach((node: any) => {
-                        (node as HTMLElement).style.display = 'none';
-                    });
-
-
-
-                    // Improve legend item spacing
-                    el.querySelectorAll('.recharts-default-legend').forEach((node: any) => {
-                        const list = node as HTMLElement;
-                        list.style.display = 'flex';
-                        list.style.justifyContent = 'center';
-                        list.style.gap = '12px';
-                    });
-
-                    el.querySelectorAll('svg.recharts-surface').forEach((svg: any) => {
-                        svg.style.overflow = 'visible';
-                    });
-
-                    el.querySelectorAll('text').forEach((node: any) => {
-                        (node as HTMLElement).style.visibility = 'visible';
-                        (node as HTMLElement).style.opacity = '1';
-                    });
-
-                    el.querySelectorAll('.glass-effect').forEach((node: any) => {
-                        (node as HTMLElement).style.backdropFilter = 'none';
-                        (node as HTMLElement).style.background = bgColor;
-                    });
-                },
-                ignoreElements: (node) => {
-                    if (node.tagName === 'HEADER') return true;
-                    if ((node as HTMLElement).hasAttribute && (node as HTMLElement).hasAttribute('data-pdf-filter-bar')) return true;
-                    return node.classList && (
-                        node.classList.contains('no-export') ||
-                        node.classList.contains('chart-controls') ||
-                        node.classList.contains('no-print')
-                    );
-                }
-            });
-
-            const imgData = canvas.toDataURL('image/png', 1.0);
-
-            // Standard A4 dimensions in pixels at 72 DPI
-            const A4_WIDTH = 595.28;
-            const A4_HEIGHT = 841.89;
-
-            // Calculate scale to fit A4 width
-            // Using canvas.width / 2 because of html2canvas scale: 2 factor
-            const imgWidth = canvas.width / 2;
-            const imgHeight = canvas.height / 2;
-
-            const ratio = A4_WIDTH / imgWidth;
-            const scaledWidth = imgWidth * ratio;
-            const scaledHeight = imgHeight * ratio;
-
             const pdf = new jsPDF({
                 orientation: 'portrait',
                 unit: 'pt',
@@ -1250,40 +1751,50 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                 compress: true
             });
 
-            // How many pages do we need?
-            let position = 0;
-            let pageLeft = scaledHeight;
+            const pageElements = document.querySelectorAll('[data-pdf-page]');
+            if (!pageElements.length) throw new Error("Export elements not found");
 
-            // Fill background for first page
-            pdf.setFillColor(bgColor);
-            pdf.rect(0, 0, A4_WIDTH, A4_HEIGHT, 'F');
+            const bgColor = theme === 'dark' ? '#0f172a' : '#f8fafc';
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
 
-            // Add first page
-            pdf.addImage(imgData, 'PNG', 0, position, scaledWidth, scaledHeight, undefined, 'FAST');
-            pageLeft -= A4_HEIGHT;
+            for (let i = 0; i < pageElements.length; i++) {
+                const el = pageElements[i] as HTMLElement;
 
-            // Add subsequent pages if content overflows A4 height
-            while (pageLeft > 0 && position > -scaledHeight) {
-                position = position - A4_HEIGHT; // Move the image up by exactly 1 page height
-                pdf.addPage();
+                const canvas = await html2canvas(el, {
+                    scale: 1.5,
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false,
+                    backgroundColor: bgColor,
+                    width: 1200, // Widened for more internal chart space
+                    height: 1696,
+                    windowWidth: 1200,
+                    windowHeight: 1696
+                });
 
-                // Fill background for subsequent pages
+                // Use JPEG for faster generation and smaller file size
+                const imgData = canvas.toDataURL('image/jpeg', 0.85);
+
+                if (i > 0) pdf.addPage();
+
+                // Ensure page background
                 pdf.setFillColor(bgColor);
-                pdf.rect(0, 0, A4_WIDTH, A4_HEIGHT, 'F');
+                pdf.rect(0, 0, pdfWidth, pdfHeight, 'F');
 
-                pdf.addImage(imgData, 'PNG', 0, position, scaledWidth, scaledHeight, undefined, 'FAST');
-                pageLeft -= A4_HEIGHT;
+                pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
             }
 
-            pdf.save(`${dataModel.name.replace(/\s+/g, '_')}_Dashboard.pdf`);
-
+            pdf.save(`${dataModel.name.replace(/\s+/g, '_')}_Report.pdf`);
         } catch (error) {
             console.error("Export PDF Error:", error);
-            alert("Failed to generate PDF. Please try using the browser Print function.");
+            alert("Failed to generate PDF. Please try again.");
         } finally {
             setIsExporting(false);
+            setIsExportingPDF(false);
         }
     };
+
 
     const openSaveModal = () => {
         setDashboardName(dataModel.name);
@@ -1295,12 +1806,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
             alert("Please enter a valid name");
             return;
         }
-        onSave(dashboardName, currentCharts);
+        onSave(dashboardName, currentCharts, currentSections);
         setIsSaveModalOpen(false);
     };
 
-    const handleUpdateFromBuilder = (updatedCharts: ChartConfig[]) => {
+    const handleUpdateFromBuilder = (updatedCharts: ChartConfig[], updatedSections?: DashboardSection[]) => {
         setCurrentCharts(updatedCharts);
+        if (updatedSections) setCurrentSections(updatedSections);
         setIsEditing(false);
     };
 
@@ -1357,10 +1869,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                     <div className="fixed inset-0 z-50 bg-slate-950 animate-fade-in">
                         <ChartBuilder
                             dataModel={dataModel}
-                            onGenerateReport={(updatedCharts, _cols) => handleUpdateFromBuilder(updatedCharts)}
+                            onGenerateReport={(updatedCharts, _cols, updatedSections) => handleUpdateFromBuilder(updatedCharts, updatedSections)}
                             onHome={() => setIsEditing(false)}
                             initialBucket={currentCharts}
                             initialFilterColumns={filterColumns}
+                            sections={currentSections}
                             mode="update"
                         />
                     </div>
@@ -1385,12 +1898,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                             <div className="flex-1 p-6 min-h-0">
                                 <RenderChart
                                     config={expandedChartConfig}
-                                    data={aggregateData(filteredData, expandedChartConfig)}
+                                    data={aggregateData(applyChartFilters(filteredData, expandedChartConfig.id), expandedChartConfig)}
                                     isExpanded={true}
                                     theme={theme}
                                     isAnimationActive={!isExporting}
                                     onItemClick={(val) => toggleFilter(expandedChartConfig.xAxisKey, val)}
                                     activeFilterValue={activeFilters[expandedChartConfig.xAxisKey]}
+                                    columnMetadata={dataModel.columnMetadata}
                                 />
                             </div>
                             <div className={`p-4 ${colors.bgSecondary} border-t ${colors.borderPrimary} text-center`}>
@@ -1426,10 +1940,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                                     </h1>
                                     <p className={`text-[10px] sm:text-xs ${colors.textMuted} truncate`}>InsightAI Generated Report</p>
                                 </div>
-                                {/* Mobile Theme Toggle (moved here for better access) */}
-                                <div className="md:hidden">
-                                    <ThemeToggle />
-                                </div>
                             </div>
 
                             <div className="flex items-center gap-2 sm:gap-3 no-export w-full md:w-auto justify-between md:justify-end overflow-x-auto pb-1 md:pb-0">
@@ -1454,12 +1964,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                                     <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     <span className="hidden sm:inline">Share</span>
                                 </button> */}
+                                    <ThemeToggle className="scale-90 sm:scale-100" />
                                 </div>
 
                                 <div className="flex items-center gap-2">
-                                    <div className="hidden md:block">
-                                        <ThemeToggle />
-                                    </div>
                                     <button
                                         onClick={handleExportPDF}
                                         disabled={isExporting}
@@ -1473,9 +1981,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                         </div>
                     </header>
 
-                    {/* --- NEW: Interactive Filter Bar --- */}
+                    {/* --- Interactive Filter Bar --- */}
                     <div data-pdf-filter-bar className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2 sticky top-[57px] sm:top-[65px] md:top-[73px] z-20 shadow-sm print:hidden`}>
-                        <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 sm:gap-4">
+                        <div className="max-w-full mx-auto flex flex-wrap items-center gap-2 sm:gap-4">
                             <div className="flex items-center gap-2 text-indigo-400">
                                 <Filter className="w-4 h-4" />
                                 <span className="text-xs font-bold uppercase tracking-wider">Active Filters</span>
@@ -1483,25 +1991,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
 
                             {Object.keys(activeFilters).length === 0 ? (
                                 <div className={`text-[10px] sm:text-xs ${colors.textMuted} italic`}>
-                                    Click on any chart element to filter the dashboard...
+                                    {filterColumns.length > 0 ? 'Use the sidebar to filter the dashboard...' : 'Click on any chart element to filter the dashboard...'}
                                 </div>
                             ) : (
                                 <div className="flex flex-wrap gap-2 items-center">
-                                    {Object.entries(activeFilters).map(([col, val]) => (
-                                        <div
-                                            key={col}
-                                            className="flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-2 py-1 rounded-md text-[10px] sm:text-xs font-medium"
-                                        >
-                                            <span className="opacity-60">{col}:</span>
-                                            <span className="font-bold">{String(val)}</span>
-                                            <button
-                                                onClick={() => toggleFilter(col, val)}
-                                                className="ml-1 hover:text-white transition-colors"
+                                    {Object.entries(activeFilters).map(([col, vals]) => {
+                                        const valArray = Array.isArray(vals) ? vals : [vals];
+                                        return valArray.map((val, idx) => (
+                                            <div
+                                                key={`${col}-${idx}`}
+                                                className="flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-2 py-1 rounded-md text-[10px] sm:text-xs font-medium"
                                             >
-                                                <X className="w-3 h-3" />
-                                            </button>
-                                        </div>
-                                    ))}
+                                                <span className="opacity-60">{col}:</span>
+                                                <span className="font-bold">{String(val)}</span>
+                                                <button
+                                                    onClick={() => toggleFilter(col, val)}
+                                                    className="ml-1 hover:text-white transition-colors"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ));
+                                    })}
                                     <button
                                         onClick={clearFilters}
                                         className={`flex items-center gap-1.5 px-2 py-1 text-[10px] sm:text-xs font-bold ${colors.textMuted} hover:text-red-400 transition-colors uppercase`}
@@ -1512,7 +2023,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                                 </div>
                             )}
 
-                            {/* Improved Manual Filter Dropdown */}
+                            {/* Manual 'Add Filter' Dropdown — only shown when no sidebar filter columns are configured */}
+                            {filterColumns.length === 0 && (
                             <div className="relative ml-2 border-l border-slate-700/50 pl-4">
                                 <button
                                     onClick={() => {
@@ -1598,7 +2110,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                                                             .map(val => {
                                                                 const valueStr = String(val);
                                                                 const actualVal = valueStr === '(Empty)' ? '' : valueStr;
-                                                                const isSelected = activeFilters[selectedFilterCol] === actualVal;
+                                                                const colVals = Array.isArray(activeFilters[selectedFilterCol]) ? activeFilters[selectedFilterCol] : [];
+                                                                const isSelected = colVals.some((v: any) => String(v) === String(actualVal));
                                                                 return (
                                                                     <button
                                                                         key={valueStr}
@@ -1622,6 +2135,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                                     </>
                                 )}
                             </div>
+                            )}
 
                             {/* Summary of visible vs total */}
                             <div className="ml-auto flex items-center gap-2 text-[10px] sm:text-xs font-medium">
@@ -1640,16 +2154,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                         <p className={`${colors.textMuted}`}>Generated via InsightAI</p>
                     </div>
 
-                    <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full print:p-4">
+                    <div className="flex flex-1 min-h-0 print:block">
+
+                    {/* --- Filter Sidebar (only when filterColumns are configured) --- */}
+                    {filterColumns.length > 0 && (
+                        <FilterSidebar
+                            filterableColumns={filterableColumns}
+                            activeFilters={activeFilters}
+                            uniqueValuesMap={uniqueValuesMap}
+                            toggleFilter={toggleFilter}
+                            clearFilters={clearFilters}
+                            theme={theme}
+                            colors={colors}
+                        />
+                    )}
+
+                    <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 print:p-4">
 
                         {/* KPIs Row */}
                         {kpis.length > 0 && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 print:grid-cols-4">
                                 {kpis.map((kpi, i) => {
-                                    const data = aggregateData(filteredData, kpi);
+                                    const data = aggregateData(applyChartFilters(filteredData, kpi.id), kpi);
                                     const value = data[0]?.value || 0;
-                                    const isCurrency = isCurrencyColumn(kpi.dataKey);
-                                    const displayValue = isCurrency ? formatCurrency(value) : (typeof value === 'number' ? value.toLocaleString('en-IN') : value);
+                                    const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata);
                                     return (
                                         <div key={kpi.id} className={`${colors.bgSecondary} rounded-xl border ${colors.borderPrimary} p-6 shadow-xl relative overflow-hidden group print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} hover-lift elevation-lg`}>
                                             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition transform group-hover:scale-110 print:hidden">
@@ -1668,41 +2196,241 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                             </div>
                         )}
 
-                        {/* Charts Grid */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 print:grid-cols-2 print:gap-4">
-                            {charts.map(chart => {
-                                const aggregatedData = aggregateData(filteredData, chart);
-                                return (
-                                    <div key={chart.id} className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] print:h-[380px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid print:p-4 relative group elevation-md`}>
-                                        <div className="mb-6 pr-8">
-                                            <h3 className={`font-bold text-lg ${colors.textSecondary} truncate`}>{chart.title}</h3>
-                                            <p className={`text-xs ${colors.textMuted} mt-1 truncate`}>{chart.description}</p>
+                        {/* Section Tabs - show whenever there are charts */}
+                        {sections.length > 0 && resolvedTabNames.length > 0 && (
+                            <div className="mb-6">
+                                <div className={`flex items-center gap-1 p-1 rounded-xl ${theme === 'dark' ? 'bg-slate-800/60' : 'bg-slate-100'} border ${colors.borderPrimary} w-fit max-w-full overflow-x-auto no-scrollbar`}>
+                                    {resolvedTabNames.map((name, i) => (
+                                        <div key={i} className="relative group/tab flex items-center shrink-0">
+                                            {editingTabIndex === i ? (
+                                                <input
+                                                    ref={tabInputRef}
+                                                    type="text"
+                                                    value={editingTabValue}
+                                                    onChange={e => setEditingTabValue(e.target.value)}
+                                                    onBlur={saveTabName}
+                                                    onKeyDown={e => e.key === 'Enter' && saveTabName()}
+                                                    className={`px-4 py-2 rounded-lg text-sm font-bold outline-none border-b-2 border-indigo-500 bg-transparent ${colors.textPrimary} w-32`}
+                                                />
+                                            ) : (
+                                                <button
+                                                    onClick={() => setActiveTab(i)}
+                                                    onDoubleClick={() => {
+                                                        setEditingTabIndex(i);
+                                                        setEditingTabValue(name);
+                                                    }}
+                                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === i
+                                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30'
+                                                        : `${colors.textMuted} hover:${colors.textSecondary} hover:${theme === 'dark' ? 'bg-slate-700/60' : 'bg-white'}`
+                                                        }`}
+                                                >
+                                                    <span>{name}</span>
+                                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === i
+                                                        ? 'bg-white/20 text-white'
+                                                        : `${theme === 'dark' ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'}`
+                                                        }`}>
+                                                        {sections[i]?.length}
+                                                    </span>
+                                                </button>
+                                            )}
                                         </div>
+                                    ))}
+                                </div>
+                                <p className={`text-[10px] ${colors.textMuted} mt-1.5 ml-1`}>Double-click a tab to rename it</p>
+                            </div>
+                        )}
 
-                                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity chart-controls no-print">
-                                            <button
-                                                onClick={() => setExpandedChartId(chart.id)}
-                                                className={`p-2 ${colors.bgTertiary} hover:bg-indigo-600 ${colors.textMuted} hover:text-white rounded-lg transition-all shadow-lg`}
-                                                title="Maximize Chart"
-                                            >
-                                                <Maximize2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
+                        {/* Charts Grid - shows only active section */}
+                        {sections.length > 0 ? (
+                            <div key={activeTab} className="grid grid-cols-1 lg:grid-cols-2 gap-8 print:grid-cols-2 print:gap-4 animate-fade-in">
+                                {activeSection.map(chart => {
+                                    // Apply per-chart filters BEFORE aggregation for proper filtering
+                                    const chartPreFilteredData = applyChartFilters(filteredData, chart.id);
+                                    const aggregatedData = aggregateData(chartPreFilteredData, chart);
+                                    const hasChartFilters = chartFilters[chart.id] && Object.keys(chartFilters[chart.id]).length > 0;
+                                    return (
+                                        <div 
+                                            key={chart.id}
+                                            onMouseEnter={() => { hoveredChartRef.current = chart.id; }}
+                                            onMouseLeave={() => { hoveredChartRef.current = null; }}
+                                            className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] print:h-[380px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid print:p-4 relative elevation-md overflow-hidden group`}>
+                                            <div className="mb-6 pr-20">
+                                                <h3 className={`font-bold text-lg ${colors.textSecondary} truncate`}>{chart.title}</h3>
+                                                <p className={`text-xs ${colors.textMuted} mt-1 truncate`}>{chart.description}</p>
+                                                {hasChartFilters && (
+                                                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                                        {Object.entries(chartFilters[chart.id] || {}).map(([col, vals]) => {
+                                                            const valArray = Array.isArray(vals) ? vals : [vals];
+                                                            return valArray.map((val, idx) => (
+                                                                <span key={`${col}-${idx}`} className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                                                    {col}: <span className="font-bold">{String(val).slice(0, 12)}</span>
+                                                                </span>
+                                                            ));
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
 
-                                        <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden">
-                                            <RenderChart
-                                                config={chart}
-                                                data={aggregatedData}
-                                                theme={theme}
-                                                isAnimationActive={!isExporting}
-                                                onItemClick={(val) => toggleFilter(chart.xAxisKey, val)}
-                                                activeFilterValue={activeFilters[chart.xAxisKey]}
-                                            />
+                                            <div className={`absolute top-4 right-4 z-20 chart-controls no-print flex gap-2 items-center transition-opacity duration-200 opacity-0 group-hover:opacity-100 ${chartFilterMenuOpen === chart.id ? 'opacity-100' : ''}`}>
+                                                {hasChartFilters && (
+                                                    <button
+                                                        onClick={() => clearChartFilters(chart.id)}
+                                                        className={`p-2 ${colors.bgTertiary} hover:bg-red-600/20 ${colors.textMuted} hover:text-red-400 rounded-lg transition-all shadow-lg active-press`}
+                                                        title="Clear Chart Filters"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                                <div className="relative">
+                                                    <button
+                                                        onClick={() => {
+                                                            setChartFilterMenuOpen(chartFilterMenuOpen === chart.id ? null : chart.id);
+                                                            setChartFilterColumn(prev => ({ ...prev, [chart.id]: null }));
+                                                            setChartFilterSearch(prev => ({ ...prev, [chart.id]: '' }));
+                                                        }}
+                                                        className={`p-2 rounded-lg transition-all shadow-lg active-press ${chartFilterMenuOpen === chart.id ? 'bg-indigo-600 text-white' : `${colors.bgTertiary} ${colors.textMuted} hover:bg-indigo-600/20 hover:text-indigo-400`}`}
+                                                        title="Add Chart Filter"
+                                                    >
+                                                        <Filter className="w-4 h-4" />
+                                                    </button>
+
+                                                    {chartFilterMenuOpen === chart.id && (
+                                                        <>
+                                                            <div 
+                                                                className="fixed inset-0 z-40 pointer-events-none"
+                                                            ></div>
+                                                            <div 
+                                                                className={`absolute top-full right-0 mt-2 w-72 max-h-[400px] overflow-hidden ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 flex flex-col pointer-events-auto`}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                }}
+                                                            >
+                                                                {!chartFilterColumn[chart.id] ? (
+                                                                    // STEP 1: Select Column
+                                                                    <>
+                                                                        <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
+                                                                            <div className="flex items-center justify-between mb-2">
+                                                                                <span className={`text-[10px] font-bold uppercase tracking-widest ${colors.textMuted}`}>Filter by Column</span>
+                                                                                <X className="w-3.5 h-3.5 cursor-pointer opacity-50 hover:opacity-100" onClick={() => setChartFilterMenuOpen(null)} />
+                                                                            </div>
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder="Search columns..."
+                                                                                autoFocus
+                                                                                className={`w-full px-3 py-2 text-xs rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                                                                value={chartFilterSearch[chart.id] || ''}
+                                                                                onChange={(e) => setChartFilterSearch(prev => ({ ...prev, [chart.id]: e.target.value }))}
+                                                                            />
+                                                                        </div>
+                                                                        <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80 pointer-events-auto">
+                                                                            {filterableColumns
+                                                                                .filter(c => c.toLowerCase().includes((chartFilterSearch[chart.id] || '').toLowerCase()))
+                                                                                .map(col => (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        key={col}
+                                                                                        onClick={(e) => {
+                                                                                            e.preventDefault();
+                                                                                            e.stopPropagation();
+                                                                                            setChartFilterColumn(prev => ({ ...prev, [chart.id]: col }));
+                                                                                        }}
+                                                                                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${(chartFilters[chart.id]?.[col]) ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                                                    >
+                                                                                        <div className="flex flex-col items-start truncate mr-2">
+                                                                                            {col.includes('.') && <span className="text-[9px] opacity-50 block">{col.split('.')[0]}</span>}
+                                                                                            <span className="truncate">{col.includes('.') ? col.split('.').pop() : col}</span>
+                                                                                        </div>
+                                                                                        <ArrowRight className="w-3.5 h-3.5 shrink-0 opacity-30" />
+                                                                                    </button>
+                                                                                ))}
+                                                                        </div>
+                                                                    </>
+                                                                ) : (
+                                                                    // STEP 2: Select Value
+                                                                    <>
+                                                                        <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
+                                                                            <div className="flex items-center gap-2 mb-2">
+                                                                                <button
+                                                                                    onClick={() => setChartFilterColumn(prev => ({ ...prev, [chart.id]: null }))}
+                                                                                    className="p-1 rounded-md hover:bg-slate-700/50 transition"
+                                                                                >
+                                                                                    <Home className="w-3.5 h-3.5" />
+                                                                                </button>
+                                                                                <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 truncate">
+                                                                                    {chartFilterColumn[chart.id]?.includes('.') ? chartFilterColumn[chart.id]?.split('.').pop() : chartFilterColumn[chart.id]}
+                                                                                </span>
+                                                                            </div>
+                                                                            <input
+                                                                                type="text"
+                                                                                placeholder="Search values..."
+                                                                                autoFocus
+                                                                                className={`w-full px-3 py-2 text-xs rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                                                                value={chartFilterSearch[chart.id] || ''}
+                                                                                onChange={(e) => setChartFilterSearch(prev => ({ ...prev, [chart.id]: e.target.value }))}
+                                                                            />
+                                                                        </div>
+                                                                        <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80 pointer-events-auto">
+                                                                            {getUniqueValues(chartFilterColumn[chart.id] || '')
+                                                                                .filter(v => String(v).toLowerCase().includes((chartFilterSearch[chart.id] || '').toLowerCase()))
+                                                                                .map(val => {
+                                                                                    const valueStr = String(val);
+                                                                                    const actualVal = valueStr === '(Empty)' ? '' : valueStr;
+                                                                                    const col = chartFilterColumn[chart.id] || '';
+                                                                                    const selectedValues = chartFilters[chart.id]?.[col] || [];
+                                                                                    const isSelected = selectedValues.some((v: any) => String(v) === String(actualVal));
+                                                                                    return (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            key={`${col}-${valueStr}`}
+                                                                                            onClick={(e) => {
+                                                                                                e.preventDefault();
+                                                                                                e.stopPropagation();
+                                                                                                console.log('Button clicked:', valueStr, 'for column:', col);
+                                                                                                toggleChartFilter(chart.id, col, actualVal);
+                                                                                            }}
+                                                                                            onMouseDown={(e) => {
+                                                                                                e.preventDefault();
+                                                                                                e.stopPropagation();
+                                                                                            }}
+                                                                                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${isSelected ? 'bg-indigo-500/20 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                                                        >
+                                                                                            <span className="truncate mr-4">{valueStr}</span>
+                                                                                            {isSelected && <Check className="w-4 h-4 shrink-0 text-indigo-400" />}
+                                                                                        </button>
+                                                                                    );
+                                                                                })}
+                                                                        </div>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    onClick={() => setExpandedChartId(chart.id)}
+                                                    className={`p-2 ${colors.bgTertiary} hover:bg-indigo-600 ${colors.textMuted} hover:text-white rounded-lg transition-all shadow-lg active-press`}
+                                                    title="Maximize Chart"
+                                                >
+                                                    <Maximize2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+
+                                            <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden">
+                                                <RenderChart
+                                                    config={chart}
+                                                    data={aggregatedData}
+                                                    theme={theme}
+                                                    isAnimationActive={!isExporting}
+                                                    onItemClick={(val) => toggleChartFilter(chart.id, chart.xAxisKey, val)}
+                                                    activeFilterValue={chartFilters[chart.id]?.[chart.xAxisKey]}
+                                                    columnMetadata={dataModel.columnMetadata}
+                                                />
+                                            </div>
                                         </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : null}
 
                         {charts.length === 0 && kpis.length === 0 && (
                             <div className={`text-center py-20 border-2 border-dashed ${colors.borderPrimary} rounded-3xl ${theme === 'dark' ? 'bg-slate-900/50' : 'bg-slate-100/50'}`}>
@@ -1715,8 +2443,100 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, f
                             </div>
                         )}
                     </main>
+                    </div>
                 </div>
-                {isRefreshing && <DashboardLoader message="Refreshing live data..." />}
+
+                {/* --- PDF EXPORT VIEW (Hidden Off-screen) --- */}
+                {isExportingPDF && (
+                    <div id="pdf-export-view" style={{ position: 'absolute', top: '-10000px', left: '-10000px', width: '1200px', background: theme === 'dark' ? '#0f172a' : '#f8fafc' }}>
+                        {pdfExportPages.map((page, pIdx) => (
+                            <div key={pIdx} data-pdf-page style={{ width: '1200px', height: '1696px', padding: '60px', position: 'relative', overflow: 'hidden', background: theme === 'dark' ? '#0f172a' : '#f8fafc', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+                                {/* Top Gradient Bar */}
+                                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(to right, #6366f1, #a855f7)' }}></div>
+
+                                {/* Page Header */}
+                                {page.isFirstPageOfPDF && (
+                                    <div style={{ marginBottom: '32px', borderBottom: `2px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, paddingBottom: '24px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div>
+                                                <h1 style={{ fontSize: '32px', fontWeight: '800', color: theme === 'dark' ? '#f8fafc' : '#0f172a', margin: '0', letterSpacing: '-1px' }}>{dataModel.name}</h1>
+                                                <p style={{ fontSize: '14px', color: theme === 'dark' ? '#94a3b8' : '#64748b', margin: '4px 0 0 0', fontWeight: '500' }}>InsightAI Analysis Report • Professional Edition</p>
+                                            </div>
+                                            <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
+                                                <p style={{ fontSize: '12px', color: theme === 'dark' ? '#6366f1' : '#4f46e5', fontWeight: 'bold', margin: '0' }}>{new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+                                                <p style={{ fontSize: '10px', color: theme === 'dark' ? '#475569' : '#94a3b8', margin: '2px 0 0 0' }}>Ref: {dataModel.data.length.toLocaleString()} Records</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {!page.isFirstPageOfPDF && (
+                                    <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, paddingBottom: '12px' }}>
+                                        <h2 style={{ fontSize: '18px', fontWeight: '700', color: theme === 'dark' ? '#f8fafc' : '#0f172a', margin: 0 }}>
+                                            {page.tabName} {page.isFirstPageOfTab ? '' : '(Continued)'}
+                                        </h2>
+                                        <span style={{ fontSize: '11px', color: theme === 'dark' ? '#475569' : '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                            {dataModel.name} • Page {pIdx + 1}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* KPIs Section (Only on first page) */}
+                                {page.pageKPIs && page.pageKPIs.length > 0 && (
+                                    <div style={{ display: 'flex', gap: '20px', marginBottom: '32px', width: '100%' }}>
+                                        {page.pageKPIs.map((kpi, kIdx) => {
+                                            const data = aggregateData(applyChartFilters(filteredData, kpi.id), kpi);
+                                            const value = data[0]?.value || 0;
+                                            const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata);
+                                            return (
+                                                <div key={kpi.id} style={{ flex: 1, minHeight: '90px', background: theme === 'dark' ? '#1e293b' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#334155' : '#e5e7eb'}`, padding: '16px 20px 20px 20px', borderRadius: '14px', textAlign: 'center', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                                    <p style={{ fontSize: '11px', color: theme === 'dark' ? '#94a3b8' : '#64748b', fontWeight: 'bold', textTransform: 'uppercase', margin: '0 0 4px 0', letterSpacing: '0.5px', lineHeight: '1.2' }}>{kpi.title}</p>
+                                                    <p style={{ fontSize: '24px', fontWeight: '800', color: theme === 'dark' ? '#f8fafc' : '#0f172a', margin: '0', lineHeight: '1.3' }}>{displayValue}</p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* Tab Title if first page of tab (but not first page of PDF which already has header) */}
+                                {page.isFirstPageOfTab && !page.isFirstPageOfPDF && (
+                                    <div style={{ marginBottom: '16px' }}>
+                                        <h3 style={{ fontSize: '16px', fontWeight: '800', color: theme === 'dark' ? '#6366f1' : '#4f46e5', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{page.tabName}</h3>
+                                        <p style={{ fontSize: '11px', color: theme === 'dark' ? '#64748b' : '#94a3b8', margin: 0 }}>Section overview and key performance metrics.</p>
+                                    </div>
+                                )}
+
+                                {/* Charts Grid */}
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '30px', flex: 1, width: '100%', alignContent: 'flex-start' }}>
+                                    {page.charts.map((chart, cIdx) => (
+                                        <div key={chart.id} style={{ width: 'calc(50% - 15px)', background: theme === 'dark' ? '#1e293b' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#334155' : '#e5e7eb'}`, padding: '24px 24px 20px 24px', borderRadius: '16px', height: '420px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflow: 'hidden', boxShadow: 'none' }}>
+                                            <div style={{ marginBottom: '12px', flexShrink: 0, overflow: 'visible' }}>
+                                                <h4 style={{ fontSize: '15px', fontWeight: '700', color: theme === 'dark' ? '#f1f5f9' : '#1e293b', margin: '0 0 2px 0', lineHeight: '1.4', overflow: 'visible', wordBreak: 'break-word' }}>{chart.title}</h4>
+                                                <p style={{ fontSize: '11px', color: theme === 'dark' ? '#64748b' : '#94a3b8', margin: '0', lineHeight: '1.3', overflow: 'visible', wordBreak: 'break-word' }}>{chart.description}</p>
+                                            </div>
+                                            <div style={{ flex: 1, minHeight: 0, width: '100%', position: 'relative', overflow: 'hidden' }}>
+                                                <RenderChart
+                                                    config={chart}
+                                                    data={aggregateData(applyChartFilters(filteredData, chart.id), chart)}
+                                                    theme={theme}
+                                                    isAnimationActive={false}
+                                                    columnMetadata={dataModel.columnMetadata}
+                                                    isExporting={true}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Page Footer */}
+                                <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: `1px solid ${theme === 'dark' ? '#1e293b' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <p style={{ fontSize: '9px', color: theme === 'dark' ? '#475569' : '#94a3b8', margin: 0 }}>© {new Date().getFullYear()} InsightAI Analytics Engine • Confidental Report</p>
+                                    <p style={{ fontSize: '10px', fontWeight: 'bold', color: theme === 'dark' ? '#6366f1' : '#4f46e5', margin: 0 }}>Page {pIdx + 1}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </>
         );
     } catch (error: any) {

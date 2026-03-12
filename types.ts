@@ -57,6 +57,37 @@ export enum ChartType {
   MATRIX = 'MATRIX'
 }
 
+export enum ColumnType {
+  TEXT = 'TEXT',
+  INTEGER = 'INTEGER',
+  DECIMAL = 'DECIMAL',
+  CURRENCY = 'CURRENCY',
+  PERCENT = 'PERCENT',
+  DATE = 'DATE',
+  BOOLEAN = 'BOOLEAN',
+  UNKNOWN = 'UNKNOWN'
+}
+
+export interface ColumnMetadata {
+  detectedType: ColumnType;
+  finalType: ColumnType;
+  confidence: number;
+  source: 'AI' | 'RULE' | 'USER';
+  requiresConfirmation: boolean;
+}
+
+export interface DataModel {
+  name: string;
+  data: ProcessedRow[];
+  columns: string[];
+  numericColumns: string[];
+  categoricalColumns: string[];
+  columnMetadata?: { [columnName: string]: ColumnMetadata };
+  fileId?: number;
+  sourceType?: 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database';
+  headerIndex?: number;
+}
+
 export enum AggregationType {
   SUM = 'SUM',
   COUNT = 'COUNT',
@@ -71,11 +102,19 @@ export interface ChartConfig {
   type: ChartType;
   xAxisKey: string; // Dimension
   dataKey: string; // Metric (primary)
-  dataKey2?: string; // Metric (secondary) — for grouped/stacked/combo charts
+  dataKey2?: string; // Metric (secondary) — for dual-metric charts
   yAxisKey?: string; // Second dimension — for heatmap
   aggregation: AggregationType;
   color?: string;
+  color2?: string;
   multicolor?: boolean;
+  sectionId?: string; // Link to a DashboardSection
+  chartFilters?: { [column: string]: any }; // Per-chart filters
+}
+
+export interface DashboardSection {
+  id: string;
+  name: string;
 }
 
 export interface SavedDashboard {
@@ -84,6 +123,7 @@ export interface SavedDashboard {
   date: string;
   dataModel: DataModel;
   chartConfigs: ChartConfig[];
+  sections?: DashboardSection[];
   filterColumns?: string[];
 }
 

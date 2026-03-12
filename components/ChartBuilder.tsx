@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DataModel, ChartConfig } from '../types';
+import { DataModel, ChartConfig, DashboardSection } from '../types';
 import { analyzeDataAndSuggestKPIs, generateChartFromPrompt } from '../services/geminiService';
-import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, Filter, Check, ChevronDown, Palette, GitBranch, Layers, BarChartHorizontal, ScatterChart as ScatterChartIcon, Droplets, Grid3x3 } from 'lucide-react';
+import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, RefreshCw, Filter, Check, ChevronDown, Palette, GitBranch, Layers, BarChartHorizontal, ScatterChart as ScatterChartIcon, Droplets, Grid3x3, Edit2 } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
@@ -30,34 +30,66 @@ interface BucketChartCardProps {
     getIcon: (type: string) => React.ReactElement;
     onRemove: (id: string) => void;
     onColorChange: (id: string, color: string) => void;
+    onColor2Change: (id: string, color: string) => void;
     onMulticolorChange: (id: string, multicolor: boolean) => void;
+    onTitleChange: (id: string, title: string) => void;
+    onDragStart: (e: React.DragEvent, chartId: string) => void;
 }
 
 const BucketChartCard: React.FC<BucketChartCardProps> = ({
-    chart, index, theme, colors, getIcon, onRemove, onColorChange, onMulticolorChange
+    chart, index, theme, colors, getIcon, onRemove, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart
 }) => {
     const [showColorMenu, setShowColorMenu] = useState(false);
     const colorMenuRef = useRef<HTMLDivElement>(null);
+    const [showColor2Menu, setShowColor2Menu] = useState(false);
+    const color2MenuRef = useRef<HTMLDivElement>(null);
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [editedTitle, setEditedTitle] = useState(chart.title);
+    const titleInputRef = useRef<HTMLInputElement>(null);
 
-    // Close color menu on outside click
+    // Close color menus on outside click
     useEffect(() => {
         const handler = (e: MouseEvent) => {
             if (colorMenuRef.current && !colorMenuRef.current.contains(e.target as Node)) {
                 setShowColorMenu(false);
+            }
+            if (color2MenuRef.current && !color2MenuRef.current.contains(e.target as Node)) {
+                setShowColor2Menu(false);
             }
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
+    // Focus title input when editing starts
+    useEffect(() => {
+        if (isEditingTitle && titleInputRef.current) {
+            titleInputRef.current.focus();
+            titleInputRef.current.select();
+        }
+    }, [isEditingTitle]);
+
+    const handleTitleSave = () => {
+        if (editedTitle.trim() && editedTitle !== chart.title) {
+            onTitleChange(chart.id, editedTitle.trim());
+        } else {
+            setEditedTitle(chart.title);
+        }
+        setIsEditingTitle(false);
+    };
+
     const isBAR = chart.type === 'BAR' || chart.type === 'HORIZONTAL_BAR' || chart.type === 'GROUPED_BAR' || chart.type === 'STACKED_BAR';
     const isLINE = chart.type === 'LINE' || chart.type === 'AREA' || chart.type === 'COMBO';
+    const hasSecondMetric = !!chart.dataKey2;
     const showColorOption = isBAR || isLINE;
     const activeColor = chart.color || CHART_COLOR_OPTIONS[0].value;
+    const activeColor2 = chart.color2 || CHART_COLOR_OPTIONS[1].value;
 
     return (
         <div
-            className={`responsive-card p-3 sm:p-4 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-lg sm:rounded-xl relative group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-900/10 transition-all duration-300 animate-fade-in-up flex flex-col h-full hover-lift elevation-md`}
+            draggable
+            onDragStart={(e) => onDragStart(e, chart.id)}
+            className={`responsive-card p-3 sm:p-4 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-lg sm:rounded-xl relative group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-900/10 transition-all duration-300 animate-fade-in-up flex flex-col h-full hover-lift elevation-md cursor-grab active:cursor-grabbing`}
             style={{ animationDelay: `${index * 50}ms` }}
         >
             <button
@@ -75,7 +107,22 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
                     <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} font-bold uppercase tracking-wider`}>
                         {chart.id.startsWith('custom') ? 'Custom Request' : 'AI Insight'}
                     </div>
-                    <h4 className={`font-bold ${colors.textSecondary} text-xs sm:text-sm w-full line-clamp-2`}>{chart.title}</h4>
+                    {isEditingTitle ? (
+                        <input
+                            ref={titleInputRef}
+                            type="text"
+                            value={editedTitle}
+                            onChange={(e) => setEditedTitle(e.target.value)}
+                            onBlur={handleTitleSave}
+                            onKeyDown={(e) => e.key === 'Enter' && handleTitleSave()}
+                            className={`w-full bg-transparent border-b border-indigo-500 outline-none font-bold ${colors.textSecondary} text-xs sm:text-sm py-0.5`}
+                        />
+                    ) : (
+                        <div className="flex items-start gap-1 group/title cursor-text" onClick={() => setIsEditingTitle(true)}>
+                            <h4 className={`font-bold ${colors.textSecondary} text-xs sm:text-sm line-clamp-2 flex-1`}>{chart.title}</h4>
+                            <Edit2 className={`w-3 h-3 mt-1 ${colors.textMuted} opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0`} />
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -86,7 +133,7 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
                     <div className="relative flex-1" ref={colorMenuRef}>
                         <button
                             onClick={() => setShowColorMenu(v => !v)}
-                            title="Pick chart color"
+                            title="Pick primary color"
                             className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition border ${theme === 'dark'
                                 ? 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
                                 : 'bg-slate-100 border-slate-300 text-slate-600 hover:border-slate-400'
@@ -98,7 +145,7 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
                             />
                             <Palette className="w-2.5 h-2.5 shrink-0" />
                             <span className="truncate">
-                                {CHART_COLOR_OPTIONS.find(c => c.value === activeColor)?.label ?? 'Color'}
+                                {CHART_COLOR_OPTIONS.find(c => c.value === activeColor)?.label ?? 'Color 1'}
                             </span>
                             <ChevronDown className={`w-2.5 h-2.5 ml-auto transition-transform ${showColorMenu ? 'rotate-180' : ''}`} />
                         </button>
@@ -106,7 +153,7 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
                         {showColorMenu && (
                             <div className={`absolute left-0 bottom-full mb-1 w-40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
                                 } border rounded-xl shadow-2xl z-50 p-2 animate-fade-in`}>
-                                <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-1 ${colors.textMuted}`}>Single Color</p>
+                                <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-1 ${colors.textMuted}`}>Primary Color</p>
                                 <div className="grid grid-cols-5 gap-1.5">
                                     {CHART_COLOR_OPTIONS.map(opt => (
                                         <button
@@ -128,8 +175,56 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
                         )}
                     </div>
 
-                    {/* Multicolor Checkbox — BAR only */}
-                    {isBAR && (
+                    {/* Color 2 Dropdown (for dual metric charts) */}
+                    {hasSecondMetric && (
+                        <div className="relative flex-1" ref={color2MenuRef}>
+                            <button
+                                onClick={() => setShowColor2Menu(v => !v)}
+                                title="Pick secondary color"
+                                className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition border ${theme === 'dark'
+                                    ? 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+                                    : 'bg-slate-100 border-slate-300 text-slate-600 hover:border-slate-400'
+                                    }`}
+                            >
+                                <span
+                                    className="w-3 h-3 rounded-full shrink-0 ring-1 ring-white/20"
+                                    style={{ backgroundColor: activeColor2 }}
+                                />
+                                <Palette className="w-2.5 h-2.5 shrink-0" />
+                                <span className="truncate">
+                                    {CHART_COLOR_OPTIONS.find(c => c.value === activeColor2)?.label ?? 'Color 2'}
+                                </span>
+                                <ChevronDown className={`w-2.5 h-2.5 ml-auto transition-transform ${showColor2Menu ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {showColor2Menu && (
+                                <div className={`absolute left-0 bottom-full mb-1 w-40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
+                                    } border rounded-xl shadow-2xl z-50 p-2 animate-fade-in`}>
+                                    <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-1 ${colors.textMuted}`}>Secondary Color</p>
+                                    <div className="grid grid-cols-5 gap-1.5">
+                                        {CHART_COLOR_OPTIONS.map(opt => (
+                                            <button
+                                                key={opt.value}
+                                                title={opt.label}
+                                                onClick={() => { onColor2Change(chart.id, opt.value); setShowColor2Menu(false); }}
+                                                className="relative w-6 h-6 rounded-full transition-transform hover:scale-110 focus:outline-none"
+                                                style={{ backgroundColor: opt.value }}
+                                            >
+                                                {activeColor2 === opt.value && (
+                                                    <span className="absolute inset-0 flex items-center justify-center">
+                                                        <Check className="w-3 h-3 text-white drop-shadow" />
+                                                    </span>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Multicolor Checkbox — BAR only (hide if dual metric as it gets messy) */}
+                    {isBAR && !hasSecondMetric && (
                         <label
                             onClick={() => onMulticolorChange(chart.id, !chart.multicolor)}
                             className={`flex items-center gap-1 cursor-pointer select-none text-[10px] font-medium shrink-0 ${chart.multicolor
@@ -176,11 +271,12 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
 
 interface ChartBuilderProps {
     dataModel: DataModel;
-    onGenerateReport: (charts: ChartConfig[], filterColumns: string[]) => void;
+    onGenerateReport: (charts: ChartConfig[], filterColumns: string[], sections?: DashboardSection[]) => void;
     onHome: () => void;
     onBack?: () => void;
     initialBucket?: ChartConfig[];
     initialFilterColumns?: string[];
+    sections?: DashboardSection[];
     mode?: 'create' | 'update';
 }
 
@@ -191,6 +287,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     onBack,
     initialBucket = [],
     initialFilterColumns = [],
+    sections: initialSections = [],
     mode = 'create'
 }) => {
     const { theme } = useTheme();
@@ -198,7 +295,10 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
 
     const [suggestedCharts, setSuggestedCharts] = useState<ChartConfig[]>([]);
     const [bucket, setBucket] = useState<ChartConfig[]>(initialBucket);
+    const [sections, setSections] = useState<DashboardSection[]>(initialSections);
     const [loading, setLoading] = useState(true);
+    const [lastVoiceResult, setLastVoiceResult] = useState('');
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [customPrompt, setCustomPrompt] = useState('');
     const [isGeneratingCustom, setIsGeneratingCustom] = useState(false);
     const [isListening, setIsListening] = useState(false);
@@ -253,13 +353,14 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         }
     }, [initialBucket]);
 
+    const fetchSuggestions = async () => {
+        setLoading(true);
+        const suggestions = await analyzeDataAndSuggestKPIs(dataModel);
+        setSuggestedCharts(suggestions);
+        setLoading(false);
+    };
+
     useEffect(() => {
-        const fetchSuggestions = async () => {
-            setLoading(true);
-            const suggestions = await analyzeDataAndSuggestKPIs(dataModel);
-            setSuggestedCharts(suggestions);
-            setLoading(false);
-        };
         fetchSuggestions();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dataModel.name]);
@@ -290,14 +391,18 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
 
     const addToBucket = (chart: ChartConfig) => {
         if (!isAlreadyInBucket(chart)) {
-            setBucket(prev => [...prev, chart]);
+            // Assign to the first section if it exists
+            const sectionId = sections.length > 0 ? sections[0].id : undefined;
+            setBucket(prev => [...prev, { ...chart, sectionId }]);
         }
     };
 
     const addAllToBucket = () => {
         const newCharts = suggestedCharts.filter(chart => !isAlreadyInBucket(chart));
         if (newCharts.length > 0) {
-            setBucket(prev => [...prev, ...newCharts]);
+            const sectionId = sections.length > 0 ? sections[0].id : undefined;
+            const withSection = newCharts.map(c => ({ ...c, sectionId }));
+            setBucket(prev => [...prev, ...withSection]);
         }
     };
 
@@ -310,7 +415,8 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         setIsGeneratingCustom(true);
         const newChart = await generateChartFromPrompt(dataModel, customPrompt);
         if (newChart) {
-            setBucket([newChart, ...bucket]);
+            const sectionId = sections.length > 0 ? sections[0].id : undefined;
+            setBucket([{ ...newChart, sectionId }, ...bucket]);
             setCustomPrompt('');
         }
         setIsGeneratingCustom(false);
@@ -349,6 +455,61 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         recognition.onend = () => setIsListening(false);
 
         recognition.start();
+    };
+
+    const addSection = () => {
+        const newId = `section-${Date.now()}`;
+        setSections([...sections, { id: newId, name: `New Section ${sections.length + 1}` }]);
+    };
+
+    const renameSection = (id: string, name: string) => {
+        setSections(sections.map(s => s.id === id ? { ...s, name } : s));
+    };
+
+    const removeSection = (id: string) => {
+        if (sections.length <= 1) {
+            // Keep at least one section if user wants them?
+            // Actually, if they remove all, we can fallback to index-based tabs in Dashboard
+        }
+        setSections(sections.filter(s => s.id !== id));
+        // Clear sectionId for charts in this section
+        setBucket(bucket.map(c => c.sectionId === id ? { ...c, sectionId: undefined } : c));
+    };
+
+    // Drag and Drop handlers
+    const onDragStart = (e: React.DragEvent, chartId: string) => {
+        e.dataTransfer.setData('chartId', chartId);
+    };
+
+    const onDropToSection = (e: React.DragEvent, sectionId: string) => {
+        e.preventDefault();
+        const chartId = e.dataTransfer.getData('chartId');
+        if (chartId) {
+            setBucket(prev => prev.map(c => c.id === chartId ? { ...c, sectionId: sectionId || undefined } : c));
+        }
+    };
+
+    const onDragOverSection = (e: React.DragEvent) => {
+        e.preventDefault();
+        handleDragOverScroll(e);
+    };
+
+    const handleDragOverScroll = (e: React.DragEvent) => {
+        if (!scrollContainerRef.current) return;
+        const rect = scrollContainerRef.current.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        const threshold = 100; // Increase threshold for better feel
+        const scrollAmount = 15;
+
+        if (y < threshold) {
+            scrollContainerRef.current.scrollTop -= scrollAmount;
+        } else if (y > rect.height - threshold) {
+            scrollContainerRef.current.scrollTop += scrollAmount;
+        }
+    };
+
+    const onGenerate = () => {
+        onGenerateReport(bucket, Array.from(selectedFilterCols), sections);
     };
 
     const getIcon = (type: string) => {
@@ -444,16 +605,28 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                             <Sparkles className="text-indigo-400 w-4 h-4 sm:w-5 sm:h-5" />
                             Insights
                         </h2>
-                        {!loading && suggestedCharts.length > 0 && (
-                            <button
-                                onClick={addAllToBucket}
-                                disabled={suggestedCharts.every(c => isAlreadyInBucket(c))}
-                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white transition active-press whitespace-nowrap"
-                                title="Add all recommendations to bucket"
-                            >
-                                <Plus className="w-3 h-3" />
-                                Add All
-                            </button>
+                        {suggestedCharts.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={fetchSuggestions}
+                                    disabled={loading}
+                                    className={`p-1.5 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:text-indigo-400 transition active-press disabled:opacity-50`}
+                                    title="Refresh suggestions"
+                                >
+                                    <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-400' : ''}`} />
+                                </button>
+                                {!loading && (
+                                    <button
+                                        onClick={addAllToBucket}
+                                        disabled={suggestedCharts.every(c => isAlreadyInBucket(c))}
+                                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white transition active-press whitespace-nowrap"
+                                        title="Add all recommendations to bucket"
+                                    >
+                                        <Plus className="w-3 h-3" />
+                                        Add All
+                                    </button>
+                                )}
+                            </div>
                         )}
                     </div>
                     <p className={`responsive-text-xs ${colors.textMuted} ml-8`}>
@@ -625,7 +798,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                         </div>
                     </div>
                     <button
-                        onClick={() => onGenerateReport(bucket, Array.from(selectedFilterCols))}
+                        onClick={onGenerate}
                         disabled={bucket.length === 0}
                         className="pointer-events-auto bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 disabled:from-slate-700 disabled:to-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-2.5 sm:px-4 md:px-6 py-1.5 sm:py-2.5 rounded-full font-bold text-[10px] sm:text-sm transition-all flex items-center gap-1 sm:gap-2 shadow-lg shadow-emerald-900/20 active-press"
                     >
@@ -645,7 +818,11 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                     </button>
                 </header>
 
-                <div className="flex-1 responsive-container pt-0 overflow-y-auto custom-scrollbar flex flex-col gap-6 sm:gap-8">
+                <div
+                    ref={scrollContainerRef}
+                    onDragOver={handleDragOverScroll}
+                    className="flex-1 responsive-container pt-0 overflow-y-auto custom-scrollbar flex flex-col gap-6 sm:gap-8"
+                >
 
                     {/* AI Chat Input - Responsive */}
                     <div className="w-full max-w-3xl mx-auto mt-2 sm:mt-4">
@@ -685,43 +862,146 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
 
                     {/* The Bucket Area */}
                     <div className="flex-1">
-                        <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
-                            <div className="h-px flex-1 bg-slate-800"></div>
+                        <div className="flex items-center justify-between mb-4 sm:mb-6">
                             <h3 className="responsive-text-xs sm:text-sm font-bold text-slate-500 uppercase tracking-wider">
-                                {mode === 'update' ? 'Dashboard Charts' : 'Your Selection'}
+                                {mode === 'update' ? 'Dashboard Layout' : 'Your Dashboard Sections'}
                             </h3>
-                            <div className="h-px flex-1 bg-slate-800"></div>
+                            <button
+                                onClick={addSection}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${theme === 'dark' ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                            >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Add Section</span>
+                            </button>
                         </div>
 
-                        {bucket.length === 0 ? (
-                            <div className={`h-48 sm:h-56 md:h-64 flex flex-col items-center justify-center border-2 border-dashed ${colors.borderPrimary} rounded-xl sm:rounded-2xl ${theme === 'dark' ? 'bg-slate-900/30' : 'bg-slate-100/30'}`}>
-                                <div className={`${colors.bgTertiary} p-3 sm:p-4 rounded-full mb-3 sm:mb-4`}>
-                                    <BarChart3 className={`${theme === 'dark' ? 'text-slate-600' : 'text-slate-400'} w-6 h-6 sm:w-8 sm:h-8`} />
-                                </div>
-                                <p className={`${colors.textMuted} font-medium responsive-text-sm sm:text-base text-center px-4`}>Your dashboard bucket is empty</p>
-                                <p className={`${theme === 'dark' ? 'text-slate-600' : 'text-slate-400'} responsive-text-xs mt-2 text-center px-4`}>Select insights from the left or ask AI above.</p>
-                            </div>
-                        ) : (
-                            <div className="suggestions-grid pb-12 sm:pb-16 md:pb-20">
-                                {bucket.map((chart, i) => (
-                                    <BucketChartCard
-                                        key={chart.id}
-                                        chart={chart}
-                                        index={i}
-                                        theme={theme}
-                                        colors={colors}
-                                        getIcon={getIcon}
-                                        onRemove={removeFromBucket}
-                                        onColorChange={(id, color) =>
-                                            setBucket(prev => prev.map(c => c.id === id ? { ...c, color } : c))
-                                        }
-                                        onMulticolorChange={(id, multicolor) =>
-                                            setBucket(prev => prev.map(c => c.id === id ? { ...c, multicolor } : c))
-                                        }
-                                    />
-                                ))}
+                        {sections.length === 0 && bucket.length > 0 && (
+                            <div className="mb-8 p-4 rounded-xl border-2 border-dashed border-indigo-500/30 bg-indigo-500/5 text-center">
+                                <p className="text-sm text-indigo-400 font-medium mb-3">Organize your dashboard by creating sections</p>
+                                <button
+                                    onClick={() => {
+                                        const id = `section-${Date.now()}`;
+                                        setSections([{ id, name: 'Main Overview' }]);
+                                        // Move current bucket into this section
+                                        setBucket(bucket.map(c => ({ ...c, sectionId: id })));
+                                    }}
+                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-500 transition shadow-lg shadow-indigo-900/40"
+                                >
+                                    Create My First Section
+                                </button>
                             </div>
                         )}
+
+                        <div className="space-y-10 pb-20">
+                            {sections.map((section, sIdx) => {
+                                const sectionCharts = bucket.filter(c => c.sectionId === section.id);
+                                return (
+                                    <div
+                                        key={section.id}
+                                        onDrop={(e) => onDropToSection(e, section.id)}
+                                        onDragOver={onDragOverSection}
+                                        className={`p-4 sm:p-6 rounded-2xl border transition-all ${theme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'} hover:border-indigo-500/30`}
+                                    >
+                                        <div className="flex items-center justify-between mb-6 group/sec">
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <Layers className="w-5 h-5 text-indigo-400" />
+                                                    <input
+                                                        type="text"
+                                                        value={section.name}
+                                                        onChange={(e) => renameSection(section.id, e.target.value)}
+                                                        className={`bg-transparent border-none text-base sm:text-lg font-bold ${colors.textPrimary} focus:ring-0 outline-none w-48 sm:w-64`}
+                                                    />
+                                                </div>
+                                                <span className={`text-xs px-2 py-0.5 rounded-full ${theme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500'} font-bold`}>
+                                                    {sectionCharts.length} Charts
+                                                </span>
+                                            </div>
+                                            <button
+                                                onClick={() => removeSection(section.id)}
+                                                className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition opacity-0 group-hover/sec:opacity-100"
+                                                title="Remove section"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+
+                                        {sectionCharts.length === 0 ? (
+                                            <div className={`py-12 flex flex-col items-center justify-center border-2 border-dashed ${colors.borderPrimary} rounded-xl ${theme === 'dark' ? 'bg-slate-950/20' : 'bg-slate-100/20'}`}>
+                                                <p className={`text-xs ${colors.textMuted}`}>Drag and drop charts here</p>
+                                            </div>
+                                        ) : (
+                                            <div className="suggestions-grid">
+                                                {sectionCharts.map((chart, i) => (
+                                                    <BucketChartCard
+                                                        key={chart.id}
+                                                        chart={chart}
+                                                        index={i}
+                                                        theme={theme}
+                                                        colors={colors}
+                                                        getIcon={getIcon}
+                                                        onRemove={removeFromBucket}
+                                                        onColorChange={(id, color) =>
+                                                            setBucket(prev => prev.map(c => c.id === id ? { ...c, color } : c))
+                                                        }
+                                                        onColor2Change={(id, color2) =>
+                                                            setBucket(prev => prev.map(c => c.id === id ? { ...c, color2 } : c))
+                                                        }
+                                                        onMulticolorChange={(id, multicolor) =>
+                                                            setBucket(prev => prev.map(c => c.id === id ? { ...c, multicolor } : c))
+                                                        }
+                                                        onTitleChange={(id, title) =>
+                                                            setBucket(prev => prev.map(c => c.id === id ? { ...c, title } : c))
+                                                        }
+                                                        onDragStart={onDragStart}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+
+                            {/* Uncategorized Charts */}
+                            {bucket.filter(c => !c.sectionId).length > 0 && (
+                                <div
+                                    onDrop={(e) => onDropToSection(e, '')}
+                                    onDragOver={onDragOverSection}
+                                    className={`p-4 sm:p-6 rounded-2xl border ${theme === 'dark' ? 'bg-slate-950/20 border-slate-800 border-dashed' : 'bg-slate-100/50 border-slate-200 border-dashed'}`}
+                                >
+                                    <h4 className="text-sm font-bold text-slate-500 mb-6 flex items-center gap-2">
+                                        <Grid3x3 className="w-4 h-4" />
+                                        Uncategorized Charts
+                                    </h4>
+                                    <div className="suggestions-grid">
+                                        {bucket.filter(c => !c.sectionId).map((chart, i) => (
+                                            <BucketChartCard
+                                                key={chart.id}
+                                                chart={chart}
+                                                index={i}
+                                                theme={theme}
+                                                colors={colors}
+                                                getIcon={getIcon}
+                                                onRemove={removeFromBucket}
+                                                onColorChange={(id, color) =>
+                                                    setBucket(prev => prev.map(c => c.id === id ? { ...c, color } : c))
+                                                }
+                                                onColor2Change={(id, color2) =>
+                                                    setBucket(prev => prev.map(c => c.id === id ? { ...c, color2 } : c))
+                                                }
+                                                onMulticolorChange={(id, multicolor) =>
+                                                    setBucket(prev => prev.map(c => c.id === id ? { ...c, multicolor } : c))
+                                                }
+                                                onTitleChange={(id, title) =>
+                                                    setBucket(prev => prev.map(c => c.id === id ? { ...c, title } : c))
+                                                }
+                                                onDragStart={onDragStart}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

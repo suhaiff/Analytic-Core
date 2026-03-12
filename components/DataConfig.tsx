@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DataModel, ProcessedRow, DataTable, JoinConfig, JoinType } from '../types';
-import { ArrowRight, Table, CheckSquare, Square, Database, Columns, Plus, Link as LinkIcon, Trash2, Upload, Settings2, Home, Eye, X, FileText } from 'lucide-react';
+import { DataModel, ProcessedRow, DataTable, JoinConfig, JoinType, ColumnType, ColumnMetadata } from '../types';
+import { ArrowRight, Table, CheckSquare, Square, Database, Columns, Plus, Link as LinkIcon, Trash2, Upload, Settings2, Home, Eye, X, FileText, Loader2, Activity, ChevronDown } from 'lucide-react';
 import { processFile } from '../utils/fileParser';
 import { performJoins, processRawData } from '../utils/dataProcessing';
 import { useTheme } from '../ThemeContext';
@@ -8,6 +8,7 @@ import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
 import { fileService, FileContent } from '../services/fileService';
 import { smartFormat } from '../utils/formatters';
+import { performSchemaAudit } from '../services/schemaService';
 
 interface DataConfigProps {
     initialTables: DataTable[];
@@ -59,6 +60,8 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
     const [mergedData, setMergedData] = useState<any[]>([]);
     const [mergedColumns, setMergedColumns] = useState<string[]>([]);
     const [selectedColumns, setSelectedColumns] = useState<Set<string>>(new Set());
+    const [columnMetadata, setColumnMetadata] = useState<{ [key: string]: ColumnMetadata }>({});
+    const [isAuditing, setIsAuditing] = useState(false);
 
     // Refs
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -142,6 +145,30 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
         }
     }, [mergedColumns]);
 
+    // --- Effect: Run Schema Audit when data changes ---
+    useEffect(() => {
+        if (mergedColumns.length === 0 || mergedData.length === 0) return;
+
+        const runAudit = async () => {
+            setIsAuditing(true);
+            try {
+                const sampleRows = mergedData.slice(0, 5);
+                const result = await performSchemaAudit(
+                    dashboardTitle || fileName,
+                    mergedColumns,
+                    sampleRows
+                );
+                setColumnMetadata(result);
+            } catch (error) {
+                console.error("Audit effect error:", error);
+            } finally {
+                setIsAuditing(false);
+            }
+        };
+
+        runAudit();
+    }, [mergedColumns, mergedData.slice(0, 5).map(r => JSON.stringify(r)).join('')]);
+
 
     const toggleColumn = (col: string) => {
         const newSet = new Set(selectedColumns);
@@ -212,12 +239,21 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             processedData.push(rowObj);
         });
 
+        // --- Filter column metadata for selected columns only ---
+        const finalMetadata: { [key: string]: ColumnMetadata } = {};
+        validColumns.forEach(col => {
+            if (columnMetadata[col]) {
+                finalMetadata[col] = columnMetadata[col];
+            }
+        });
+
         const model: DataModel = {
             name: dashboardTitle.trim() || tables.map(t => t.name).join(' + '),
             data: processedData,
             columns: validColumns,
             numericColumns: [...numericCols],
             categoricalColumns: [...categoricalCols],
+            columnMetadata: finalMetadata,
             fileId: uploadedFileId,
             sourceType: sourceType as 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database',
             headerIndex: tables.length === 1 ? (headerIndices[tables[0].id] || 0) : undefined
@@ -250,9 +286,10 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                         <Database className="text-indigo-400 w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                        <h1 className={`text-xs sm:text-sm md:text-base lg:text-lg font-bold ${colors.textPrimary} truncate`}>
+                        <h1 className={`text-xs sm:text-sm md:text-base lg:text-lg font-bold ${colors.textPrimary} flex items-center gap-2 truncate`}>
                             <span className="sm:hidden">Config</span>
                             <span className="hidden sm:inline">Data Configuration</span>
+                            {isAuditing && <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-400 animate-spin" />}
                         </h1>
                         <p className={`hidden sm:block text-xs ${colors.textMuted} truncate`}>Configure tables, joins, and columns</p>
                     </div>
@@ -293,6 +330,9 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                     >
                         <Settings2 className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
+                    <div className="flex-shrink-0">
+                        <ThemeToggle />
+                    </div>
                     <button
                         onClick={handleFinalize}
                         className="px-1.5 sm:px-3 md:px-4 py-1 sm:py-1.5 md:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] sm:text-xs md:text-sm font-medium transition flex items-center gap-0.5 sm:gap-1 md:gap-1.5 shadow-lg shadow-indigo-900/20 hover:shadow-indigo-500/20 active-press flex-shrink-0 whitespace-nowrap"
@@ -300,9 +340,6 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                         <span className="hidden xs:inline">Finalize</span>
                         <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />
                     </button>
-                    <div className="hidden sm:block flex-shrink-0">
-                        <ThemeToggle />
-                    </div>
                 </div>
             </header>
 
@@ -404,39 +441,131 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                 </h3>
                                 {(() => {
                                     const allSelected = mergedColumns.length > 0 && mergedColumns.every(col => selectedColumns.has(col));
+                                    const needsReviewCount = Array.from(selectedColumns).some(col =>
+                                        columnMetadata[col]?.requiresConfirmation || (columnMetadata[col]?.confidence || 1) < 0.7
+                                    );
                                     return (
-                                        <button
-                                            onClick={() => allSelected
-                                                ? setSelectedColumns(new Set())
-                                                : setSelectedColumns(new Set(mergedColumns))
-                                            }
-                                            className={`text-[10px] font-medium transition ${allSelected ? 'text-rose-400 hover:text-rose-300' : 'text-indigo-400 hover:text-indigo-300'}`}
-                                        >
-                                            {allSelected ? 'Unselect All' : 'Select All'}
-                                        </button>
+                                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                            <button
+                                                onClick={() => allSelected
+                                                    ? setSelectedColumns(new Set())
+                                                    : setSelectedColumns(new Set(mergedColumns))
+                                                }
+                                                className={`text-[9px] font-bold uppercase tracking-wider py-1 px-2 rounded-md transition-all ${allSelected
+                                                    ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20'
+                                                    : 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20'}`}
+                                            >
+                                                {allSelected ? 'Unselect All' : 'Select All'}
+                                            </button>
+                                            {needsReviewCount && (
+                                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+                                                    <span className="relative flex h-1.5 w-1.5">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
+                                                    </span>
+                                                    <span className="text-[8px] text-amber-500 font-bold uppercase tracking-tight">Review Required</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     );
                                 })()}
                             </div>
 
-                            <div className="space-y-1">
+                            <div className="space-y-1.5">
                                 {mergedColumns.map((col, idx) => {
                                     const isSelected = selectedColumns.has(col);
+                                    const meta = columnMetadata[col];
+                                    const isReviewNeeded = meta?.requiresConfirmation || (meta?.confidence && meta.confidence < 0.7);
+
+                                    const getTypeClasses = (type?: string) => {
+                                        switch (type) {
+                                            case 'CURRENCY': return 'text-emerald-400 bg-emerald-500/5 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]';
+                                            case 'DATE': return 'text-blue-400 bg-blue-500/5 border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]';
+                                            case 'INTEGER':
+                                            case 'DECIMAL': return 'text-amber-400 bg-amber-500/5 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]';
+                                            case 'PERCENT': return 'text-violet-400 bg-violet-500/5 border-violet-500/20 shadow-[0_0_10px_rgba(139,92,246,0.1)]';
+                                            case 'TEXT': return 'text-slate-400 bg-slate-500/5 border-slate-500/20';
+                                            default: return 'text-slate-500 bg-slate-500/5 border-slate-500/10';
+                                        }
+                                    };
+
                                     return (
                                         <div
                                             key={`${col}-${idx}`}
-                                            onClick={() => toggleColumn(col)}
-                                            className={`group flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all select-none border
-                                        ${isSelected
-                                                    ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-200'
-                                                    : `bg-transparent border-transparent hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textTertiary}`
+                                            className={`group flex items-center gap-2 p-2 sm:p-2.5 rounded-xl transition-all duration-300 select-none border
+                                                ${isSelected
+                                                    ? 'bg-indigo-500/[0.04] border-indigo-500/30'
+                                                    : `bg-transparent border-transparent hover:${colors.bgTertiary}/40 hover:border-slate-700/50`
                                                 }
-                                    `}
+                                                ${isReviewNeeded && isSelected ? 'ring-1 ring-amber-500/20 bg-amber-500/[0.02]' : ''}
+                                            `}
                                         >
-                                            {isSelected
-                                                ? <CheckSquare className="w-4 h-4 text-indigo-400 shrink-0" />
-                                                : <Square className={`w-4 h-4 ${theme === 'dark' ? 'text-slate-600 group-hover:text-slate-400' : 'text-slate-400 group-hover:text-slate-600'} shrink-0`} />
-                                            }
-                                            <span className="text-sm font-medium truncate" title={col}>{col}</span>
+                                            <div
+                                                className="flex items-center gap-2 sm:gap-3 shrink-0 cursor-pointer p-1"
+                                                onClick={() => toggleColumn(col)}
+                                            >
+                                                <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all duration-200 ${isSelected
+                                                    ? 'bg-indigo-500 border-indigo-500 shadow-lg shadow-indigo-500/20'
+                                                    : `${theme === 'dark' ? 'bg-slate-800 border-slate-700 group-hover:border-slate-500' : 'bg-white border-slate-200 group-hover:border-slate-400'}`
+                                                    }`}>
+                                                    {isSelected && <CheckSquare className="w-3 h-3 text-white" />}
+                                                </div>
+                                            </div>
+
+                                            <div
+                                                className="flex-1 min-w-0 cursor-pointer"
+                                                onClick={() => toggleColumn(col)}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`text-[13px] font-semibold truncate ${isSelected ? colors.textPrimary : colors.textMuted}`} title={col}>
+                                                        {col}
+                                                    </span>
+                                                    {isReviewNeeded && (
+                                                        <Activity className="w-3 h-3 text-amber-500 animate-pulse shrink-0" />
+                                                    )}
+                                                </div>
+
+                                                {meta && (
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <div className={`text-[8.5px] px-1.5 py-0.5 rounded-md border font-bold tracking-tight ${getTypeClasses(meta.finalType || meta.detectedType)}`}>
+                                                            {meta.finalType || meta.detectedType}
+                                                        </div>
+                                                        {meta.confidence < 0.85 && (
+                                                            <span className={`text-[8px] font-bold uppercase tracking-wider ${meta.confidence < 0.6 ? 'text-rose-400' : 'text-amber-400/80'}`}>
+                                                                {Math.round(meta.confidence * 100)}% confidence
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Advanced Type Override Select */}
+                                            {meta && (
+                                                <div className={`relative isolate ${isReviewNeeded ? 'block' : 'hidden group-hover:block transition-all duration-300'}`}>
+                                                    <select
+                                                        value={meta.finalType || meta.detectedType}
+                                                        onChange={(e) => {
+                                                            const newType = e.target.value as ColumnType;
+                                                            setColumnMetadata({
+                                                                ...columnMetadata,
+                                                                [col]: {
+                                                                    ...meta,
+                                                                    finalType: newType,
+                                                                    source: 'USER',
+                                                                    requiresConfirmation: false
+                                                                }
+                                                            });
+                                                        }}
+                                                        className={`appearance-none bg-slate-900 border pointer-events-auto text-[10px] font-bold py-1 pl-2 pr-6 rounded-lg ${isReviewNeeded ? 'border-amber-500/50 text-amber-400 shadow-lg shadow-amber-500/10' : 'border-slate-700 text-slate-400'} outline-none transition-all hover:border-indigo-500/50 hover:text-indigo-400`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        {Object.values(ColumnType).map(t => (
+                                                            <option key={t} value={t} className="bg-slate-900">{t}</option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 pointer-events-none opacity-50" />
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
@@ -588,7 +717,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                         {mergedColumns.slice(0, 8).map((col, j) => {
                                                             const cellValue = row[col];
                                                             const displayValue = cellValue !== null && cellValue !== undefined
-                                                                ? smartFormat(cellValue, col)
+                                                                ? smartFormat(cellValue, col, columnMetadata)
                                                                 : <span className="text-slate-600 italic">null</span>;
                                                             return (
                                                                 <td key={j} className="px-4 py-3 whitespace-nowrap overflow-hidden max-w-[150px] truncate">
@@ -691,7 +820,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                 {row.map((cell: any, cIdx: number) => {
                                                     const header = viewingFile.sheets[activeSheet]?.data[0][cIdx];
                                                     const displayValue = cell !== null && cell !== undefined && header
-                                                        ? smartFormat(cell, header)
+                                                        ? smartFormat(cell, header, columnMetadata)
                                                         : (cell || '');
                                                     return (
                                                         <td key={cIdx} className={`px-3 sm:px-4 py-1.5 sm:py-2 responsive-text-xs sm:text-sm ${colors.textSecondary} border-r ${colors.borderSecondary} last:border-r-0 whitespace-nowrap`}>
@@ -752,7 +881,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                 {row.map((cell: any, cIdx: number) => {
                                                     const header = viewingTable.rawData.rows[headerIndices[viewingTable.id] || 0]?.[cIdx];
                                                     const displayValue = cell !== null && cell !== undefined && header
-                                                        ? smartFormat(cell, header)
+                                                        ? smartFormat(cell, header, columnMetadata)
                                                         : (cell || '');
                                                     return (
                                                         <td key={cIdx} className={`px-3 sm:px-4 py-1.5 sm:py-2 responsive-text-xs sm:text-sm ${colors.textSecondary} border-r ${colors.borderSecondary} last:border-r-0 whitespace-nowrap`}>

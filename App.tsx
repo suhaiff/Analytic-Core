@@ -45,6 +45,7 @@ function AppContent() {
   const [uploadedFileId, setUploadedFileId] = useState<number | undefined>(undefined);
   const [dataModel, setDataModel] = useState<DataModel | null>(null);
   const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([]);
+  const [dashboardSections, setDashboardSections] = useState<DashboardSection[]>([]);
   const [filterColumns, setFilterColumns] = useState<string[]>([]);
   const [sourceType, setSourceType] = useState<'file' | 'google_sheet' | 'sharepoint'>('file');
 
@@ -305,9 +306,10 @@ function AppContent() {
     setStep(Step.BUILDER);
   };
 
-  const handleGenerateReport = (charts: ChartConfig[], cols: string[]) => {
+  const handleGenerateReport = (charts: ChartConfig[], cols: string[], sections?: DashboardSection[]) => {
     setChartConfigs(charts);
     setFilterColumns(cols);
+    if (sections) setDashboardSections(sections);
     setStep(Step.DASHBOARD);
   };
 
@@ -322,9 +324,10 @@ function AppContent() {
     setFileName('');
     setDataModel(null);
     setChartConfigs([]);
+    setDashboardSections([]);
   };
 
-  const handleSaveDashboard = async (name: string, currentCharts: ChartConfig[]) => {
+  const handleSaveDashboard = async (name: string, currentCharts: ChartConfig[], currentSections?: DashboardSection[]) => {
     if (!dataModel || !currentUser) return;
 
     const newDash: SavedDashboard = {
@@ -333,6 +336,7 @@ function AppContent() {
       date: new Date().toLocaleDateString(),
       dataModel: dataModel,
       chartConfigs: currentCharts,
+      sections: currentSections,
       filterColumns: filterColumns
     };
 
@@ -350,6 +354,7 @@ function AppContent() {
   const handleLoadDashboard = (dash: SavedDashboard) => {
     setDataModel(dash.dataModel);
     setChartConfigs(dash.chartConfigs);
+    setDashboardSections(dash.sections || []);
     setFilterColumns(dash.filterColumns || []);
     setStep(Step.DASHBOARD);
   };
@@ -473,6 +478,8 @@ function AppContent() {
             onHome={handleReturnHomeRequest}
             onBack={() => setStep(Step.CONFIG)}
             initialFilterColumns={filterColumns}
+            initialBucket={chartConfigs}
+            sections={dashboardSections}
           />
         )}
 
@@ -480,6 +487,7 @@ function AppContent() {
           <Dashboard
             dataModel={dataModel}
             chartConfigs={chartConfigs}
+            sections={dashboardSections}
             filterColumns={filterColumns}
             onHome={handleReturnHomeRequest}
             onSave={handleSaveDashboard}

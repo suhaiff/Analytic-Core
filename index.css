@@ -1219,3 +1219,36 @@ button:focus-visible {
 .font-jakarta {
   font-family: 'Plus Jakarta Sans', sans-serif;
 }
+
+/* ===============================================
+   CUSTOM SCROLLBARS FOR CHARTS
+   =============================================== */
+.custom-chart-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.3) transparent;
+}
+
+.custom-chart-scrollbar::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.custom-chart-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 10px;
+}
+
+.custom-chart-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.4);
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+.custom-chart-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.6);
+}
+
+/* Ensure chart containers have proper layout for scrolling */
+.custom-chart-scrollbar>div {
+  transition: min-width 0.3s ease-in-out;
+}

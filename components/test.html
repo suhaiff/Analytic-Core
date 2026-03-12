@@ -1,0 +1,36 @@
+const toggleChartFilter = useCallback((chartId: string, column: string, value: any) => {
+        console.log('toggleChartFilter called with:', { chartId, column, value });
+        setChartFilters(prev => {
+            const next = { ...prev };
+            if (!next[chartId]) next[chartId] = {};
+            
+            // Initialize as array if not exists
+            if (!Array.isArray(next[chartId][column])) {
+                next[chartId][column] = [];
+            }
+            
+            const valueStr = String(value);
+            const index = next[chartId][column].findIndex((v: any) => String(v) === valueStr);
+            
+            console.log('Current selected values:', next[chartId][column], 'Index found:', index);
+            
+            if (index >= 0) {
+                // Remove value if already selected
+                next[chartId][column].splice(index, 1);
+                if (next[chartId][column].length === 0) {
+                    delete next[chartId][column];
+                }
+            } else {
+                // Add value if not selected
+                next[chartId][column].push(value);
+            }
+            
+            // Clean up empty chart filters
+            if (Object.keys(next[chartId]).length === 0) {
+                delete next[chartId];
+            }
+            
+            console.log('New state after toggle:', next);
+            return next;
+        });
+    }, []);
