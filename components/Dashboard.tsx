@@ -2498,13 +2498,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
                                 {/* KPIs Section (Only on first page) */}
                                 {page.pageKPIs && page.pageKPIs.length > 0 && (
-                                    <div style={{ display: 'flex', gap: '20px', marginBottom: '32px', width: '100%' }}>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '32px', width: '100%' }}>
                                         {page.pageKPIs.map((kpi, kIdx) => {
                                             const data = aggregateData(applyChartFilters(filteredData, kpi.id), kpi);
                                             const value = data[0]?.value || 0;
                                             const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata);
                                             return (
-                                                <div key={kpi.id} style={{ flex: 1, minHeight: '90px', background: theme === 'dark' ? '#1e293b' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#334155' : '#e5e7eb'}`, padding: '16px 20px 20px 20px', borderRadius: '14px', textAlign: 'center', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                                <div key={kpi.id} style={{ 
+                                                    flex: '1 1 calc(25% - 15px)', 
+                                                    minWidth: '220px',
+                                                    minHeight: '90px', 
+                                                    background: theme === 'dark' ? '#1e293b' : '#ffffff', 
+                                                    border: `1px solid ${theme === 'dark' ? '#334155' : '#e5e7eb'}`, 
+                                                    padding: '16px 20px 20px 20px', 
+                                                    borderRadius: '14px', 
+                                                    textAlign: 'center', 
+                                                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', 
+                                                    display: 'flex', 
+                                                    flexDirection: 'column', 
+                                                    justifyContent: 'center',
+                                                    boxSizing: 'border-box'
+                                                }}>
                                                     <p style={{ fontSize: '11px', color: theme === 'dark' ? '#94a3b8' : '#64748b', fontWeight: 'bold', textTransform: 'uppercase', margin: '0 0 4px 0', letterSpacing: '0.5px', lineHeight: '1.2' }}>{kpi.title}</p>
                                                     <p style={{ fontSize: '24px', fontWeight: '800', color: theme === 'dark' ? '#f8fafc' : '#0f172a', margin: '0', lineHeight: '1.3' }}>{displayValue}</p>
                                                 </div>

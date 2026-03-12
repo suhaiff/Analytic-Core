@@ -200,12 +200,9 @@ export const isCurrencyColumn = (columnName: string): boolean => {
  * @returns Formatted date string
  */
 export const excelSerialToDate = (serial: number): string => {
-    // Excel epoch starts at 1900-01-01, but has a bug counting 1900 as a leap year
-    // So we need to account for that
-    const excelEpoch = new Date(1899, 11, 30); // December 30, 1899
-    const days = Math.floor(serial);
-    const milliseconds = days * 24 * 60 * 60 * 1000;
-    const date = new Date(excelEpoch.getTime() + milliseconds);
+    // Excel epoch starts at 1899-12-30 to handle the 1900 leap year bug correctly
+    const excelEpoch = new Date(1899, 11, 30);
+    const date = new Date(excelEpoch.getTime() + Math.round(serial * 86400000));
 
     // Format as YYYY-MM-DD
     const year = date.getFullYear();
@@ -237,9 +234,10 @@ export const formatDateForTick = (serial: number): string => {
  * @returns true if it looks like an Excel date serial
  */
 export const isExcelSerialDate = (value: number): boolean => {
-    // Excel dates are positive integers typically between 1 and 60000
-    // (covering years 1900-2064)
-    return Number.isInteger(value) && value > 0 && value < 100000;
+    // Excel dates for modern times (1982+) are numbers > 30000
+    // This threshold prevents small integers (like year numbers 2024, 2025) 
+    // from being incorrectly interpreted as Excel dates (which would be in year 1905).
+    return Number.isInteger(value) && value > 30000 && value < 100000;
 };
 
 /**
@@ -278,7 +276,10 @@ export const smartFormat = (value: any, columnName: string, columnMetadata?: any
         }
 
         if (type === 'DATE') {
-            if (isNumeric && isExcelSerialDate(numValue)) {
+            const lowerCol = columnName.toLowerCase();
+            const isLikelyYearOnly = lowerCol === 'year' || lowerCol.endsWith('_year') || lowerCol.startsWith('year_');
+            
+            if (isNumeric && isExcelSerialDate(numValue) && !isLikelyYearOnly) {
                 return excelSerialToDate(numValue);
             }
             return String(value);
@@ -306,8 +307,11 @@ export const smartFormat = (value: any, columnName: string, columnMetadata?: any
 
     // For date/time columns, handle Excel serial dates
     if (isDateTimeColumn(columnName)) {
+        const lowerCol = columnName.toLowerCase();
+        const isLikelyYearOnly = lowerCol === 'year' || lowerCol.endsWith('_year') || lowerCol.startsWith('year_');
+
         // Check if it's a number that might be an Excel serial date
-        if (isNumeric && isExcelSerialDate(numValue)) {
+        if (isNumeric && isExcelSerialDate(numValue) && !isLikelyYearOnly) {
             // Convert Excel serial date to readable format
             return excelSerialToDate(numValue);
         }
