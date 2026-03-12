@@ -1018,7 +1018,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     onClick={() => onItemClick && onItemClick(row[config.xAxisKey])}
                                 >
                                     <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-[10px]'} text-center ${theme === 'dark' ? 'text-slate-600' : 'text-slate-400'} font-mono`}>{i + 1}</td>
-                                    <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{row[config.xAxisKey]}</td>
+                                    <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{formatByColumn(row[config.xAxisKey], config.xAxisKey)}</td>
                                     <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold text-right font-mono ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{fmtNum(Number(row[config.dataKey]) || 0, config.dataKey)}</td>
                                     {config.dataKey2 && <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold text-right font-mono ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>{fmtNum(Number(row[config.dataKey2]) || 0, config.dataKey2)}</td>}
                                 </tr>
@@ -1083,7 +1083,12 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                 </th>
                                 {mxVals.map(x => (
                                     <th key={x} className={`px-1 py-1.5 text-center font-bold uppercase tracking-tighter border-b-2 border-r ${theme === 'dark' ? 'border-indigo-500/30 text-slate-400' : 'border-indigo-400/30 text-slate-500'}`} style={{ borderColor: themeColors.chartGrid, fontSize: isExporting && mxVals.length > 12 ? '6px' : 'inherit' }}>
-                                        {String(x).length > (mxVals.length > 15 ? 4 : 10) ? String(x).substring(0, (mxVals.length > 15 ? 3 : 8)) + '..' : x}
+                                        {(() => {
+                                            const formatted = formatByColumn(x, config.xAxisKey);
+                                            return formatted.length > (mxVals.length > 15 ? 4 : 10) 
+                                                ? formatted.substring(0, (mxVals.length > 15 ? 3 : 8)) + '..' 
+                                                : formatted;
+                                        })()}
                                     </th>
                                 ))}
                                 <th className={`px-3 py-2.5 text-center font-bold text-[9px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-indigo-400' : 'border-indigo-400/30 text-indigo-600'}`}>Total</th>
@@ -1093,7 +1098,12 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                             {myVals.map((y, ri) => (
                                 <tr key={y} style={{ background: ri % 2 === 0 ? (theme === 'dark' ? 'rgba(30,41,59,0.2)' : 'rgba(241,245,249,0.4)') : 'transparent' }}>
                                     <td className={`px-2 py-1.5 font-bold border-r ${theme === 'dark' ? 'text-slate-300 bg-slate-800/30' : 'text-slate-600 bg-slate-50/60'}`} style={{ borderColor: themeColors.chartGrid, fontSize: isExporting && mxVals.length > 12 ? '7px' : 'inherit', width: isExporting ? '60px' : 'auto' }}>
-                                        {String(y).length > (isExporting ? 10 : 14) ? String(y).substring(0, (isExporting ? 8 : 12)) + '..' : y}
+                                        {(() => {
+                                            const formatted = formatByColumn(y, config.yAxisKey);
+                                            return formatted.length > (isExporting ? 10 : 14) 
+                                                ? formatted.substring(0, (isExporting ? 8 : 12)) + '..' 
+                                                : formatted;
+                                        })()}
                                     </td>
                                     {mxVals.map(x => {
                                         const cell = data.find((d: any) => d.x === x && d.y === y);
@@ -1110,7 +1120,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                                     overflow: 'hidden',
                                                     textOverflow: 'clip'
                                                 }}
-                                                title={`${config.yAxisKey}: ${y}\n${config.xAxisKey}: ${x}\n${config.dataKey}: ${val}`}
+                                                title={`${config.yAxisKey}: ${formatByColumn(y, config.yAxisKey)}\n${config.xAxisKey}: ${formatByColumn(x, config.xAxisKey)}\n${config.dataKey}: ${val}`}
                                                 onClick={() => onItemClick && onItemClick(x)}
                                             >
                                                 {fmtMatrixNum(val)}
