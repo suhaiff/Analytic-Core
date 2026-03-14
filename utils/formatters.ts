@@ -121,7 +121,7 @@ export const isDateTimeColumn = (columnName: string): boolean => {
 
     // Then check for specific date/time keywords that are clear indicators
     const dateTimeKeywords = [
-        'timestamp', 'created', 'updated', 'year', 'month', 'day',
+        'date', 'time', 'timestamp', 'created', 'updated', 'year', 'month', 'day',
         'hour', 'minute', 'second', 'when', 'period'
     ];
 
@@ -210,6 +210,71 @@ export const excelSerialToDate = (serial: number): string => {
     const day = String(date.getDate()).padStart(2, '0');
 
     return `${year}-${month}-${day}`;
+};
+
+/**
+ * Extracts the year from a date value (Excel serial or string)
+ */
+export const getYear = (value: any): number | null => {
+    if (value === null || value === undefined) return null;
+    const num = typeof value === 'number' ? value : parseFloat(value);
+    
+    if (!isNaN(num) && isExcelSerialDate(num)) {
+        const excelEpoch = new Date(1899, 11, 30);
+        const date = new Date(excelEpoch.getTime() + Math.round(num * 86400000));
+        return date.getFullYear();
+    }
+    
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) return date.getFullYear();
+    
+    return null;
+};
+
+/**
+ * Extracts the month (1-12) from a date value
+ */
+export const getMonth = (value: any): number | null => {
+    if (value === null || value === undefined) return null;
+    const num = typeof value === 'number' ? value : parseFloat(value);
+    
+    if (!isNaN(num) && isExcelSerialDate(num)) {
+        const excelEpoch = new Date(1899, 11, 30);
+        const date = new Date(excelEpoch.getTime() + Math.round(num * 86400000));
+        return date.getMonth() + 1;
+    }
+    
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) return date.getMonth() + 1;
+    
+    return null;
+};
+
+/**
+ * Extracts the day of month (1-31) from a date value
+ */
+export const getDay = (value: any): number | null => {
+    if (value === null || value === undefined) return null;
+    const num = typeof value === 'number' ? value : parseFloat(value);
+    
+    if (!isNaN(num) && isExcelSerialDate(num)) {
+        const excelEpoch = new Date(1899, 11, 30);
+        const date = new Date(excelEpoch.getTime() + Math.round(num * 86400000));
+        return date.getDate();
+    }
+    
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) return date.getDate();
+    
+    return null;
+};
+
+/**
+ * Returns the month name for a given month index (1-12)
+ */
+export const getMonthName = (month: number): string => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return months[month - 1] || 'Unknown';
 };
 
 /**

@@ -92,6 +92,8 @@ export enum AggregationType {
   SUM = 'SUM',
   COUNT = 'COUNT',
   AVERAGE = 'AVERAGE',
+  MINIMUM = 'MINIMUM',
+  MAXIMUM = 'MAXIMUM',
   NONE = 'NONE'
 }
 

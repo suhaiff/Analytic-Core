@@ -51,7 +51,7 @@ const chartSchema = {
           dataKey: { type: Type.STRING, description: "The primary numeric column for the data (Metric 1)" },
           dataKey2: { type: Type.STRING, description: "Optional second numeric column (Metric 2) — required for GROUPED_BAR, STACKED_BAR, COMBO" },
           yAxisKey: { type: Type.STRING, description: "Optional second categorical column — required for HEATMAP, MATRIX" },
-          aggregation: { type: Type.STRING, enum: ["SUM", "COUNT", "AVERAGE", "NONE"] },
+          aggregation: { type: Type.STRING, enum: ["SUM", "COUNT", "AVERAGE", "MINIMUM", "MAXIMUM", "NONE"] },
         },
         required: ["title", "type", "xAxisKey", "dataKey", "aggregation", "description"]
       }
@@ -142,7 +142,7 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
       dataKey: { type: Type.STRING },
       dataKey2: { type: Type.STRING, description: "Optional second metric for GROUPED_BAR, STACKED_BAR, COMBO" },
       yAxisKey: { type: Type.STRING, description: "Optional second categorical dimension for HEATMAP, MATRIX" },
-      aggregation: { type: Type.STRING, enum: ["SUM", "COUNT", "AVERAGE", "NONE"] },
+      aggregation: { type: Type.STRING, enum: ["SUM", "COUNT", "AVERAGE", "MINIMUM", "MAXIMUM", "NONE"] },
     },
     required: ["title", "type", "xAxisKey", "dataKey", "aggregation"]
   };

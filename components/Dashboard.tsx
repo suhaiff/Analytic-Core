@@ -4,7 +4,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, Brush, LabelList,
     ScatterChart, Scatter, ZAxis, ComposedChart
 } from 'recharts';
-import { DataModel, ChartConfig, ChartType, DashboardSection } from '../types';
+import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType } from '../types';
 import { aggregateData } from '../utils/aggregator';
 import {
     LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2,
@@ -17,7 +17,7 @@ import { ChartBuilder } from './ChartBuilder';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses, type Theme } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
-import { formatCurrency, formatCompactCurrency, isCurrencyColumn, isCountColumn, isDateTimeColumn, isExcelSerialDate, excelSerialToDate, smartFormat, formatDateForTick } from '../utils/formatters';
+import { formatCurrency, formatCompactCurrency, isCurrencyColumn, isCountColumn, isDateTimeColumn, isExcelSerialDate, excelSerialToDate, smartFormat, formatDateForTick, getYear, getMonth, getDay, getMonthName } from '../utils/formatters';
 import { DashboardLoader } from './DashboardLoader';
 
 
@@ -238,6 +238,39 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
             </div>
         );
     };
+
+    const InteractiveTick = (props: any) => {
+        const { x, y, payload, textAnchor, angle, fill, fontSize, tickFormatter, isDate } = props;
+        const isClickable = !isExporting && onItemClick && isDate;
+        
+        return (
+            <g transform={`translate(${x},${y})`}>
+                <text
+                    x={0}
+                    y={0}
+                    dy={12}
+                    textAnchor={textAnchor}
+                    fill={fill}
+                    fontSize={fontSize || (isExporting ? 8 : 10)}
+                    transform={`rotate(${angle || 0})`}
+                    onClick={(e) => {
+                        if (isClickable && onItemClick) {
+                            e.stopPropagation();
+                            onItemClick(payload.value);
+                        }
+                    }}
+                    className={isClickable ? 'hover:fill-indigo-400 transition-colors' : ''}
+                    style={{ 
+                        cursor: isClickable ? 'pointer' : 'default', 
+                        userSelect: 'none',
+                        fontWeight: isClickable ? 600 : 400
+                    }}
+                >
+                    {tickFormatter ? tickFormatter(payload.value) : payload.value}
+                </text>
+            </g>
+        );
+    };
     switch (config.type) {
         case ChartType.BAR: {
             const minWidth = Math.max(100, data.length * (isExpanded ? 45 : 35));
@@ -256,10 +289,10 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                 <XAxis
                                     dataKey={config.xAxisKey}
                                     {...AxisProps}
-                                    tickFormatter={xAxisFormatter}
-                                    angle={-25}
-                                    textAnchor="end"
-                                    height={isExporting ? 75 : 90}
+                                    tick={<InteractiveTick tickFormatter={xAxisFormatter} isDate={isXDate} />}
+                                    angle={isXDate ? 0 : -25}
+                                    textAnchor={isXDate ? "middle" : "end"}
+                                    height={isXDate ? (isExporting ? 40 : 50) : (isExporting ? 75 : 90)}
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
@@ -331,11 +364,11 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     {...AxisProps}
                                     width={isExporting ? 150 : 120}
                                     interval={0}
-                                    tickFormatter={(val: any) => {
+                                    tick={<InteractiveTick isDate={isXDate} tickFormatter={(val: any) => {
                                         const str = (val === null || val === undefined || val === '') ? 'Not Specified' : String(val);
                                         if (isExporting) return str.length > 25 ? str.substring(0, 22) + '..' : str;
                                         return str.length > 20 ? str.substring(0, 17) + '..' : str;
-                                    }}
+                                    }} />}
                                 />
                                 <Tooltip content={<CustomTooltip />} />
                                 <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
@@ -387,10 +420,10 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                 <XAxis
                                     dataKey={config.xAxisKey}
                                     {...AxisProps}
-                                    tickFormatter={xAxisFormatter}
-                                    angle={-25}
-                                    textAnchor="end"
-                                    height={isExporting ? 75 : 90}
+                                    tick={<InteractiveTick tickFormatter={xAxisFormatter} isDate={isXDate} />}
+                                    angle={isXDate ? 0 : -25}
+                                    textAnchor={isXDate ? "middle" : "end"}
+                                    height={isXDate ? (isExporting ? 40 : 50) : (isExporting ? 75 : 90)}
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
@@ -459,10 +492,10 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                 <XAxis
                                     dataKey={config.xAxisKey}
                                     {...AxisProps}
-                                    tickFormatter={xAxisFormatter}
-                                    angle={-25}
-                                    textAnchor="end"
-                                    height={isExporting ? 75 : 90}
+                                    tick={<InteractiveTick tickFormatter={xAxisFormatter} isDate={isXDate} />}
+                                    angle={isXDate ? 0 : -25}
+                                    textAnchor={isXDate ? "middle" : "end"}
+                                    height={isXDate ? (isExporting ? 40 : 50) : (isExporting ? 75 : 90)}
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
@@ -513,10 +546,10 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                 <XAxis
                                     dataKey={config.xAxisKey}
                                     {...AxisProps}
-                                    tickFormatter={xAxisFormatter}
-                                    angle={-25}
-                                    textAnchor="end"
-                                    height={isExporting ? 75 : 90}
+                                    tick={<InteractiveTick tickFormatter={xAxisFormatter} isDate={isXDate} />}
+                                    angle={isXDate ? 0 : -25}
+                                    textAnchor={isXDate ? "middle" : "end"}
+                                    height={isXDate ? (isExporting ? 40 : 50) : (isExporting ? 75 : 90)}
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
@@ -580,10 +613,10 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                 <XAxis
                                     dataKey={config.xAxisKey}
                                     {...AxisProps}
-                                    tickFormatter={xAxisFormatter}
-                                    angle={-25}
-                                    textAnchor="end"
-                                    height={90}
+                                    tick={<InteractiveTick tickFormatter={xAxisFormatter} isDate={isXDate} />}
+                                    angle={isXDate ? 0 : -25}
+                                    textAnchor={isXDate ? "middle" : "end"}
+                                    height={isXDate ? 50 : 90}
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
@@ -634,10 +667,10 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                 <XAxis
                                     dataKey={config.xAxisKey}
                                     {...AxisProps}
-                                    tickFormatter={xAxisFormatter}
-                                    angle={-25}
-                                    textAnchor="end"
-                                    height={90}
+                                    tick={<InteractiveTick tickFormatter={xAxisFormatter} isDate={isXDate} />}
+                                    angle={isXDate ? 0 : -25}
+                                    textAnchor={isXDate ? "middle" : "end"}
+                                    height={isXDate ? 50 : 90}
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
@@ -700,7 +733,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     dataKey={config.xAxisKey}
                                     name={config.xAxisKey}
                                     {...AxisProps}
-                                    tickFormatter={xAxisFormatter}
+                                    tick={<InteractiveTick tickFormatter={xAxisFormatter} isDate={isXDate} />}
                                 />
                                 <YAxis
                                     type="number"
@@ -763,10 +796,10 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                 <XAxis
                                     dataKey={config.xAxisKey}
                                     {...AxisProps}
-                                    tickFormatter={xAxisFormatter}
-                                    angle={-25}
-                                    textAnchor="end"
-                                    height={90}
+                                    tick={<InteractiveTick tickFormatter={xAxisFormatter} isDate={isXDate} />}
+                                    angle={isXDate ? 0 : -25}
+                                    textAnchor={isXDate ? "middle" : "end"}
+                                    height={isXDate ? 50 : 90}
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
@@ -874,29 +907,41 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                         {/* Header row */}
                         <div style={{ padding: '6px 4px', fontWeight: 700, color: themeColors.chartAxisText }} />
                         {xVals.map((x: any) => (
-                            <div key={x} style={{
-                                padding: '6px 4px',
-                                fontWeight: 600,
-                                color: themeColors.chartAxisText,
-                                textAlign: 'center',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                            }}>{String(x).length > 8 ? String(x).substring(0, 6) + '..' : x}</div>
+                            <div key={x} 
+                                style={{
+                                    padding: '6px 4px',
+                                    fontWeight: 600,
+                                    color: themeColors.chartAxisText,
+                                    textAlign: 'center',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    cursor: onItemClick ? 'pointer' : 'default'
+                                }}
+                                onClick={() => onItemClick && onItemClick(x)}
+                            >
+                                {String(x).length > 8 ? String(x).substring(0, 6) + '..' : x}
+                            </div>
                         ))}
                         {/* Data rows */}
                         {yVals.map((y: any) => (
                             <React.Fragment key={y}>
-                                <div style={{
-                                    padding: '6px 4px',
-                                    fontWeight: 600,
-                                    color: themeColors.chartAxisText,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                }}>{String(y).length > 10 ? String(y).substring(0, 8) + '..' : y}</div>
+                                <div key={y}
+                                    style={{
+                                        padding: '6px 4px',
+                                        fontWeight: 600,
+                                        color: themeColors.chartAxisText,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                        cursor: onItemClick ? 'pointer' : 'default'
+                                    }}
+                                    onClick={() => onItemClick && onItemClick(y)}
+                                >
+                                    {String(y).length > 10 ? String(y).substring(0, 8) + '..' : y}
+                                </div>
                                 {xVals.map((x: any) => {
                                     const cell = data.find((d: any) => d.x === x && d.y === y);
                                     const val = cell?.value ?? 0;
@@ -1082,7 +1127,11 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     {isExporting ? 'Y \\ X' : `${config.yAxisKey} ↓ / ${config.xAxisKey} →`}
                                 </th>
                                 {mxVals.map(x => (
-                                    <th key={x} className={`px-1 py-1.5 text-center font-bold uppercase tracking-tighter border-b-2 border-r ${theme === 'dark' ? 'border-indigo-500/30 text-slate-400' : 'border-indigo-400/30 text-slate-500'}`} style={{ borderColor: themeColors.chartGrid, fontSize: isExporting && mxVals.length > 12 ? '6px' : 'inherit' }}>
+                                    <th key={x} 
+                                        className={`px-1 py-1.5 text-center font-bold uppercase tracking-tighter border-b-2 border-r ${theme === 'dark' ? 'border-indigo-500/30 text-slate-400' : 'border-indigo-400/30 text-slate-500'}`} 
+                                        style={{ borderColor: themeColors.chartGrid, fontSize: isExporting && mxVals.length > 12 ? '6px' : 'inherit', cursor: onItemClick ? 'pointer' : 'default' }}
+                                        onClick={() => onItemClick && onItemClick(x)}
+                                    >
                                         {(() => {
                                             const formatted = formatByColumn(x, config.xAxisKey);
                                             return formatted.length > (mxVals.length > 15 ? 4 : 10) 
@@ -1344,6 +1393,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     const [currentFilterColumns, setCurrentFilterColumns] = useState<string[]>(filterColumns);
     const [isEditing, setIsEditing] = useState(false);
 
+    // --- TIME INTELLIGENCE STATE ---
+    const [chartDrillStates, setChartDrillStates] = useState<{ [chartId: string]: { level: 'year' | 'month' | 'day', year: number | null, month: number | null } }>({});
+
     // UI State
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
     const [dashboardName, setDashboardName] = useState(dataModel?.name || "Untitled Dashboard");
@@ -1437,6 +1489,152 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     // Clear per-chart filters
     const clearChartFilters = useCallback((chartId: string) => {
         setChartFilters(prev => {
+            const next = { ...prev };
+            delete next[chartId];
+            return next;
+        });
+    }, []);
+
+    // --- TIME INTELLIGENCE LOGIC ---
+    const getDrillDownData = useCallback((chart: ChartConfig, data: any[]) => {
+        const checkIsDate = (col: string) => {
+            if (dataModel.columnMetadata?.[col]) {
+                const meta = dataModel.columnMetadata[col];
+                return (meta.finalType || meta.detectedType) === 'DATE';
+            }
+            return isDateTimeColumn(col);
+        };
+        const isXDate = checkIsDate(chart.xAxisKey);
+        if (!isXDate || chart.type === ChartType.KPI) return data;
+
+        const drillState = chartDrillStates[chart.id] || { level: 'initial', year: null, month: null };
+        
+        // Compute effective level and context
+        let currentLevel = drillState.level;
+        let currentYear = drillState.year;
+        let currentMonth = drillState.month;
+
+        if (currentLevel === 'initial') {
+            const years = Array.from(new Set(data.map(d => getYear(d[chart.xAxisKey])).filter(y => y !== null)));
+            currentLevel = years.length > 1 ? 'year' : 'month';
+            currentYear = years.length === 1 ? years[0] : null;
+        }
+
+        let processedData = data;
+        let xAxisTransform = (val: any) => val;
+
+        if (currentLevel === 'year') {
+            xAxisTransform = (val: any) => getYear(val);
+        } else if (currentLevel === 'month') {
+            // Filter by year if available
+            processedData = data.filter(d => {
+                const rowYear = getYear(d[chart.xAxisKey]);
+                return !currentYear || rowYear === currentYear;
+            });
+            xAxisTransform = (val: any) => getMonthName(getMonth(val)!);
+        } else if (currentLevel === 'day') {
+            // Filter by year and month strictly
+            processedData = data.filter(d => {
+                const rowYear = getYear(d[chart.xAxisKey]);
+                const rowMonth = getMonth(d[chart.xAxisKey]);
+                const yearMatch = !currentYear || rowYear === currentYear;
+                const monthMatch = !currentMonth || rowMonth === currentMonth;
+                return yearMatch && monthMatch;
+            });
+            xAxisTransform = (val: any) => getDay(val);
+        }
+
+        // Now aggregate based on the transformed X-axis
+        const groups: { [key: string]: { count: number; sum: number, sum2: number, min: number, max: number, min2: number, max2: number } } = {};
+        processedData.forEach(row => {
+            const key = String(xAxisTransform(row[chart.xAxisKey]));
+            const val = Number(row[chart.dataKey]) || 0;
+            const val2 = chart.dataKey2 ? (Number(row[chart.dataKey2]) || 0) : 0;
+
+            if (!groups[key]) groups[key] = { count: 0, sum: 0, sum2: 0, min: val, max: val, min2: val2, max2: val2 };
+            groups[key].count++;
+            groups[key].sum += val;
+            groups[key].sum2 += val2;
+            if (val < groups[key].min) groups[key].min = val;
+            if (val > groups[key].max) groups[key].max = val;
+            if (val2 < groups[key].min2) groups[key].min2 = val2;
+            if (val2 > groups[key].max2) groups[key].max2 = val2;
+        });
+
+        // Convert back to chart data format
+        return Object.keys(groups).map(key => {
+            let primaryVal = 0;
+            if (chart.aggregation === AggregationType.COUNT) primaryVal = groups[key].count;
+            else if (chart.aggregation === AggregationType.AVERAGE) primaryVal = groups[key].sum / groups[key].count;
+            else if (chart.aggregation === AggregationType.MINIMUM) primaryVal = groups[key].min;
+            else if (chart.aggregation === AggregationType.MAXIMUM) primaryVal = groups[key].max;
+            else primaryVal = groups[key].sum;
+
+            const result: any = {
+                [chart.xAxisKey]: key,
+                [chart.dataKey]: parseFloat(primaryVal.toFixed(2))
+            };
+            if (chart.dataKey2) {
+                let secondaryVal = 0;
+                if (chart.aggregation === AggregationType.COUNT) secondaryVal = groups[key].count;
+                else if (chart.aggregation === AggregationType.AVERAGE) secondaryVal = groups[key].sum2 / groups[key].count;
+                else if (chart.aggregation === AggregationType.MINIMUM) secondaryVal = groups[key].min2;
+                else if (chart.aggregation === AggregationType.MAXIMUM) secondaryVal = groups[key].max2;
+                else secondaryVal = groups[key].sum2;
+
+                result[chart.dataKey2] = parseFloat(secondaryVal.toFixed(2));
+            }
+            return result;
+        }).sort((a, b) => {
+            // Sort logic: Years/Months/Days should be in order
+            if (currentLevel === 'month') {
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return months.indexOf(a[chart.xAxisKey]) - months.indexOf(b[chart.xAxisKey]);
+            }
+            return String(a[chart.xAxisKey]).localeCompare(String(b[chart.xAxisKey]), undefined, { numeric: true });
+        });
+    }, [chartDrillStates]);
+
+    const handleDrillDown = useCallback((chartId: string, chart: ChartConfig, clickedValue: any) => {
+        const checkIsDate = (col: string) => {
+            if (dataModel.columnMetadata?.[col]) {
+                const meta = dataModel.columnMetadata[col];
+                return (meta.finalType || meta.detectedType) === 'DATE';
+            }
+            return isDateTimeColumn(col);
+        };
+        const isXDate = checkIsDate(chart.xAxisKey);
+        if (!isXDate) return false;
+
+        const current = chartDrillStates[chartId];
+        let effectiveLevel = 'year';
+        let currentYear = null;
+
+        if (!current) {
+            const years = Array.from(new Set(dataModel.data.map(d => getYear(d[chart.xAxisKey])).filter(y => y !== null)));
+            effectiveLevel = years.length > 1 ? 'year' : 'month';
+            currentYear = years.length === 1 ? years[0] : null;
+        } else {
+            effectiveLevel = current.level;
+            currentYear = current.year;
+        }
+
+        if (effectiveLevel === 'day') return false; // Already at deepest level
+
+        setChartDrillStates(prev => {
+            if (effectiveLevel === 'year') {
+                return { ...prev, [chartId]: { level: 'month', year: parseInt(clickedValue), month: null } };
+            } else if (effectiveLevel === 'month') {
+                const monthIndex = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].indexOf(clickedValue) + 1;
+                return { ...prev, [chartId]: { level: 'day', year: currentYear, month: monthIndex } };
+            }
+            return prev;
+        });
+        return true;
+    }, [dataModel.data, chartDrillStates]);
+
+    const resetDrillDown = useCallback((chartId: string) => {
+        setChartDrillStates(prev => {
             const next = { ...prev };
             delete next[chartId];
             return next;
@@ -1913,11 +2111,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                             <div className="flex-1 p-6 min-h-0">
                                 <RenderChart
                                     config={expandedChartConfig}
-                                    data={aggregateData(applyChartFilters(filteredData, expandedChartConfig.id), expandedChartConfig)}
+                                    data={isDateTimeColumn(expandedChartConfig.xAxisKey) 
+                                        ? getDrillDownData(expandedChartConfig, applyChartFilters(filteredData, expandedChartConfig.id))
+                                        : aggregateData(applyChartFilters(filteredData, expandedChartConfig.id), expandedChartConfig)}
                                     isExpanded={true}
                                     theme={theme}
                                     isAnimationActive={!isExporting}
-                                    onItemClick={(val) => toggleFilter(expandedChartConfig.xAxisKey, val)}
+                                    onItemClick={(val) => {
+                                        const drilled = handleDrillDown(expandedChartConfig.id, expandedChartConfig, val);
+                                        if (!drilled) toggleFilter(expandedChartConfig.xAxisKey, val);
+                                    }}
                                     activeFilterValue={activeFilters[expandedChartConfig.xAxisKey]}
                                     columnMetadata={dataModel.columnMetadata}
                                 />
@@ -2259,10 +2462,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                         {sections.length > 0 ? (
                             <div key={activeTab} className="grid grid-cols-1 lg:grid-cols-2 gap-8 print:grid-cols-2 print:gap-4 animate-fade-in">
                                 {activeSection.map(chart => {
+                                    const isXDate = (dataModel.columnMetadata?.[chart.xAxisKey])
+                                        ? (dataModel.columnMetadata[chart.xAxisKey].finalType || dataModel.columnMetadata[chart.xAxisKey].detectedType) === 'DATE'
+                                        : isDateTimeColumn(chart.xAxisKey);
                                     // Apply per-chart filters BEFORE aggregation for proper filtering
                                     const chartPreFilteredData = applyChartFilters(filteredData, chart.id);
-                                    const aggregatedData = aggregateData(chartPreFilteredData, chart);
+                                    const aggregatedData = isXDate 
+                                        ? getDrillDownData(chart, chartPreFilteredData)
+                                        : aggregateData(chartPreFilteredData, chart);
                                     const hasChartFilters = chartFilters[chart.id] && Object.keys(chartFilters[chart.id]).length > 0;
+                                    const drillState = chartDrillStates[chart.id];
+                                    const isDrilled = drillState && drillState.level !== 'year' && (drillState.level !== 'month' || drillState.year !== null);
                                     return (
                                         <div 
                                             key={chart.id}
@@ -2272,6 +2482,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             <div className="mb-6 pr-20">
                                                 <h3 className={`font-bold text-lg ${colors.textSecondary} truncate`}>{chart.title}</h3>
                                                 <p className={`text-xs ${colors.textMuted} mt-1 truncate`}>{chart.description}</p>
+                                                {isDrilled && (
+                                                    <div className="flex items-center gap-1.5 mt-2">
+                                                        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter">
+                                                            {drillState.level === 'month' ? `Year: ${drillState.year}` : `Month: ${getMonthName(drillState.month!)} ${drillState.year}`}
+                                                        </span>
+                                                        <button 
+                                                            onClick={() => resetDrillDown(chart.id)}
+                                                            className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-all border border-indigo-500/20"
+                                                        >
+                                                            Reset View
+                                                        </button>
+                                                    </div>
+                                                )}
                                                 {hasChartFilters && (
                                                     <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                                                         {Object.entries(chartFilters[chart.id] || {}).map(([col, vals]) => {
@@ -2436,7 +2659,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     data={aggregatedData}
                                                     theme={theme}
                                                     isAnimationActive={!isExporting}
-                                                    onItemClick={(val) => toggleChartFilter(chart.id, chart.xAxisKey, val)}
+                                                    onItemClick={(val) => {
+                                                        const drilled = handleDrillDown(chart.id, chart, val);
+                                                        if (!drilled) toggleFilter(chart.xAxisKey, val);
+                                                    }}
                                                     activeFilterValue={chartFilters[chart.id]?.[chart.xAxisKey]}
                                                     columnMetadata={dataModel.columnMetadata}
                                                 />
@@ -2546,7 +2772,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             <div style={{ flex: 1, minHeight: 0, width: '100%', position: 'relative', overflow: 'hidden' }}>
                                                 <RenderChart
                                                     config={chart}
-                                                    data={aggregateData(applyChartFilters(filteredData, chart.id), chart)}
+                                                    data={isDateTimeColumn(chart.xAxisKey)
+                                                        ? getDrillDownData(chart, applyChartFilters(filteredData, chart.id))
+                                                        : aggregateData(applyChartFilters(filteredData, chart.id), chart)}
                                                     theme={theme}
                                                     isAnimationActive={false}
                                                     columnMetadata={dataModel.columnMetadata}
