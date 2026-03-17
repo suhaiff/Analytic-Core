@@ -5,7 +5,7 @@ export const processRawData = (rawData: RawData, headerIndex: number): { headers
   
   const headers = rawData.rows[headerIndex] || [];
   // Ensure unique headers to prevent collisions
-  const uniqueHeaders = headers.map((h, i) => h ? h.trim() : `Column_${i}`);
+  const uniqueHeaders = headers.map((h, i) => h !== null && h !== undefined ? String(h).trim() : `Column_${i}`);
   
   const dataRows = rawData.rows.slice(headerIndex + 1).map(row => {
     const obj: any = {};

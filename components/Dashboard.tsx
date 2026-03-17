@@ -1396,6 +1396,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     // --- TIME INTELLIGENCE STATE ---
     const [chartDrillStates, setChartDrillStates] = useState<{ [chartId: string]: { level: 'year' | 'month' | 'day', year: number | null, month: number | null } }>({});
 
+    // --- DRILL-THROUGH STATE (Power BI style) ---
+    const [drillThroughState, setDrillThroughState] = useState<{
+        sourceChart: ChartConfig;
+        clickedYear: number;
+    } | null>(null);
+
     // UI State
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
     const [dashboardName, setDashboardName] = useState(dataModel?.name || "Untitled Dashboard");
@@ -1640,6 +1646,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
             return next;
         });
     }, []);
+
+    // --- DRILL-THROUGH DATA COMPUTATION ---
+    const computeDrillThroughData = useCallback((sourceChart: ChartConfig, year: number): any[] => {
+        if (!sourceChart.drillThrough?.dateColumn) return [];
+        const dateCol = sourceChart.drillThrough.dateColumn;
+        const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        // Filter rows for the selected year
+        const yearRows = filteredData.filter(row => getYear(row[dateCol]) === year);
+        // Group by month
+        const monthGroups: { [m: number]: { sum: number; count: number; min: number; max: number; distinct: Set<string> } } = {};
+        yearRows.forEach(row => {
+            const m = getMonth(row[dateCol]);
+            if (!m) return;
+            const val = Number(row[sourceChart.dataKey]) || 0;
+            if (!monthGroups[m]) monthGroups[m] = { sum: 0, count: 0, min: val, max: val, distinct: new Set() };
+            monthGroups[m].sum += val;
+            monthGroups[m].count += 1;
+            monthGroups[m].distinct.add(String(row[sourceChart.dataKey] ?? ''));
+            if (val < monthGroups[m].min) monthGroups[m].min = val;
+            if (val > monthGroups[m].max) monthGroups[m].max = val;
+        });
+        // Return 12 months in order
+        return MONTH_NAMES.map((name, idx) => {
+            const m = idx + 1;
+            const g = monthGroups[m];
+            if (!g) return { [sourceChart.xAxisKey]: name, [sourceChart.dataKey]: 0 };
+            let value = g.sum;
+            if (sourceChart.aggregation === AggregationType.COUNT) value = g.count;
+            else if (sourceChart.aggregation === AggregationType.AVERAGE) value = g.count > 0 ? g.sum / g.count : 0;
+            else if (sourceChart.aggregation === AggregationType.MINIMUM) value = g.min;
+            else if (sourceChart.aggregation === AggregationType.MAXIMUM) value = g.max;
+            else if (sourceChart.aggregation === AggregationType.DISTINCT) value = g.distinct.size;
+            return { [sourceChart.xAxisKey]: name, [sourceChart.dataKey]: parseFloat(value.toFixed(2)) };
+        });
+    }, [filteredData]);
 
     const toggleFilter = useCallback((column: string, value: any) => {
         setActiveFilters(prev => {
@@ -1903,20 +1944,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         const tab1Name = resolvedTabNames[0] || "Summary";
         const tab1Charts = sections[0] || [];
 
+        // Calculate how much space KPIs take on the first page to adjust chart count
+        const kpiRows = Math.ceil(kpis.length / 4);
+        let chartsOnFirstPage = 6;
+        
+        if (kpiRows >= 5) {
+            chartsOnFirstPage = 0; // If lots of KPIs, don't put charts on first page
+        } else if (kpiRows >= 4) {
+            chartsOnFirstPage = 2; // 4 rows of KPIs = 2 charts
+        } else if (kpiRows >= 1) {
+            chartsOnFirstPage = 4; // 1-3 rows of KPIs = 4 charts
+        }
+
         // First page of Tab 1 (and PDF)
         pages.push({
             pageId: 1,
             tabIndex: 0,
             tabName: tab1Name,
-            charts: tab1Charts.slice(0, 6),
+            charts: tab1Charts.slice(0, chartsOnFirstPage),
             isFirstPageOfTab: true,
             isFirstPageOfPDF: true,
             pageKPIs: kpis
         });
 
         // Tab 1 Overflow
-        if (tab1Charts.length > 6) {
-            for (let i = 6; i < tab1Charts.length; i += 6) {
+        if (tab1Charts.length > chartsOnFirstPage) {
+            for (let i = chartsOnFirstPage; i < tab1Charts.length; i += 6) {
                 pages.push({
                     pageId: pages.length + 1,
                     tabIndex: 0,
@@ -1928,7 +1981,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
             }
         }
 
-        // Subsquent Tabs
+        // Subsequent Tabs
         for (let t = 1; t < sections.length; t++) {
             const tabName = resolvedTabNames[t] || `Section ${t + 1}`;
             const tabCharts = sections[t] || [];
@@ -2091,6 +2144,114 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                         />
                     </div>
                 )}
+
+                {/* ── DRILL-THROUGH MODAL (Power BI style) ── */}
+                {drillThroughState && (() => {
+                    const { sourceChart, clickedYear } = drillThroughState;
+                    const drillData = computeDrillThroughData(sourceChart, clickedYear);
+                    // Build a virtual chart config for the monthly view
+                    const monthlyConfig: ChartConfig = {
+                        ...sourceChart,
+                        id: `${sourceChart.id}-drillthrough`,
+                        title: `${sourceChart.title} — ${clickedYear} Monthly Breakdown`,
+                        description: `Month-by-month breakdown for ${clickedYear}`,
+                        aggregation: AggregationType.NONE, // data is already pre-aggregated
+                        sortOrder: undefined,
+                        topN: undefined,
+                        dateFilters: undefined,
+                        drillThrough: undefined,
+                        type: sourceChart.type === 'HORIZONTAL_BAR' ? 'HORIZONTAL_BAR' : 'BAR',
+                    };
+                    return (
+                        <div className={`fixed inset-0 z-[60] ${colors.overlayBg} backdrop-blur-sm flex items-center justify-center p-4 lg:p-8 animate-fade-in no-print`}>
+                            <div className={`${colors.bgSecondary} w-full h-full max-w-7xl max-h-[92vh] rounded-2xl border ${colors.borderPrimary} shadow-2xl flex flex-col relative`}>
+                                {/* Header */}
+                                <div className={`p-5 border-b ${colors.borderPrimary} flex items-center justify-between gap-4`}>
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        {/* Breadcrumb */}
+                                        <button
+                                            onClick={() => setDrillThroughState(null)}
+                                            className={`flex items-center gap-1.5 text-sm font-medium ${colors.textMuted} hover:text-indigo-400 transition-colors shrink-0`}
+                                        >
+                                            <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+                                            {sourceChart.title}
+                                        </button>
+                                        <span className={`${colors.textMuted} text-sm`}>›</span>
+                                        <div className="min-w-0">
+                                            <h2 className={`text-lg sm:text-xl font-bold ${colors.textPrimary} truncate`}>
+                                                {clickedYear} — Monthly View
+                                            </h2>
+                                            <p className={`text-xs ${colors.textMuted} mt-0.5`}>
+                                                Click a bar to go back · Showing Jan – Dec {clickedYear}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setDrillThroughState(null)}
+                                        className={`shrink-0 p-2 ${colors.bgTertiary} hover:bg-red-500/20 hover:text-red-400 rounded-lg transition-colors ${colors.textMuted}`}
+                                        title="Close drill-through"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                {/* Year nav pills */}
+                                <div className={`px-5 py-2 border-b ${colors.borderPrimary} flex items-center gap-2 flex-wrap`}>
+                                    <span className={`text-[11px] uppercase tracking-wider font-bold ${colors.textMuted}`}>Jump to year:</span>
+                                    {Array.from(new Set(
+                                        filteredData
+                                            .map(row => getYear(row[sourceChart.drillThrough!.dateColumn]))
+                                            .filter((y): y is number => y !== null)
+                                    )).sort().map(yr => (
+                                        <button
+                                            key={yr}
+                                            onClick={() => setDrillThroughState({ sourceChart, clickedYear: yr })}
+                                            className={`text-[11px] px-2.5 py-1 rounded-full font-semibold transition-all ${
+                                                yr === clickedYear
+                                                    ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30'
+                                                    : `${colors.bgTertiary} ${colors.textMuted} hover:text-indigo-400`
+                                            }`}
+                                        >
+                                            {yr}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Chart area */}
+                                <div className="flex-1 p-6 min-h-0">
+                                    {drillData.every(d => d[sourceChart.dataKey] === 0) ? (
+                                        <div className={`flex flex-col items-center justify-center h-full gap-3 ${colors.textMuted}`}>
+                                            <TrendingUp className="w-12 h-12 opacity-30" />
+                                            <p className="text-sm font-medium">No data available for {clickedYear}</p>
+                                        </div>
+                                    ) : (
+                                        <RenderChart
+                                            config={monthlyConfig}
+                                            data={drillData}
+                                            isExpanded={true}
+                                            theme={theme}
+                                            columnMetadata={dataModel.columnMetadata}
+                                            isAnimationActive={true}
+                                        />
+                                    )}
+                                </div>
+
+                                {/* Footer */}
+                                <div className={`px-5 py-3 border-t ${colors.borderPrimary} flex items-center justify-between`}>
+                                    <p className={`text-[11px] ${colors.textMuted}`}>
+                                        Drill-through from <span className="font-semibold">{sourceChart.title}</span>
+                                    </p>
+                                    <button
+                                        onClick={() => setDrillThroughState(null)}
+                                        className={`text-xs font-medium px-3 py-1.5 rounded-lg ${colors.bgTertiary} ${colors.textMuted} hover:text-indigo-400 transition-colors flex items-center gap-1`}
+                                    >
+                                        <ArrowRight className="w-3 h-3 rotate-180" /> Back to Dashboard
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {/* Expanded Chart Modal */}
                 {expandedChartConfig && (

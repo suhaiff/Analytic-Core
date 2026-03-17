@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DataModel, ProcessedRow, DataTable, JoinConfig, JoinType, ColumnType, ColumnMetadata } from '../types';
+import { DataModel, ProcessedRow, DataTable, JoinConfig, JoinType, ColumnType, ColumnMetadata, AggregationType, AggregatedColumnDefinition } from '../types';
 import { ArrowRight, Table, CheckSquare, Square, Database, Columns, Plus, Link as LinkIcon, Trash2, Upload, Settings2, Home, Eye, X, FileText, Loader2, Activity, ChevronDown } from 'lucide-react';
 import { processFile } from '../utils/fileParser';
 import { performJoins, processRawData } from '../utils/dataProcessing';
@@ -62,6 +62,8 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
     const [selectedColumns, setSelectedColumns] = useState<Set<string>>(new Set());
     const [columnMetadata, setColumnMetadata] = useState<{ [key: string]: ColumnMetadata }>({});
     const [isAuditing, setIsAuditing] = useState(false);
+    const [showAggregationModal, setShowAggregationModal] = useState(false);
+    const [columnAggregations, setColumnAggregations] = useState<Record<string, AggregationType>>({});
 
     // Refs
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -180,6 +182,55 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
         setSelectedColumns(newSet);
     };
 
+    const aggregationOptions: { value: AggregationType; label: string }[] = [
+        { value: AggregationType.NONE, label: 'None' },
+        { value: AggregationType.SUM, label: 'Sum' },
+        { value: AggregationType.COUNT, label: 'Count' },
+        { value: AggregationType.DISTINCT, label: 'Distinct' },
+        { value: AggregationType.AVERAGE, label: 'Average' },
+        { value: AggregationType.MINIMUM, label: 'Minimum' },
+        { value: AggregationType.MAXIMUM, label: 'Maximum' }
+    ];
+
+    const getValidColumns = () => [...selectedColumns].filter(col => mergedColumns.includes(col));
+
+    const getAggregationLabel = (aggregation: AggregationType, column: string) => {
+        switch (aggregation) {
+            case AggregationType.SUM:
+                return `Sum of ${column}`;
+            case AggregationType.COUNT:
+                return `Count of ${column}`;
+            case AggregationType.DISTINCT:
+                return `Distinct ${column}`;
+            case AggregationType.AVERAGE:
+                return `Average of ${column}`;
+            case AggregationType.MINIMUM:
+                return `Minimum of ${column}`;
+            case AggregationType.MAXIMUM:
+                return `Maximum of ${column}`;
+            default:
+                return column;
+        }
+    };
+
+    const buildAggregatedColumns = (validColumns: string[]): AggregatedColumnDefinition[] => {
+        return validColumns
+            .map(col => {
+                const aggregation = columnAggregations[col] || AggregationType.NONE;
+                if (aggregation === AggregationType.NONE) {
+                    return null;
+                }
+
+                return {
+                    id: `${col}-${aggregation}`,
+                    sourceColumn: col,
+                    label: getAggregationLabel(aggregation, col),
+                    aggregation
+                };
+            })
+            .filter((value): value is AggregatedColumnDefinition => value !== null);
+    };
+
     const handleViewFile = async () => {
         if (!uploadedFileId) return;
         setLoadingFile(true);
@@ -195,9 +246,8 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
         }
     };
 
-    const handleFinalize = async () => {
-        // Ensure we only use valid columns that actually exist in the data
-        const validColumns = [...selectedColumns].filter(col => mergedColumns.includes(col));
+    const finalizeWithAggregations = async () => {
+        const validColumns = getValidColumns();
 
         if (validColumns.length === 0) {
             alert("Please select at least one column.");
@@ -247,6 +297,16 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             }
         });
 
+        const aggregatedColumns = buildAggregatedColumns(validColumns);
+
+        const tableConfigs: { [tableId: string]: { headerIndex: number; name: string } } = {};
+        tables.forEach(t => {
+            tableConfigs[t.id] = {
+                headerIndex: headerIndices[t.id] || 0,
+                name: t.name
+            };
+        });
+
         const model: DataModel = {
             name: dashboardTitle.trim() || tables.map(t => t.name).join(' + '),
             data: processedData,
@@ -254,9 +314,12 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             numericColumns: [...numericCols],
             categoricalColumns: [...categoricalCols],
             columnMetadata: finalMetadata,
+            aggregatedColumns,
             fileId: uploadedFileId,
             sourceType: sourceType as 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database',
-            headerIndex: tables.length === 1 ? (headerIndices[tables[0].id] || 0) : undefined
+            headerIndex: tables.length === 1 ? (headerIndices[tables[0].id] || 0) : undefined,
+            joinConfigs: joins,
+            tableConfigs: tableConfigs
         };
 
         // Log configuration to server
@@ -267,6 +330,17 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
         }
 
         onFinalize(model);
+    };
+
+    const handleFinalize = () => {
+        const validColumns = getValidColumns();
+
+        if (validColumns.length === 0) {
+            alert("Please select at least one column.");
+            return;
+        }
+
+        setShowAggregationModal(true);
     };
 
     // Sidebar state for mobile
@@ -900,6 +974,100 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                         )}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {showAggregationModal && (
+                <div className={`fixed inset-0 z-[110] ${colors.overlayBg} backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-fade-in`}>
+                    <div className={`${colors.modalBg} border ${colors.borderPrimary} rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col`}>
+                        <div className={`flex items-start justify-between gap-4 p-4 sm:p-6 border-b ${colors.borderPrimary}`}>
+                            <div>
+                                <h3 className={`text-lg sm:text-xl font-bold ${colors.textPrimary}`}>Aggregation Setup</h3>
+                                <p className={`text-sm ${colors.textMuted} mt-1`}>
+                                    Choose optional aggregate functions for your selected columns before continuing to visualization.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowAggregationModal(false)}
+                                className={`p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition`}
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-auto p-4 sm:p-6">
+                            <div className={`grid gap-3 sm:gap-4`}>
+                                {getValidColumns().map((col) => {
+                                    const meta = columnMetadata[col];
+                                    const selectedAggregation = columnAggregations[col] || AggregationType.NONE;
+
+                                    return (
+                                        <div
+                                            key={col}
+                                            className={`grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px] gap-3 items-center p-3 sm:p-4 rounded-xl border ${colors.borderPrimary} ${colors.bgSecondary}`}
+                                        >
+                                            <div className="min-w-0">
+                                                <div className={`font-semibold ${colors.textPrimary} truncate`}>{col}</div>
+                                                <div className={`flex items-center gap-2 mt-1 flex-wrap`}>
+                                                    {meta && (
+                                                        <span className={`text-[10px] px-2 py-1 rounded-md border ${colors.borderSecondary} ${colors.textMuted}`}>
+                                                            {meta.finalType || meta.detectedType}
+                                                        </span>
+                                                    )}
+                                                    {selectedAggregation !== AggregationType.NONE && (
+                                                        <span className="text-[10px] px-2 py-1 rounded-md border border-indigo-500/30 text-indigo-400 bg-indigo-500/10">
+                                                            {getAggregationLabel(selectedAggregation, col)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="relative">
+                                                <select
+                                                    value={selectedAggregation}
+                                                    onChange={(e) => setColumnAggregations(prev => ({
+                                                        ...prev,
+                                                        [col]: e.target.value as AggregationType
+                                                    }))}
+                                                    className={`w-full appearance-none border ${colors.borderPrimary} ${colors.bgPrimary} ${colors.textPrimary} rounded-xl px-3 py-2.5 pr-9 outline-none focus:border-indigo-500 transition`}
+                                                >
+                                                    {aggregationOptions.map(option => (
+                                                        <option key={option.value} value={option.value}>
+                                                            {option.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 sm:p-6 border-t ${colors.borderPrimary}`}>
+                            <p className={`text-xs sm:text-sm ${colors.textMuted}`}>
+                                Columns left as <span className={`${colors.textPrimary} font-semibold`}>None</span> will continue to work exactly as they do today.
+                            </p>
+                            <div className="flex items-center gap-3 justify-end">
+                                <button
+                                    onClick={() => setShowAggregationModal(false)}
+                                    className={`px-4 py-2 rounded-lg ${colors.textMuted} hover:${colors.bgTertiary} transition`}
+                                >
+                                    Back
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        setShowAggregationModal(false);
+                                        await finalizeWithAggregations();
+                                    }}
+                                    className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition flex items-center gap-2"
+                                >
+                                    Continue to Visualization
+                                    <ArrowRight className="w-4 h-4" />
+                                </button>
                             </div>
                         </div>
                     </div>

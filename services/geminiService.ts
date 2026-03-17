@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { ChartConfig, DataModel, ChartType, AggregationType } from '../types';
+import { ChartConfig, DataModel, AggregationType, AggregatedColumnDefinition } from '../types';
 
 const getAI = () => {
   const apiKey = process.env.API_KEY || '';
@@ -33,6 +33,27 @@ Chart type guidelines:
 When suggesting GROUPED_BAR, STACKED_BAR, or COMBO charts, always provide both dataKey and dataKey2 (two different numeric columns).
 When suggesting HEATMAP or MATRIX, always provide xAxisKey, yAxisKey (both categorical), and dataKey (numeric).
 When suggesting SCATTER, use two numeric columns for xAxisKey and dataKey.
+If the dataset includes preconfigured aggregated metric definitions such as "Sum of Sales" or "Distinct Customer", you should prefer those metric labels when they match the user's intent.
+
+Sorting and limiting guidelines:
+- When a chart represents a ranking (e.g. "Top 10", "Top 5", "Highest", "Best"), set sortOrder to "DESC" and topN to the number requested (default 10).
+- When a chart represents the lowest (e.g. "Bottom 10", "Lowest", "Worst"), set sortOrder to "ASC" and topN to the number requested.
+- For trend charts (LINE, AREA) or general comparisons, do NOT set sortOrder or topN.
+
+Date filtering guidelines:
+- When the user's request mentions a specific time period (e.g. "January 2023", "Jan 2023", "Q1 2023", "2022", "last year", "March"), you MUST populate the dateFilters array.
+- dateFilters is an array of objects. Each object has: "column" (the date column name from the dataset), "year" (optional integer), "month" (optional integer 1-12).
+- Use the available date columns from Column Context (type DATE) to find the right column name.
+- Example: user asks "sum of sales for January 2023" → dateFilters: [{"column": "Order Date", "year": 2023, "month": 1}]
+- Example: user asks "revenue for 2022" → dateFilters: [{"column": "Order Date", "year": 2022}]
+- Example: user asks "sales in March" → dateFilters: [{"column": "Order Date", "month": 3}]
+- If no date column exists or no time period is mentioned, do NOT include dateFilters.
+
+Drill-through guidelines:
+- When a chart shows aggregated data by YEAR (e.g. "Sales by Year", "Revenue per Year", "Yearly Sales"), AND there is a date column in the dataset (type DATE), set drillThrough to enable Power BI-style drill-through to monthly breakdown.
+- drillThrough has: "dateColumn" (the date column name, e.g. "Order Date"), "nextLevel": "month".
+- The xAxisKey for year charts should NOT be the date column itself — instead set xAxisKey to the date column and let the frontend group by year. For such charts where the user wants year-level view, the system will automatically group the date column by year.
+- Only set drillThrough when the chart groups data by a yearly or period-level granularity AND a DATE column is available.
 `;
 
 // Schema for the ChartConfig response
@@ -51,13 +72,100 @@ const chartSchema = {
           dataKey: { type: Type.STRING, description: "The primary numeric column for the data (Metric 1)" },
           dataKey2: { type: Type.STRING, description: "Optional second numeric column (Metric 2) — required for GROUPED_BAR, STACKED_BAR, COMBO" },
           yAxisKey: { type: Type.STRING, description: "Optional second categorical column — required for HEATMAP, MATRIX" },
-          aggregation: { type: Type.STRING, enum: ["SUM", "COUNT", "AVERAGE", "MINIMUM", "MAXIMUM", "NONE"] },
+          aggregation: { type: Type.STRING, enum: ["SUM", "COUNT", "DISTINCT", "AVERAGE", "MINIMUM", "MAXIMUM", "NONE"] },
+          sortOrder: { type: Type.STRING, enum: ["ASC", "DESC"], description: "Optional sort direction for aggregated data by primary metric. Use DESC for 'Top N' rankings, ASC for 'Bottom N'." },
+          topN: { type: Type.INTEGER, description: "Optional limit on number of results. E.g. 10 for 'Top 10'. Only set when a ranking is requested." },
+          dateFilters: {
+            type: Type.ARRAY,
+            description: "Optional date filters to apply before aggregation. Use when user requests a specific time period.",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                column: { type: Type.STRING, description: "The date column name from the dataset" },
+                year: { type: Type.INTEGER, description: "Filter by year, e.g. 2023" },
+                month: { type: Type.INTEGER, description: "Filter by month 1-12, e.g. 1 for January" },
+                day: { type: Type.INTEGER, description: "Filter by specific day of month" },
+              },
+              required: ["column"]
+            }
+          },
+          drillThrough: {
+            type: Type.OBJECT,
+            description: "Power BI-style drill-through config. Set when chart shows year-level aggregation and user can click a year to see monthly breakdown.",
+            properties: {
+              dateColumn: { type: Type.STRING, description: "The date column to use for monthly breakdown, e.g. 'Order Date'" },
+              nextLevel: { type: Type.STRING, enum: ["month", "day"], description: "The granularity of the drill-through view" },
+            },
+            required: ["dateColumn", "nextLevel"]
+          },
         },
         required: ["title", "type", "xAxisKey", "dataKey", "aggregation", "description"]
       }
     }
   },
   required: ["suggestions"]
+};
+
+const buildAggregatedMetricsContext = (aggregatedColumns?: AggregatedColumnDefinition[]) => {
+  if (!aggregatedColumns || aggregatedColumns.length === 0) {
+    return 'No preconfigured aggregated metric definitions were selected.';
+  }
+
+  return aggregatedColumns
+    .map(def => `- ${def.label} => source column "${def.sourceColumn}", aggregation "${def.aggregation}"`)
+    .join('\n');
+};
+
+const normalizeAggregatedMetric = (
+  metricKey: string | undefined,
+  fallbackAggregation: AggregationType,
+  aggregatedColumns?: AggregatedColumnDefinition[]
+) => {
+  if (!metricKey || !aggregatedColumns || aggregatedColumns.length === 0) {
+    return { metricKey, aggregation: fallbackAggregation };
+  }
+
+  const normalizedMetricKey = metricKey.trim().toLowerCase();
+  const match = aggregatedColumns.find(def =>
+    def.label.trim().toLowerCase() === normalizedMetricKey ||
+    def.id.trim().toLowerCase() === normalizedMetricKey
+  );
+
+  if (!match) {
+    return { metricKey, aggregation: fallbackAggregation };
+  }
+
+  return {
+    metricKey: match.sourceColumn,
+    aggregation: match.aggregation
+  };
+};
+
+const normalizeChartSuggestion = (suggestion: any, model: DataModel, id: string, color: string): ChartConfig => {
+  const primaryMetric = normalizeAggregatedMetric(
+    suggestion.dataKey,
+    suggestion.aggregation || AggregationType.NONE,
+    model.aggregatedColumns
+  );
+  const secondaryMetric = normalizeAggregatedMetric(
+    suggestion.dataKey2,
+    primaryMetric.aggregation,
+    model.aggregatedColumns
+  );
+
+  const result: any = {
+    ...suggestion,
+    id,
+    dataKey: primaryMetric.metricKey || suggestion.dataKey,
+    dataKey2: secondaryMetric.metricKey || suggestion.dataKey2,
+    aggregation: primaryMetric.aggregation,
+    color
+  };
+  if (suggestion.sortOrder) result.sortOrder = suggestion.sortOrder;
+  if (suggestion.topN) result.topN = suggestion.topN;
+  if (Array.isArray(suggestion.dateFilters) && suggestion.dateFilters.length > 0) result.dateFilters = suggestion.dateFilters;
+  if (suggestion.drillThrough?.dateColumn) result.drillThrough = suggestion.drillThrough;
+  return result;
 };
 
 export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<ChartConfig[]> => {
@@ -69,6 +177,8 @@ export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<Chart
     The columns are: ${model.columns.join(', ')}.
     Numeric columns: ${model.numericColumns.join(', ')}.
     Categorical columns: ${model.categoricalColumns.join(', ')}.
+    Preconfigured Aggregated Metrics:
+    ${buildAggregatedMetricsContext(model.aggregatedColumns)}
     
     Column Context (Detected Types & Intents):
     ${JSON.stringify(model.columnMetadata, null, 2)}
@@ -82,6 +192,7 @@ export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<Chart
     Only suggest HEATMAP or MATRIX if there are at least two categorical columns and one numeric column.
     Only suggest SCATTER if there are at least two numeric columns.
     Use the "Column Context" above to determine if a column is a price (CURRENCY), a count (INTEGER), or a percentage (PERCENT) to choose better titles and aggregations.
+    If an aggregated metric definition clearly matches an insight, use that aggregated metric label as the metric field.
   `;
 
   try {
@@ -98,11 +209,9 @@ export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<Chart
     const jsonText = response.text || "{}";
     const result = JSON.parse(jsonText);
 
-    return result.suggestions.map((s: any, index: number) => ({
-      ...s,
-      id: `suggested-${index}-${Date.now()}`,
-      color: '#4f46e5' // Default indigo
-    }));
+    return result.suggestions.map((s: any, index: number) =>
+      normalizeChartSuggestion(s, model, `suggested-${index}-${Date.now()}`, '#4f46e5')
+    );
 
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
@@ -118,6 +227,8 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
     Columns: ${model.columns.join(', ')}.
     Numeric: ${model.numericColumns.join(', ')}.
     Categorical: ${model.categoricalColumns.join(', ')}.
+    Preconfigured Aggregated Metrics:
+    ${buildAggregatedMetricsContext(model.aggregatedColumns)}
     
     Column Context (Types & Intents):
     ${JSON.stringify(model.columnMetadata, null, 2)}
@@ -129,6 +240,7 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
     For GROUPED_BAR, STACKED_BAR, or COMBO, provide both dataKey and dataKey2.
     For HEATMAP or MATRIX, provide xAxisKey, yAxisKey, and dataKey.
     For SCATTER, use two numeric columns.
+    If the request matches one of the preconfigured aggregated metric definitions, use that aggregated metric label as the metric field.
   `;
 
   // Modified schema for single item return wrapped in object
@@ -142,7 +254,32 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
       dataKey: { type: Type.STRING },
       dataKey2: { type: Type.STRING, description: "Optional second metric for GROUPED_BAR, STACKED_BAR, COMBO" },
       yAxisKey: { type: Type.STRING, description: "Optional second categorical dimension for HEATMAP, MATRIX" },
-      aggregation: { type: Type.STRING, enum: ["SUM", "COUNT", "AVERAGE", "MINIMUM", "MAXIMUM", "NONE"] },
+      aggregation: { type: Type.STRING, enum: ["SUM", "COUNT", "DISTINCT", "AVERAGE", "MINIMUM", "MAXIMUM", "NONE"] },
+      sortOrder: { type: Type.STRING, enum: ["ASC", "DESC"], description: "Optional sort direction for aggregated data by primary metric" },
+      topN: { type: Type.INTEGER, description: "Optional limit on number of results" },
+      dateFilters: {
+        type: Type.ARRAY,
+        description: "Optional date filters to apply before aggregation. Use when user requests a specific time period.",
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            column: { type: Type.STRING, description: "The date column name from the dataset" },
+            year: { type: Type.INTEGER, description: "Filter by year, e.g. 2023" },
+            month: { type: Type.INTEGER, description: "Filter by month 1-12, e.g. 1 for January" },
+            day: { type: Type.INTEGER, description: "Filter by specific day of month" },
+          },
+          required: ["column"]
+        }
+      },
+      drillThrough: {
+        type: Type.OBJECT,
+        description: "Power BI-style drill-through config for year-level charts.",
+        properties: {
+          dateColumn: { type: Type.STRING, description: "The date column to use for monthly breakdown" },
+          nextLevel: { type: Type.STRING, enum: ["month", "day"] },
+        },
+        required: ["dateColumn", "nextLevel"]
+      },
     },
     required: ["title", "type", "xAxisKey", "dataKey", "aggregation"]
   };
@@ -161,11 +298,7 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
     const jsonText = response.text || "{}";
     const result = JSON.parse(jsonText);
 
-    return {
-      ...result,
-      id: `custom-${Date.now()}`,
-      color: '#10b981' // Emerald
-    };
+    return normalizeChartSuggestion(result, model, `custom-${Date.now()}`, '#10b981');
 
   } catch (error) {
     console.error("Gemini Custom Generation Error:", error);

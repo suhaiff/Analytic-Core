@@ -8,8 +8,9 @@ import { Signup } from './components/auth/Signup';
 import { Welcome } from './components/Welcome';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { processFile } from './utils/fileParser';
+import { processRawData, performJoins } from './utils/dataProcessing';
 import { DashboardLoader } from './components/DashboardLoader';
-import { DataModel, ChartConfig, DataTable, SavedDashboard, User, ProcessedRow, DashboardSection } from './types';
+import { DataModel, ChartConfig, DataTable, SavedDashboard, User, ProcessedRow, DashboardSection, RawData } from './types';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import { getThemeClasses } from './theme';
@@ -262,25 +263,73 @@ function AppContent() {
         result = await fileService.refreshSqlDatabase(dataModel.fileId, password);
       }
 
-      const rawData = result.data;
-      if (!rawData || rawData.length === 0) return;
+      // ── Determine which sheets to process ───────────────────────────────────
+      let sheetsToProcess: { name: string; data: any[][] }[] = [];
+      if (result.sheets && result.sheets.length > 0) {
+        sheetsToProcess = result.sheets;
+      } else if (result.data && result.data.length > 0) {
+        sheetsToProcess = [{ name: 'Sheet1', data: result.data }];
+      } else {
+        showToast('No data returned from refresh', 'error');
+        return;
+      }
 
-      // Re-process data
-      const headerIdx = dataModel.headerIndex || 0;
-      const headers = rawData[headerIdx] || [];
-      const rows = rawData.slice(headerIdx + 1);
+      let finalRows: any[] = [];
 
-      const processedData: ProcessedRow[] = rows.map(row => {
+      // ── Handle Multi-sheet Join Scenario ──────────────────────────────────
+      if (dataModel.joinConfigs && dataModel.joinConfigs.length > 0 && dataModel.tableConfigs) {
+        // Convert refreshed sheets into DataTable format for performJoins
+        // We MUST map the refreshed sheets back to their original IDs stored in tableConfigs
+        const tables: DataTable[] = [];
+        
+        Object.entries(dataModel.tableConfigs).forEach(([tableId, config]: [string, any]) => {
+          // Find the refreshed sheet that matches this table's name
+          const refreshedSheet = sheetsToProcess.find(s => s.name === config.name);
+          
+          if (refreshedSheet) {
+            tables.push({
+              id: tableId,
+              name: refreshedSheet.name,
+              rawData: {
+                headers: refreshedSheet.data[config.headerIndex] || [],
+                rows: refreshedSheet.data
+              }
+            });
+          }
+        });
+
+        // Re-construct header indices map for performJoins
+        const headerIndices: { [tableId: string]: number } = {};
+        Object.entries(dataModel.tableConfigs).forEach(([id, cfg]: [string, any]) => {
+          headerIndices[id] = cfg.headerIndex;
+        });
+
+        // Re-perform joins on refreshed data
+        const joinResult = performJoins(tables, dataModel.joinConfigs, headerIndices);
+        finalRows = joinResult.data;
+      } else {
+        // ── Single-sheet fallback ──
+        const headerIdx = dataModel.headerIndex || 0;
+        const primarySheet = sheetsToProcess[0];
+        const rawDataObj: RawData = {
+          headers: primarySheet.data[headerIdx] || [],
+          rows: primarySheet.data
+        };
+        const { rows } = processRawData(rawDataObj, headerIdx);
+        finalRows = rows;
+      }
+
+      // ── Map refreshed data to ProcessedRow objects ───────────────────────
+      // We iterate over dataModel.columns to ensure we pick up the correct values,
+      // including prefixed ones if the data was joined.
+      const newProcessedData: ProcessedRow[] = finalRows.map(row => {
         const rowObj: ProcessedRow = {};
         dataModel.columns.forEach(col => {
-          const colIdx = headers.indexOf(col);
-          if (colIdx !== -1) {
-            const val = row[colIdx];
-            if (dataModel.numericColumns.includes(col)) {
-              rowObj[col] = val === '' || val === null ? 0 : Number(val);
-            } else {
-              rowObj[col] = val === null || val === undefined ? '' : String(val);
-            }
+          const val = row[col];
+          if (dataModel.numericColumns.includes(col)) {
+            rowObj[col] = (val === '' || val === null || val === undefined || isNaN(Number(val))) ? 0 : Number(val);
+          } else {
+            rowObj[col] = (val === null || val === undefined) ? '' : String(val);
           }
         });
         return rowObj;
@@ -288,7 +337,7 @@ function AppContent() {
 
       setDataModel({
         ...dataModel,
-        data: processedData
+        data: newProcessedData
       });
 
       showToast("Data refreshed successfully", 'success');

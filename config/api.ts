@@ -13,8 +13,8 @@ const getApiUrl = () => {
         return import.meta.env.VITE_API_URL;
     }
 
-    // Default to localhost for development
-    return 'http://localhost:3001';
+    // Default to localhost or current network IP for development
+    return `http://${window.location.hostname}:3001`;
 };
 
 export const API_URL = getApiUrl();

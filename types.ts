@@ -29,17 +29,6 @@ export interface JoinConfig {
   type: JoinType;
 }
 
-export interface DataModel {
-  name: string;
-  data: ProcessedRow[];
-  columns: string[];
-  numericColumns: string[];
-  categoricalColumns: string[];
-  fileId?: number;
-  sourceType?: 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database';
-  headerIndex?: number;
-}
-
 export enum ChartType {
   BAR = 'BAR',
   LINE = 'LINE',
@@ -76,6 +65,13 @@ export interface ColumnMetadata {
   requiresConfirmation: boolean;
 }
 
+export interface AggregatedColumnDefinition {
+  id: string;
+  sourceColumn: string;
+  label: string;
+  aggregation: AggregationType;
+}
+
 export interface DataModel {
   name: string;
   data: ProcessedRow[];
@@ -83,14 +79,18 @@ export interface DataModel {
   numericColumns: string[];
   categoricalColumns: string[];
   columnMetadata?: { [columnName: string]: ColumnMetadata };
+  aggregatedColumns?: AggregatedColumnDefinition[];
   fileId?: number;
   sourceType?: 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database';
   headerIndex?: number;
+  joinConfigs?: JoinConfig[];
+  tableConfigs?: { [tableId: string]: { headerIndex: number; name: string } };
 }
 
 export enum AggregationType {
   SUM = 'SUM',
   COUNT = 'COUNT',
+  DISTINCT = 'DISTINCT',
   AVERAGE = 'AVERAGE',
   MINIMUM = 'MINIMUM',
   MAXIMUM = 'MAXIMUM',
@@ -112,6 +112,18 @@ export interface ChartConfig {
   multicolor?: boolean;
   sectionId?: string; // Link to a DashboardSection
   chartFilters?: { [column: string]: any }; // Per-chart filters
+  sortOrder?: 'ASC' | 'DESC'; // Sort aggregated data by primary metric
+  topN?: number; // Limit the number of results (e.g., 10 for "Top 10")
+  dateFilters?: { // Date-range filters applied before aggregation
+    column: string; // The date column to filter on (e.g., "Order Date")
+    year?: number;  // Filter by year (e.g., 2023)
+    month?: number; // Filter by month 1-12 (e.g., 1 for January)
+    day?: number;   // Filter by specific day of month
+  }[];
+  drillThrough?: { // Power BI-style drill-through: click a value to see breakdown
+    dateColumn: string; // The date column to use for the next-level breakdown
+    nextLevel: 'month' | 'day'; // The time granularity of the breakdown
+  };
 }
 
 export interface DashboardSection {
