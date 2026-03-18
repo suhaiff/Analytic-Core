@@ -49,6 +49,12 @@ Date filtering guidelines:
 - Example: user asks "sales in March" → dateFilters: [{"column": "Order Date", "month": 3}]
 - If no date column exists or no time period is mentioned, do NOT include dateFilters.
 
+Categorical filtering guidelines:
+- When the user's request mentions a specific category or dimension value (e.g. "clothes", "electronics", "Region East", "John Doe"), you MUST populate the chartFilters object.
+- chartFilters is an object where keys are column names and values are the values to filter for (either a single string or an array of strings).
+- If the user specifies an absolute metric that should not be affected by changes to dashboard-level filters (like a KPI showing total lifetime sales or a specific segment), set "ignoreGlobalFilters" to true.
+- If a specific segment mentioned in the request (e.g., "sales of clothes") is used to define the metric, set "ignoreGlobalFilters" to true so it remains stable even when the user filters the dashboard by other categories later.
+
 Drill-through guidelines:
 - When a chart shows aggregated data by YEAR (e.g. "Sales by Year", "Revenue per Year", "Yearly Sales"), AND there is a date column in the dataset (type DATE), set drillThrough to enable Power BI-style drill-through to monthly breakdown.
 - drillThrough has: "dateColumn" (the date column name, e.g. "Order Date"), "nextLevel": "month".
@@ -88,6 +94,14 @@ const chartSchema = {
               },
               required: ["column"]
             }
+          },
+          chartFilters: {
+            type: Type.OBJECT,
+            description: "Optional categorical filters. Use when user requests a specific segment (e.g. 'clothes'). Keys are column names, values are strings or arrays of strings.",
+          },
+          ignoreGlobalFilters: {
+            type: Type.BOOLEAN,
+            description: "If true, this chart will ignore dashboard-level filters. Set to true when user specifies a fixed segment that should remain static."
           },
           drillThrough: {
             type: Type.OBJECT,
@@ -164,6 +178,8 @@ const normalizeChartSuggestion = (suggestion: any, model: DataModel, id: string,
   if (suggestion.sortOrder) result.sortOrder = suggestion.sortOrder;
   if (suggestion.topN) result.topN = suggestion.topN;
   if (Array.isArray(suggestion.dateFilters) && suggestion.dateFilters.length > 0) result.dateFilters = suggestion.dateFilters;
+  if (suggestion.chartFilters) result.chartFilters = suggestion.chartFilters;
+  if (suggestion.ignoreGlobalFilters !== undefined) result.ignoreGlobalFilters = suggestion.ignoreGlobalFilters;
   if (suggestion.drillThrough?.dateColumn) result.drillThrough = suggestion.drillThrough;
   return result;
 };
@@ -270,6 +286,14 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
           },
           required: ["column"]
         }
+      },
+      chartFilters: {
+        type: Type.OBJECT,
+        description: "Optional categorical filters for specific segments like 'Clothes'."
+      },
+      ignoreGlobalFilters: {
+        type: Type.BOOLEAN,
+        description: "If true, this chart will ignore dashboard-level filters."
       },
       drillThrough: {
         type: Type.OBJECT,

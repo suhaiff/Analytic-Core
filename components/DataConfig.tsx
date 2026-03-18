@@ -1033,7 +1033,19 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                     }))}
                                                     className={`w-full appearance-none border ${colors.borderPrimary} ${colors.bgPrimary} ${colors.textPrimary} rounded-xl px-3 py-2.5 pr-9 outline-none focus:border-indigo-500 transition`}
                                                 >
-                                                    {aggregationOptions.map(option => (
+                                                    {aggregationOptions.filter(option => {
+                                                        const colType = meta?.finalType || meta?.detectedType;
+                                                        if (colType === 'INTEGER') {
+                                                            return ['NONE', 'SUM', 'COUNT', 'DISTINCT', 'MINIMUM', 'MAXIMUM'].includes(option.value);
+                                                        }
+                                                        if (colType === 'DATE') {
+                                                            return ['NONE', 'COUNT', 'DISTINCT', 'MINIMUM', 'MAXIMUM'].includes(option.value);
+                                                        }
+                                                        if (colType === 'TEXT') {
+                                                            return ['NONE', 'COUNT', 'DISTINCT'].includes(option.value);
+                                                        }
+                                                        return true;
+                                                    }).map(option => (
                                                         <option key={option.value} value={option.value}>
                                                             {option.label}
                                                         </option>

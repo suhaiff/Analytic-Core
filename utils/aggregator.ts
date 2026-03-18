@@ -17,6 +17,23 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
     });
   }
 
+  // --- CATEGORICAL FILTERS (chartFilters): Filter the dataset by specific categorical values ---
+  if (config.chartFilters && Object.keys(config.chartFilters).length > 0) {
+    workingData = workingData.filter(row => {
+      return Object.entries(config.chartFilters!).every(([col, val]) => {
+        const rawVal = row[col];
+        if (rawVal === null || rawVal === undefined) return false;
+        
+        // Support array of values (OR logic) or single value
+        if (Array.isArray(val)) {
+          return val.some(v => String(rawVal).toLowerCase() === String(v).toLowerCase());
+        }
+        return String(rawVal).toLowerCase() === String(val).toLowerCase();
+      });
+    });
+  }
+
+
   if (config.type === 'KPI') {
     // For KPI, we just return a single value
     if (config.aggregation === AggregationType.COUNT) {

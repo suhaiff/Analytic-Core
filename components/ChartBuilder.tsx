@@ -34,20 +34,25 @@ interface BucketChartCardProps {
     onMulticolorChange: (id: string, multicolor: boolean) => void;
     onTitleChange: (id: string, title: string) => void;
     onDragStart: (e: React.DragEvent, chartId: string) => void;
+    sections: DashboardSection[];
+    currentSectionId?: string;
+    onMoveToSection: (chartId: string, sectionId: string) => void;
 }
 
 const BucketChartCard: React.FC<BucketChartCardProps> = ({
-    chart, index, theme, colors, getIcon, onRemove, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart
+    chart, index, theme, colors, getIcon, onRemove, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart, sections, currentSectionId, onMoveToSection
 }) => {
     const [showColorMenu, setShowColorMenu] = useState(false);
     const colorMenuRef = useRef<HTMLDivElement>(null);
     const [showColor2Menu, setShowColor2Menu] = useState(false);
     const color2MenuRef = useRef<HTMLDivElement>(null);
+    const [showSectionMenu, setShowSectionMenu] = useState(false);
+    const sectionMenuRef = useRef<HTMLDivElement>(null);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [editedTitle, setEditedTitle] = useState(chart.title);
     const titleInputRef = useRef<HTMLInputElement>(null);
 
-    // Close color menus on outside click
+    // Close menus on outside click
     useEffect(() => {
         const handler = (e: MouseEvent) => {
             if (colorMenuRef.current && !colorMenuRef.current.contains(e.target as Node)) {
@@ -55,6 +60,9 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
             }
             if (color2MenuRef.current && !color2MenuRef.current.contains(e.target as Node)) {
                 setShowColor2Menu(false);
+            }
+            if (sectionMenuRef.current && !sectionMenuRef.current.contains(e.target as Node)) {
+                setShowSectionMenu(false);
             }
         };
         document.addEventListener('mousedown', handler);
@@ -125,6 +133,66 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
                     )}
                 </div>
             </div>
+
+            {/* Section Move Dropdown */}
+            {sections.length > 0 && (
+                <div className="relative mb-2 flex-shrink-0" ref={sectionMenuRef}>
+                    <button
+                        onClick={() => setShowSectionMenu(v => !v)}
+                        className={`w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-md text-[10px] sm:text-xs font-semibold transition border ${theme === 'dark'
+                            ? 'bg-slate-800/50 border-slate-700/50 text-slate-300 hover:border-slate-500 hover:bg-slate-800'
+                            : 'bg-slate-100 border-slate-200 text-slate-600 hover:border-slate-300'
+                            }`}
+                        title="Move to section"
+                    >
+                        <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                            <Layers className="w-3 h-3 text-indigo-400 shrink-0" />
+                            <span className="truncate">
+                                {sections.find(s => s.id === currentSectionId)?.name || 'Uncategorized Charts'}
+                            </span>
+                        </div>
+                        <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${showSectionMenu ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showSectionMenu && (
+                        <div className={`absolute left-0 top-full mt-1 w-full max-h-48 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700 shadow-slate-900' : 'bg-white border-slate-200 shadow-slate-200'} border rounded-xl shadow-2xl z-50 p-1.5 animate-fade-in`}>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-1.5 pt-1 ${colors.textMuted}`}>Move to Section</p>
+                            
+                            {!currentSectionId && (
+                                <button
+                                    disabled
+                                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium bg-indigo-500/10 text-indigo-400 mb-0.5`}
+                                >
+                                    <Check className="w-3 h-3 shrink-0" />
+                                    <span className="truncate flex-1 text-left">Uncategorized Charts</span>
+                                </button>
+                            )}
+                            {currentSectionId && (
+                                <button
+                                    onClick={() => { onMoveToSection(chart.id, ''); setShowSectionMenu(false); }}
+                                    className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold transition-all mb-0.5 ${theme === 'dark' ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-600 hover:bg-slate-100'}`}
+                                >
+                                    <div className="w-3 h-3 shrink-0" />
+                                    <span className="truncate flex-1 text-left italic">Uncategorized Charts</span>
+                                </button>
+                            )}
+                            {sections.map(sec => {
+                                const active = currentSectionId === sec.id;
+                                return (
+                                    <button
+                                        key={sec.id}
+                                        onClick={() => { onMoveToSection(chart.id, sec.id); setShowSectionMenu(false); }}
+                                        className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold transition-all mb-0.5 flex-1 ${active ? 'bg-indigo-500/10 text-indigo-400' : theme === 'dark' ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-600 hover:bg-slate-100'}`}
+                                    >
+                                        {active ? <Check className="w-3 h-3 shrink-0" /> : <div className="w-3 h-3 shrink-0" />}
+                                        <span className="truncate flex-1 text-left">{sec.name}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Color Controls */}
             {showColorOption && (
@@ -954,6 +1022,9 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                             setBucket(prev => prev.map(c => c.id === id ? { ...c, title } : c))
                                                         }
                                                         onDragStart={onDragStart}
+                                                        sections={sections}
+                                                        currentSectionId={section.id}
+                                                        onMoveToSection={(chartId, newSectionId) => setBucket(prev => prev.map(c => c.id === chartId ? { ...c, sectionId: newSectionId || undefined } : c))}
                                                     />
                                                 ))}
                                             </div>
@@ -996,6 +1067,9 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                     setBucket(prev => prev.map(c => c.id === id ? { ...c, title } : c))
                                                 }
                                                 onDragStart={onDragStart}
+                                                sections={sections}
+                                                currentSectionId={undefined}
+                                                onMoveToSection={(chartId, newSectionId) => setBucket(prev => prev.map(c => c.id === chartId ? { ...c, sectionId: newSectionId || undefined } : c))}
                                             />
                                         ))}
                                     </div>

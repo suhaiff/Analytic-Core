@@ -1211,42 +1211,169 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
 interface FilterSidebarProps {
     filterableColumns: string[];
     activeFilters: { [col: string]: any[] };
-    uniqueValuesMap: { [col: string]: string[] };
+    pageFilters: { [col: string]: any[] };
+    activeTabName: string;
     toggleFilter: (col: string, val: any) => void;
     clearFilters: () => void;
+    togglePageFilter: (col: string, val: any) => void;
+    clearPageFilters: () => void;
     theme: Theme;
     colors: ReturnType<typeof getThemeClasses>;
 }
 
-const FilterSidebar = React.memo<FilterSidebarProps>(({ filterableColumns, activeFilters, uniqueValuesMap, toggleFilter, clearFilters, theme, colors }) => {
+const FilterSidebar = React.memo<FilterSidebarProps>(({ 
+    filterableColumns, activeFilters, pageFilters, uniqueValuesMap, activeTabName, 
+    toggleFilter, clearFilters, togglePageFilter, clearPageFilters, 
+    theme, colors 
+}) => {
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-    const [expandedSidebarCols, setExpandedSidebarCols] = useState<Set<string>>(new Set());
-    const [sidebarColSearch, setSidebarColSearch] = useState<{ [col: string]: string }>({});
+    
+    // Separate state for Global and Page filter sections
+    const [expandedGlobalCols, setExpandedGlobalCols] = useState<Set<string>>(new Set());
+    const [expandedPageCols, setExpandedPageCols] = useState<Set<string>>(new Set());
+    const [globalColSearch, setGlobalColSearch] = useState<{ [col: string]: string }>({});
+    const [pageColSearch, setPageColSearch] = useState<{ [col: string]: string }>({});
 
-    const toggleSidebarColumn = useCallback((col: string) => {
-        setExpandedSidebarCols(prev => {
+    const toggleGlobalColumn = useCallback((col: string) => {
+        setExpandedGlobalCols(prev => {
             const next = new Set(prev);
             if (next.has(col)) { next.delete(col); } else { next.add(col); }
             return next;
         });
     }, []);
 
-    const totalActiveCount: number = (Object.values(activeFilters) as any[][]).reduce((acc: number, vals: any[]) => acc + vals.length, 0);
+    const togglePageColumn = useCallback((col: string) => {
+        setExpandedPageCols(prev => {
+            const next = new Set(prev);
+            if (next.has(col)) { next.delete(col); } else { next.add(col); }
+            return next;
+        });
+    }, []);
+
+    const totalGlobalActiveCount: number = (Object.values(activeFilters) as any[][]).reduce((acc: number, vals: any[]) => acc + (Array.isArray(vals) ? vals.length : 0), 0);
+    const totalPageActiveCount: number = (pageFilters ? (Object.values(pageFilters) as any[][]) : []).reduce((acc: number, vals: any[]) => acc + (Array.isArray(vals) ? vals.length : 0), 0);
+    const grandTotalActiveCount = totalGlobalActiveCount + totalPageActiveCount;
+
+    const renderFilterGroup = (
+        title: string,
+        activeCount: number,
+        activeFilterState: { [col: string]: any[] },
+        expandedCols: Set<string>,
+        colSearchState: { [col: string]: string },
+        onToggleColumn: (col: string) => void,
+        setColSearch: React.Dispatch<React.SetStateAction<{ [col: string]: string }>>,
+        onToggleFilterItem: (col: string, val: any) => void,
+        onClearAll: () => void
+    ) => {
+        return (
+            <div className="flex flex-col border-b border-slate-700/30 pb-2 mb-2 last:border-b-0 last:mb-0">
+                <div className={`px-4 py-2 ${colors.bgTertiary} border-y ${colors.borderPrimary} flex items-center justify-between shadow-sm sticky top-0 z-10`}>
+                    <span className={`text-[10px] font-bold uppercase tracking-widest ${colors.textSecondary}`}>{title}</span>
+                    {activeCount > 0 && (
+                        <span className="shrink-0 text-[8px] font-bold bg-indigo-500 text-white px-2 py-0.5 rounded-full shadow border border-indigo-400">
+                            {activeCount}
+                        </span>
+                    )}
+                </div>
+                {!isSidebarCollapsed && activeCount > 0 && (
+                    <div className={`px-4 py-1.5 border-b ${colors.borderPrimary}`}>
+                        <button
+                            onClick={onClearAll}
+                            className={`w-full flex items-center justify-center gap-1.5 px-3 py-1 text-[10px] font-bold text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors uppercase tracking-wider`}
+                        >
+                            <Trash2 className="w-3 h-3" /> Clear filters
+                        </button>
+                    </div>
+                )}
+                {!isSidebarCollapsed && (
+                    <div className="flex-1 overflow-y-visible py-1">
+                        {filterableColumns.map(col => {
+                            const isExpanded = expandedCols.has(col);
+                            const colVals = Array.isArray(activeFilterState[col]) ? activeFilterState[col] : [];
+                            const colActiveCount = colVals.length;
+                            const search = colSearchState[col] || '';
+                            const allVals = uniqueValuesMap[col] || [];
+                            const uniqueVals = search ? allVals.filter(v => String(v).toLowerCase().includes(search.toLowerCase())) : allVals;
+
+                            return (
+                                <div key={col} className={`border-b ${colors.borderPrimary} last:border-b-0`}>
+                                    <button
+                                        onClick={() => onToggleColumn(col)}
+                                        className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold transition-colors ${
+                                            colActiveCount > 0 ? 'text-indigo-400' : `${colors.textSecondary} hover:${colors.textPrimary}`
+                                        } hover:${colors.bgTertiary}`}
+                                    >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="truncate">{col.includes('.') ? col.split('.').pop() : col}</span>
+                                            {colActiveCount > 0 && (
+                                                <span className="shrink-0 text-[9px] font-bold bg-indigo-500 text-white px-1.5 py-0.5 rounded-full">
+                                                    {colActiveCount}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} ${colors.textMuted}`} />
+                                    </button>
+
+                                    {isExpanded && (
+                                        <div className="pb-2">
+                                            <div className="px-3 pb-2">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search..."
+                                                    value={search}
+                                                    onChange={e => setColSearch(prev => ({ ...prev, [col]: e.target.value }))}
+                                                    className={`w-full px-2.5 py-1.5 text-[11px] rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-1 focus:ring-indigo-500 outline-none transition-all`}
+                                                />
+                                            </div>
+                                            <div className="max-h-48 overflow-y-auto no-scrollbar px-2">
+                                                {uniqueVals.length === 0 ? (
+                                                    <p className={`text-[10px] ${colors.textMuted} text-center py-3 italic`}>No values found</p>
+                                                ) : uniqueVals.map(val => {
+                                                    const valStr = String(val);
+                                                    const actualVal = valStr === '(Empty)' ? '' : valStr;
+                                                    const isSelected = colVals.some((v: any) => String(v) === String(actualVal));
+                                                    return (
+                                                        <button
+                                                            key={valStr}
+                                                            onClick={() => onToggleFilterItem(col, actualVal)}
+                                                            className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] transition-all mb-0.5 text-left ${
+                                                                isSelected ? 'bg-indigo-500/15 text-indigo-300 font-semibold' : `${colors.textMuted} hover:${colors.bgTertiary} hover:${colors.textSecondary}`
+                                                            }`}
+                                                        >
+                                                            <span className={`shrink-0 w-3.5 h-3.5 rounded flex items-center justify-center border transition-all ${
+                                                                isSelected ? 'bg-indigo-500 border-indigo-400' : 'border-current opacity-30'
+                                                            }`}>
+                                                                {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
+                                                            </span>
+                                                            <span className="truncate">{valStr}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     return (
         <aside
             className={`print:hidden shrink-0 flex flex-col border-r ${colors.borderPrimary} transition-all duration-300 ${isSidebarCollapsed ? 'w-12' : 'w-64'} sticky top-[57px] sm:top-[65px] md:top-[73px] self-start`}
             style={{ height: 'calc(100vh - 73px)', overflowY: 'auto' }}
         >
-            {/* Sidebar Header */}
-            <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'} py-3 border-b ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-900/80' : 'bg-white/80'} sticky top-0 z-10`}>
+            <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'} py-3 border-b ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-900/80' : 'bg-white/80'} sticky top-0 z-20 shadow-sm`}>
                 {!isSidebarCollapsed && (
                     <div className="flex items-center gap-2">
                         <Filter className="w-4 h-4 text-indigo-400" />
                         <span className={`text-xs font-bold uppercase tracking-wider ${colors.textPrimary}`}>Filters</span>
-                        {totalActiveCount > 0 && (
+                        {grandTotalActiveCount > 0 && (
                             <span className="text-[9px] font-bold bg-indigo-500 text-white px-1.5 py-0.5 rounded-full">
-                                {totalActiveCount}
+                                {grandTotalActiveCount}
                             </span>
                         )}
                     </div>
@@ -1260,108 +1387,44 @@ const FilterSidebar = React.memo<FilterSidebarProps>(({ filterableColumns, activ
                 </button>
             </div>
 
-            {/* Clear All Button */}
-            {!isSidebarCollapsed && totalActiveCount > 0 && (
-                <div className={`px-4 py-2 border-b ${colors.borderPrimary}`}>
-                    <button
-                        onClick={clearFilters}
-                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors uppercase tracking-wider"
-                    >
-                        <Trash2 className="w-3 h-3" />
-                        Clear All Filters
-                    </button>
-                </div>
-            )}
-
-            {/* Filter Columns Accordion */}
             {!isSidebarCollapsed && (
-                <div className="flex-1 overflow-y-auto py-2 no-scrollbar">
-                    {filterableColumns.map(col => {
-                        const isExpanded = expandedSidebarCols.has(col);
-                        const colVals = Array.isArray(activeFilters[col]) ? activeFilters[col] : [];
-                        const activeCount = colVals.length;
-                        const search = sidebarColSearch[col] || '';
-                        const allVals = uniqueValuesMap[col] || [];
-                        const uniqueVals = search ? allVals.filter(v => v.toLowerCase().includes(search.toLowerCase())) : allVals;
-
-                        return (
-                            <div key={col} className={`border-b ${colors.borderPrimary} last:border-b-0`}>
-                                {/* Column Header Button */}
-                                <button
-                                    onClick={() => toggleSidebarColumn(col)}
-                                    className={`w-full flex items-center justify-between px-4 py-3 text-xs font-semibold transition-colors ${
-                                        activeCount > 0
-                                            ? 'text-indigo-400'
-                                            : `${colors.textSecondary} hover:${colors.textPrimary}`
-                                    } hover:${colors.bgTertiary}`}
-                                >
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <span className="truncate">{col.includes('.') ? col.split('.').pop() : col}</span>
-                                        {activeCount > 0 && (
-                                            <span className="shrink-0 text-[9px] font-bold bg-indigo-500 text-white px-1.5 py-0.5 rounded-full">
-                                                {activeCount}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} ${colors.textMuted}`} />
-                                </button>
-
-                                {/* Expanded Values Panel */}
-                                {isExpanded && (
-                                    <div className="pb-2">
-                                        <div className="px-3 pb-2">
-                                            <input
-                                                type="text"
-                                                placeholder="Search..."
-                                                value={search}
-                                                onChange={e => setSidebarColSearch(prev => ({ ...prev, [col]: e.target.value }))}
-                                                className={`w-full px-2.5 py-1.5 text-[11px] rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-1 focus:ring-indigo-500 outline-none transition-all`}
-                                            />
-                                        </div>
-                                        <div className="max-h-48 overflow-y-auto no-scrollbar px-2">
-                                            {uniqueVals.length === 0 ? (
-                                                <p className={`text-[10px] ${colors.textMuted} text-center py-3 italic`}>No values found</p>
-                                            ) : uniqueVals.map(val => {
-                                                const actualVal = val === '(Empty)' ? '' : val;
-                                                const isSelected = colVals.some((v: any) => String(v) === String(actualVal));
-                                                return (
-                                                    <button
-                                                        key={val}
-                                                        onClick={() => toggleFilter(col, actualVal)}
-                                                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] transition-all mb-0.5 text-left ${
-                                                            isSelected
-                                                                ? 'bg-indigo-500/15 text-indigo-300 font-semibold'
-                                                                : `${colors.textMuted} hover:${colors.bgTertiary} hover:${colors.textSecondary}`
-                                                        }`}
-                                                    >
-                                                        <span className={`shrink-0 w-3.5 h-3.5 rounded flex items-center justify-center border transition-all ${
-                                                            isSelected ? 'bg-indigo-500 border-indigo-400' : 'border-current opacity-30'
-                                                        }`}>
-                                                            {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
-                                                        </span>
-                                                        <span className="truncate">{val}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
+                <div className="flex-1 overflow-y-auto no-scrollbar">
+                    {renderFilterGroup(
+                        "Global Filters",
+                        totalGlobalActiveCount,
+                        activeFilters,
+                        expandedGlobalCols,
+                        globalColSearch,
+                        toggleGlobalColumn,
+                        setGlobalColSearch,
+                        toggleFilter,
+                        clearFilters
+                    )}
+                    
+                    {renderFilterGroup(
+                        `Page filter`,
+                        totalPageActiveCount,
+                        pageFilters || {},
+                        expandedPageCols,
+                        pageColSearch,
+                        togglePageColumn,
+                        setPageColSearch,
+                        togglePageFilter,
+                        clearPageFilters
+                    )}
                 </div>
             )}
 
-            {/* Collapsed — show filter icon badges */}
             {isSidebarCollapsed && (
-                <div className="flex flex-col items-center gap-2 py-3">
+                <div className="flex flex-col items-center gap-2 py-3 overflow-y-auto no-scrollbar">
                     {filterableColumns.map(col => {
-                        const colVals = Array.isArray(activeFilters[col]) ? activeFilters[col] : [];
-                        const activeCount = colVals.length;
+                        const globalVals = Array.isArray(activeFilters[col]) ? activeFilters[col] : [];
+                        const pageVals = pageFilters && Array.isArray(pageFilters[col]) ? pageFilters[col] : [];
+                        const activeCount = globalVals.length + pageVals.length;
                         return (
                             <button
                                 key={col}
-                                onClick={() => { setIsSidebarCollapsed(false); toggleSidebarColumn(col); }}
+                                onClick={() => { setIsSidebarCollapsed(false); toggleGlobalColumn(col); }}
                                 title={col}
                                 className={`relative p-2 rounded-lg transition-colors ${
                                     activeCount > 0 ? 'bg-indigo-500/20 text-indigo-400' : `${colors.textMuted} hover:${colors.bgTertiary}`
@@ -1412,11 +1475,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     const [chartFilterColumn, setChartFilterColumn] = useState<{ [chartId: string]: string | null }>({});
     const [chartFilterSearch, setChartFilterSearch] = useState<{ [chartId: string]: string }>({});
     const hoveredChartRef = useRef<string | null>(null); // Use ref to avoid re-renders on hover
+
+    // --- Top N / Bottom N State ---
+    const [topBottomMenuOpen, setTopBottomMenuOpen] = useState<string | null>(null);
+    const TOPBOTTOM_ELIGIBLE_TYPES = new Set(['BAR', 'LINE', 'HORIZONTAL_BAR', 'GROUPED_BAR', 'STACKED_BAR', 'COMBO', 'WATERFALL', 'TABLE']);
+
+    const updateChartTopBottom = useCallback((chartId: string, sortOrder: 'ASC' | 'DESC' | undefined, topN: number | undefined) => {
+        setCurrentCharts(prev => prev.map(c => {
+            if (c.id !== chartId) return c;
+            return { ...c, sortOrder, topN };
+        }));
+    }, []);
+
+    const clearChartTopBottom = useCallback((chartId: string) => {
+        setCurrentCharts(prev => prev.map(c => {
+            if (c.id !== chartId) return c;
+            const { sortOrder, topN, ...rest } = c;
+            return rest as ChartConfig;
+        }));
+        setTopBottomMenuOpen(null);
+    }, []);
     
     // Sidebar state is managed inside <FilterSidebar> — not here — to avoid Dashboard re-renders.
 
     // --- NEW: Global Filtering State ---
     const [activeFilters, setActiveFilters] = useState<{ [column: string]: any[] }>({});
+
+    // --- NEW: Page Filtering State ---
+    const [pageFilters, setPageFilters] = useState<{ [tabIndex: number]: { [column: string]: any[] } }>({});
+
 
     // --- NEW: Per-Chart Filtering State (supports multiple values per column) ---
     const [chartFilters, setChartFilters] = useState<{ [chartId: string]: { [column: string]: any[] } }>({});
@@ -1490,6 +1577,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
             return next;
         });
+    }, []);
+
+    // Toggle Bar Chart Orientation
+    const toggleChartOrientation = useCallback((chartId: string) => {
+        setCurrentCharts(prev => prev.map(chart => {
+            if (chart.id === chartId) {
+                if (chart.type === ChartType.BAR) return { ...chart, type: ChartType.HORIZONTAL_BAR };
+                if (chart.type === ChartType.HORIZONTAL_BAR) return { ...chart, type: ChartType.BAR };
+            }
+            return chart;
+        }));
     }, []);
 
     // Clear per-chart filters
@@ -1875,6 +1973,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     };
 
     const [activeTab, setActiveTab] = useState(0);
+
+    // Toggle page filter scoped to current activeTab
+    const togglePageFilter = useCallback((column: string, value: any) => {
+        setPageFilters(prev => {
+            const next = { ...prev };
+            const currentTabFilters = next[activeTab] ? { ...next[activeTab] } : {};
+            const currentVals = Array.isArray(currentTabFilters[column]) ? [...currentTabFilters[column]] : [];
+            const valueStr = String(value);
+            const idx = currentVals.findIndex(v => String(v) === valueStr);
+            if (idx >= 0) {
+                currentVals.splice(idx, 1);
+            } else {
+                currentVals.push(value);
+            }
+            if (currentVals.length === 0) {
+                delete currentTabFilters[column];
+            } else {
+                currentTabFilters[column] = currentVals;
+            }
+
+            if (Object.keys(currentTabFilters).length === 0) {
+                delete next[activeTab];
+            } else {
+                next[activeTab] = currentTabFilters;
+            }
+            return next;
+        });
+    }, [activeTab]);
+
+    const clearPageFilters = useCallback(() => {
+        setPageFilters(prev => {
+            const next = { ...prev };
+            delete next[activeTab];
+            return next;
+        });
+    }, [activeTab]);
     const [editingTabIndex, setEditingTabIndex] = useState<number | null>(null);
     const [editingTabValue, setEditingTabValue] = useState('');
     const tabInputRef = useRef<HTMLInputElement>(null);
@@ -2272,9 +2406,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                             <div className="flex-1 p-6 min-h-0">
                                 <RenderChart
                                     config={expandedChartConfig}
-                                    data={isDateTimeColumn(expandedChartConfig.xAxisKey) 
-                                        ? getDrillDownData(expandedChartConfig, applyChartFilters(filteredData, expandedChartConfig.id))
-                                        : aggregateData(applyChartFilters(filteredData, expandedChartConfig.id), expandedChartConfig)}
+                                    data={(() => {
+                                        const baseData = expandedChartConfig.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                        return isDateTimeColumn(expandedChartConfig.xAxisKey) 
+                                            ? getDrillDownData(expandedChartConfig, applyChartFilters(baseData, expandedChartConfig.id))
+                                            : aggregateData(applyChartFilters(baseData, expandedChartConfig.id), expandedChartConfig);
+                                    })()}
                                     isExpanded={true}
                                     theme={theme}
                                     isAnimationActive={!isExporting}
@@ -2540,9 +2677,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                         <FilterSidebar
                             filterableColumns={filterableColumns}
                             activeFilters={activeFilters}
+                            pageFilters={pageFilters[activeTab] || {}}
+                            activeTabName={resolvedTabNames[activeTab] || `Tab ${activeTab + 1}`}
                             uniqueValuesMap={uniqueValuesMap}
                             toggleFilter={toggleFilter}
                             clearFilters={clearFilters}
+                            togglePageFilter={togglePageFilter}
+                            clearPageFilters={clearPageFilters}
                             theme={theme}
                             colors={colors}
                         />
@@ -2554,7 +2695,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                         {kpis.length > 0 && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 print:grid-cols-4">
                                 {kpis.map((kpi, i) => {
-                                    const data = aggregateData(applyChartFilters(filteredData, kpi.id), kpi);
+                                    const baseData = kpi.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                    const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi);
                                     const value = data[0]?.value || 0;
                                     const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata);
                                     return (
@@ -2626,8 +2768,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                     const isXDate = (dataModel.columnMetadata?.[chart.xAxisKey])
                                         ? (dataModel.columnMetadata[chart.xAxisKey].finalType || dataModel.columnMetadata[chart.xAxisKey].detectedType) === 'DATE'
                                         : isDateTimeColumn(chart.xAxisKey);
+                                        
+                                    // Base data: ignoring global filters if configured to do so
+                                    const baseData = chart.ignoreGlobalFilters ? dataModel.data : filteredData;
+
+                                    // Apply Page Filters (only for charts in this section)
+                                    let pageFilteredData = baseData;
+                                    const activePageFilters = pageFilters[activeTab];
+                                    if (activePageFilters && Object.keys(activePageFilters).length > 0) {
+                                        pageFilteredData = pageFilteredData.filter(row => {
+                                            if (!row) return false;
+                                            return Object.entries(activePageFilters).every(([col, vals]) => {
+                                                if (!Array.isArray(vals) || vals.length === 0) return true;
+                                                return vals.some(v => String(row[col]) === String(v));
+                                            });
+                                        });
+                                    }
+
                                     // Apply per-chart filters BEFORE aggregation for proper filtering
-                                    const chartPreFilteredData = applyChartFilters(filteredData, chart.id);
+                                    const chartPreFilteredData = applyChartFilters(pageFilteredData, chart.id);
                                     const aggregatedData = isXDate 
                                         ? getDrillDownData(chart, chartPreFilteredData)
                                         : aggregateData(chartPreFilteredData, chart);
@@ -2670,7 +2829,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                 )}
                                             </div>
 
-                                            <div className={`absolute top-4 right-4 z-20 chart-controls no-print flex gap-2 items-center transition-opacity duration-200 opacity-0 group-hover:opacity-100 ${chartFilterMenuOpen === chart.id ? 'opacity-100' : ''}`}>
+                                            <div className={`absolute top-4 right-4 z-20 chart-controls no-print flex gap-2 items-center transition-opacity duration-200 opacity-0 group-hover:opacity-100 ${chartFilterMenuOpen === chart.id || topBottomMenuOpen === chart.id ? 'opacity-100' : ''}`}>
                                                 {hasChartFilters && (
                                                     <button
                                                         onClick={() => clearChartFilters(chart.id)}
@@ -2680,12 +2839,101 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                         <X className="w-4 h-4" />
                                                     </button>
                                                 )}
+                                                {/* Top N / Bottom N Button — only for eligible chart types */}
+                                                {TOPBOTTOM_ELIGIBLE_TYPES.has(chart.type) && (
+                                                    <div className="relative">
+                                                        <button
+                                                            onClick={() => {
+                                                                setTopBottomMenuOpen(topBottomMenuOpen === chart.id ? null : chart.id);
+                                                                setChartFilterMenuOpen(null);
+                                                            }}
+                                                            className={`p-2 rounded-lg transition-all shadow-lg active-press ${topBottomMenuOpen === chart.id ? 'bg-indigo-600 text-white' : (chart.topN ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' : `${colors.bgTertiary} ${colors.textMuted} hover:bg-indigo-600/20 hover:text-indigo-400`)}`}
+                                                            title={chart.topN ? `${chart.sortOrder === 'DESC' ? 'Top' : 'Bottom'} ${chart.topN}` : 'Top / Bottom N'}
+                                                        >
+                                                            <TrendingUp className="w-4 h-4" />
+                                                        </button>
+
+                                                        {topBottomMenuOpen === chart.id && (
+                                                            <>
+                                                                <div className="fixed inset-0 z-40" onClick={() => setTopBottomMenuOpen(null)}></div>
+                                                                <div
+                                                                    className={`absolute top-full right-0 mt-2 w-56 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 flex flex-col overflow-hidden pointer-events-auto`}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                >
+                                                                    <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
+                                                                        <div className="flex items-center justify-between">
+                                                                            <span className={`text-[10px] font-bold uppercase tracking-widest ${colors.textMuted}`}>Top / Bottom N</span>
+                                                                            <X className="w-3.5 h-3.5 cursor-pointer opacity-50 hover:opacity-100" onClick={() => setTopBottomMenuOpen(null)} />
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="p-3 space-y-3">
+                                                                        {/* Radio Buttons */}
+                                                                        <div className="flex gap-2">
+                                                                            <button
+                                                                                onClick={() => updateChartTopBottom(chart.id, 'DESC', chart.topN || 5)}
+                                                                                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
+                                                                                    chart.sortOrder === 'DESC'
+                                                                                        ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400'
+                                                                                        : `${colors.bgPrimary} ${colors.borderSecondary} ${colors.textMuted} hover:${colors.borderPrimary}`
+                                                                                }`}
+                                                                            >
+                                                                                <span>▲</span> Top N
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => updateChartTopBottom(chart.id, 'ASC', chart.topN || 5)}
+                                                                                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
+                                                                                    chart.sortOrder === 'ASC'
+                                                                                        ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400'
+                                                                                        : `${colors.bgPrimary} ${colors.borderSecondary} ${colors.textMuted} hover:${colors.borderPrimary}`
+                                                                                }`}
+                                                                            >
+                                                                                <span>▼</span> Bottom N
+                                                                            </button>
+                                                                        </div>
+                                                                        {/* Numeric Input */}
+                                                                        {chart.sortOrder && (
+                                                                            <div>
+                                                                                <label className={`text-[10px] font-bold uppercase ${colors.textMuted} mb-1 block`}>Number of items</label>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    min={1}
+                                                                                    max={100}
+                                                                                    value={chart.topN || ''}
+                                                                                    onChange={(e) => {
+                                                                                        const val = parseInt(e.target.value);
+                                                                                        if (!isNaN(val) && val > 0) {
+                                                                                            updateChartTopBottom(chart.id, chart.sortOrder, val);
+                                                                                        } else if (e.target.value === '') {
+                                                                                            updateChartTopBottom(chart.id, chart.sortOrder, undefined);
+                                                                                        }
+                                                                                    }}
+                                                                                    placeholder="e.g. 5"
+                                                                                    className={`w-full px-3 py-2 text-sm rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                                                                />
+                                                                            </div>
+                                                                        )}
+                                                                        {/* Clear Button */}
+                                                                        {(chart.sortOrder || chart.topN) && (
+                                                                            <button
+                                                                                onClick={() => clearChartTopBottom(chart.id)}
+                                                                                className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold ${colors.textMuted} hover:text-red-400 hover:bg-red-500/10 transition-all border ${colors.borderSecondary}`}
+                                                                            >
+                                                                                <Trash2 className="w-3 h-3" /> Clear
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
                                                 <div className="relative">
                                                     <button
                                                         onClick={() => {
                                                             setChartFilterMenuOpen(chartFilterMenuOpen === chart.id ? null : chart.id);
                                                             setChartFilterColumn(prev => ({ ...prev, [chart.id]: null }));
                                                             setChartFilterSearch(prev => ({ ...prev, [chart.id]: '' }));
+                                                            setTopBottomMenuOpen(null);
                                                         }}
                                                         className={`p-2 rounded-lg transition-all shadow-lg active-press ${chartFilterMenuOpen === chart.id ? 'bg-indigo-600 text-white' : `${colors.bgTertiary} ${colors.textMuted} hover:bg-indigo-600/20 hover:text-indigo-400`}`}
                                                         title="Add Chart Filter"
@@ -2805,6 +3053,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                         </>
                                                     )}
                                                 </div>
+                                                {/* Bar Chart Orientation Toggle */}
+                                                {(chart.type === ChartType.BAR || chart.type === ChartType.HORIZONTAL_BAR) && (
+                                                    <button
+                                                        onClick={() => toggleChartOrientation(chart.id)}
+                                                        className={`p-2 ${colors.bgTertiary} hover:bg-emerald-600/20 ${colors.textMuted} hover:text-emerald-400 rounded-lg transition-all shadow-lg active-press`}
+                                                        title={chart.type === ChartType.BAR ? "Switch to Horizontal Bar" : "Switch to Vertical Bar"}
+                                                    >
+                                                        <RefreshCw className="w-4 h-4" />
+                                                    </button>
+                                                )}
                                                 <button
                                                     onClick={() => setExpandedChartId(chart.id)}
                                                     className={`p-2 ${colors.bgTertiary} hover:bg-indigo-600 ${colors.textMuted} hover:text-white rounded-lg transition-all shadow-lg active-press`}
@@ -2887,7 +3145,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                 {page.pageKPIs && page.pageKPIs.length > 0 && (
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '32px', width: '100%' }}>
                                         {page.pageKPIs.map((kpi, kIdx) => {
-                                            const data = aggregateData(applyChartFilters(filteredData, kpi.id), kpi);
+                                            const baseData = kpi.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                            const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi);
                                             const value = data[0]?.value || 0;
                                             const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata);
                                             return (
@@ -2933,9 +3192,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             <div style={{ flex: 1, minHeight: 0, width: '100%', position: 'relative', overflow: 'hidden' }}>
                                                 <RenderChart
                                                     config={chart}
-                                                    data={isDateTimeColumn(chart.xAxisKey)
-                                                        ? getDrillDownData(chart, applyChartFilters(filteredData, chart.id))
-                                                        : aggregateData(applyChartFilters(filteredData, chart.id), chart)}
+                                                    data={(() => {
+                                                        const baseData = chart.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                                        return isDateTimeColumn(chart.xAxisKey)
+                                                            ? getDrillDownData(chart, applyChartFilters(baseData, chart.id))
+                                                            : aggregateData(applyChartFilters(baseData, chart.id), chart);
+                                                    })()}
                                                     theme={theme}
                                                     isAnimationActive={false}
                                                     columnMetadata={dataModel.columnMetadata}

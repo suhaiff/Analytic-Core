@@ -112,6 +112,8 @@ export interface ChartConfig {
   multicolor?: boolean;
   sectionId?: string; // Link to a DashboardSection
   chartFilters?: { [column: string]: any }; // Per-chart filters
+  ignoreGlobalFilters?: boolean; // If true, this chart will not be affected by global dashboard filters
+
   sortOrder?: 'ASC' | 'DESC'; // Sort aggregated data by primary metric
   topN?: number; // Limit the number of results (e.g., 10 for "Top 10")
   dateFilters?: { // Date-range filters applied before aggregation

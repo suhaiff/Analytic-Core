@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, Clock, LayoutDashboard, Sparkles, ChevronRight, FileSpreadsheet, Trash2, FolderOpen, PlusCircle, Settings, LogOut, Database, Globe, X, Info } from 'lucide-react';
+import { Upload, FileText, Clock, LayoutDashboard, Sparkles, ChevronRight, FileSpreadsheet, Trash2, FolderOpen, PlusCircle, Settings, LogOut, Database, Globe, X, Info, BarChart3 } from 'lucide-react';
 import { SavedDashboard, User } from '../types';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
@@ -559,7 +559,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                   <span>Powered by Gemini 2.0 Flash</span>
                 </div>
                 <h2 className={`hero-title font-extrabold ${colors.textPrimary} leading-tight mb-4 sm:mb-6`}>
-                  Data to Dashboard <br className="hidden sm:block" />
+                  Data to Analytics <br className="hidden sm:block" />
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">
                     in seconds.
                   </span>
@@ -580,9 +580,10 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                     <div className={`absolute left-6 top-4 bottom-4 w-0.5 ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-200'}`}></div>
 
                     {[
-                      { title: "Upload Data", desc: "Supports multiple CSV & Excel files", icon: FileSpreadsheet },
+                      { title: "Upload Data", desc: "Supports multiple source files", icon: FileSpreadsheet },
                       { title: "Configure & Join", desc: "Merge tables and select key columns", icon: Settings },
-                      { title: "AI Analysis", desc: "Gemini suggests relevant charts", icon: Sparkles },
+                      { title: "Aggregate Setup", desc: "Summarize data using column aggregation", icon: BarChart3 },
+                      { title: "AI Analysis & Charts", desc: "Gemini suggests relevant charts and actionable insights", icon: Sparkles },
                       { title: "Interact & Export", desc: "Filter, zoom, and save as PDF", icon: LayoutDashboard }
                     ].map((step, idx) => (
                       <div key={idx} className="relative flex items-start gap-4 sm:gap-6 group">
