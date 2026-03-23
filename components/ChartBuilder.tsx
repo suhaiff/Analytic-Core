@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DataModel, ChartConfig, DashboardSection } from '../types';
+import { DataModel, ChartConfig, DashboardSection, ChartType, AggregationType } from '../types';
 import { analyzeDataAndSuggestKPIs, generateChartFromPrompt } from '../services/geminiService';
-import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, RefreshCw, Filter, Check, ChevronDown, Palette, GitBranch, Layers, BarChartHorizontal, ScatterChart as ScatterChartIcon, Droplets, Grid3x3, Edit2 } from 'lucide-react';
+import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, RefreshCw, Filter, Check, ChevronDown, Palette, GitBranch, Layers, BarChartHorizontal, ScatterChart as ScatterChartIcon, Droplets, Grid3x3, Edit2, Settings2 } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
@@ -21,17 +21,50 @@ const CHART_COLOR_OPTIONS: { label: string; value: string }[] = [
     { label: 'Sky', value: '#38bdf8' },
 ];
 
+const ALL_CHART_TYPES: { type: ChartType; label: string }[] = [
+    { type: ChartType.BAR, label: 'Bar Chart' },
+    { type: ChartType.HORIZONTAL_BAR, label: 'Horizontal Bar' },
+    { type: ChartType.LINE, label: 'Line Chart' },
+    { type: ChartType.AREA, label: 'Area Chart' },
+    { type: ChartType.PIE, label: 'Pie Chart' },
+    { type: ChartType.KPI, label: 'KPI Card' },
+    { type: ChartType.GROUPED_BAR, label: 'Grouped Bar' },
+    { type: ChartType.STACKED_BAR, label: 'Stacked Bar' },
+    { type: ChartType.COMBO, label: 'Combo Chart' },
+    { type: ChartType.SCATTER, label: 'Scatter Plot' },
+    { type: ChartType.WATERFALL, label: 'Waterfall' },
+    { type: ChartType.HEATMAP, label: 'Heatmap' },
+    { type: ChartType.TABLE, label: 'Table' },
+    { type: ChartType.MATRIX, label: 'Matrix' },
+];
+
+const getChartIcon = (type: string) => {
+    switch (type) {
+        case 'BAR': return <BarChart3 className="w-5 h-5" />;
+        case 'HORIZONTAL_BAR': return <BarChartHorizontal className="w-5 h-5" />;
+        case 'GROUPED_BAR': return <GitBranch className="w-5 h-5" />;
+        case 'STACKED_BAR': return <Layers className="w-5 h-5" />;
+        case 'COMBO': return <Activity className="w-5 h-5" />;
+        case 'PIE': return <PieChart className="w-5 h-5" />;
+        case 'LINE': return <LineChart className="w-5 h-5" />;
+        case 'AREA': return <Activity className="w-5 h-5" />;
+        case 'SCATTER': return <ScatterChartIcon className="w-5 h-5" />;
+        case 'WATERFALL': return <Droplets className="w-5 h-5" />;
+        case 'HEATMAP': return <Grid3x3 className="w-5 h-5" />;
+        case 'MATRIX': return <Grid3x3 className="w-5 h-5" />;
+        case 'TABLE': return <TableIcon className="w-5 h-5" />;
+        case 'KPI': return <div className="text-xs font-bold border border-current px-1 rounded leading-none min-w-[20px] text-center">123</div>;
+        default: return <BarChart3 className="w-5 h-5" />;
+    }
+};
+
 // ---- BucketChartCard ----
 interface BucketChartCardProps {
     chart: ChartConfig;
     index: number;
     theme: 'dark' | 'light';
     colors: ReturnType<typeof getThemeClasses>;
-    getIcon: (type: string) => React.ReactElement;
-    onRemove: (id: string) => void;
-    onColorChange: (id: string, color: string) => void;
-    onColor2Change: (id: string, color: string) => void;
-    onMulticolorChange: (id: string, multicolor: boolean) => void;
+    onTypeChange: (id: string, type: ChartType) => void;
     onTitleChange: (id: string, title: string) => void;
     onDragStart: (e: React.DragEvent, chartId: string) => void;
     sections: DashboardSection[];
@@ -40,8 +73,10 @@ interface BucketChartCardProps {
 }
 
 const BucketChartCard: React.FC<BucketChartCardProps> = ({
-    chart, index, theme, colors, getIcon, onRemove, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart, sections, currentSectionId, onMoveToSection
+    chart, index, theme, colors, onRemove, onTypeChange, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart, sections, currentSectionId, onMoveToSection
 }) => {
+    const [showTypeMenu, setShowTypeMenu] = useState(false);
+    const typeMenuRef = useRef<HTMLDivElement>(null);
     const [showColorMenu, setShowColorMenu] = useState(false);
     const colorMenuRef = useRef<HTMLDivElement>(null);
     const [showColor2Menu, setShowColor2Menu] = useState(false);
@@ -63,6 +98,9 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
             }
             if (sectionMenuRef.current && !sectionMenuRef.current.contains(e.target as Node)) {
                 setShowSectionMenu(false);
+            }
+            if (typeMenuRef.current && !typeMenuRef.current.contains(e.target as Node)) {
+                setShowTypeMenu(false);
             }
         };
         document.addEventListener('mousedown', handler);
@@ -93,11 +131,13 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
     const activeColor = chart.color || CHART_COLOR_OPTIONS[0].value;
     const activeColor2 = chart.color2 || CHART_COLOR_OPTIONS[1].value;
 
+    const anyMenuOpen = showColorMenu || showColor2Menu || showSectionMenu || showTypeMenu;
+
     return (
         <div
             draggable
             onDragStart={(e) => onDragStart(e, chart.id)}
-            className={`responsive-card p-3 sm:p-4 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-lg sm:rounded-xl relative group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-900/10 transition-all duration-300 animate-fade-in-up flex flex-col h-full hover-lift elevation-md cursor-grab active:cursor-grabbing`}
+            className={`responsive-card p-3 sm:p-4 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-lg sm:rounded-xl relative group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-900/10 transition-all duration-300 animate-fade-in-up flex flex-col h-full hover-lift elevation-md cursor-grab active:cursor-grabbing ${anyMenuOpen ? 'z-50' : 'z-auto'}`}
             style={{ animationDelay: `${index * 50}ms` }}
         >
             <button
@@ -108,8 +148,36 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
             </button>
 
             <div className="flex items-start gap-2 mb-2 sm:mb-3 flex-1">
-                <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${chart.id.startsWith('custom') ? 'bg-emerald-500/10 text-emerald-400' : 'bg-indigo-500/10 text-indigo-400'}`}>
-                    {React.cloneElement(getIcon(chart.type) as React.ReactElement, { className: "w-3.5 h-3.5 sm:w-5 sm:h-5" })}
+                <div className="relative" ref={typeMenuRef}>
+                    <button 
+                        onClick={() => setShowTypeMenu(v => !v)}
+                        className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${showTypeMenu ? 'ring-2 ring-indigo-500 ring-offset-2' : ''} ${chart.id.startsWith('custom') ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20' : 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20'}`}
+                        title="Change chart type"
+                    >
+                        {React.cloneElement(getChartIcon(chart.type) as React.ReactElement, { className: "w-3.5 h-3.5 sm:w-5 sm:h-5" })}
+                    </button>
+                    
+                    {showTypeMenu && (
+                        <div className={`absolute left-0 top-full mt-2 w-48 max-h-[400px] overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-50 p-1.5 animate-fade-in custom-scrollbar`}>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-2 pt-1 ${colors.textMuted}`}>Change Chart Type</p>
+                            {ALL_CHART_TYPES.map(opt => {
+                                const active = chart.type === opt.type;
+                                return (
+                                    <button
+                                        key={opt.type}
+                                        onClick={() => { onTypeChange(chart.id, opt.type); setShowTypeMenu(false); }}
+                                        className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition-all mb-0.5 text-left ${active ? 'bg-indigo-500/10 text-indigo-400' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                    >
+                                        <div className={`shrink-0 ${active ? 'text-indigo-400' : colors.textMuted}`}>
+                                            {React.cloneElement(getChartIcon(opt.type) as React.ReactElement, { className: "w-3.5 h-3.5" })}
+                                        </div>
+                                        <span className={`font-medium ${active ? 'font-bold' : ''}`}>{opt.label}</span>
+                                        {active && <Check className="w-3 h-3 ml-auto text-indigo-400" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
                 <div className="min-w-0 flex-1 pr-6">
                     <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} font-bold uppercase tracking-wider`}>
@@ -372,6 +440,22 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     const [isListening, setIsListening] = useState(false);
     const [showData, setShowData] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [activeSuggestionTypeMenuId, setActiveSuggestionTypeMenuId] = useState<string | null>(null);
+    const suggestionTypeMenuRef = useRef<HTMLDivElement>(null);
+
+    // Manual Chart Builder State
+    const [isManualOpen, setIsManualOpen] = useState(false);
+    const [manualConfig, setManualConfig] = useState<ChartConfig>({
+        id: `custom-manual-${Date.now()}`,
+        title: '',
+        description: 'Manually created chart',
+        type: ChartType.BAR,
+        xAxisKey: '',
+        dataKey: '',
+        aggregation: AggregationType.SUM,
+        color: CHART_COLOR_OPTIONS[0].value,
+        multicolor: false
+    });
 
     // Filter Columns state
     const [selectedFilterCols, setSelectedFilterCols] = useState<Set<string>>(
@@ -386,6 +470,9 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         const handler = (e: MouseEvent) => {
             if (filterColMenuRef.current && !filterColMenuRef.current.contains(e.target as Node)) {
                 setOpenFilterColMenu(false);
+            }
+            if (suggestionTypeMenuRef.current && !suggestionTypeMenuRef.current.contains(e.target as Node)) {
+                setActiveSuggestionTypeMenuId(null);
             }
         };
         document.addEventListener('mousedown', handler);
@@ -477,6 +564,14 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     const removeFromBucket = (id: string) => {
         setBucket(bucket.filter(c => c.id !== id));
     };
+    
+    const onTypeChangeSuggested = (id: string, type: ChartType) => {
+        setSuggestedCharts(prev => prev.map(c => c.id === id ? { ...c, type } : c));
+    };
+
+    const onTypeChangeBucket = (id: string, type: ChartType) => {
+        setBucket(prev => prev.map(c => c.id === id ? { ...c, type } : c));
+    };
 
     const handleCustomChart = async () => {
         if (!customPrompt.trim()) return;
@@ -523,6 +618,36 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         recognition.onend = () => setIsListening(false);
 
         recognition.start();
+    };
+
+    const handleAddManualChart = () => {
+        if (!manualConfig.title || !manualConfig.dataKey) return;
+        
+        const chartToAdd = {
+            ...manualConfig,
+            id: `custom-manual-${Date.now()}`
+        };
+        addToBucket(chartToAdd);
+        setIsManualOpen(false);
+        // Reset for next use
+        setManualConfig({
+            id: `custom-manual-${Date.now()}`,
+            title: '',
+            description: 'Manually created chart',
+            type: ChartType.BAR,
+            xAxisKey: '',
+            dataKey: '',
+            aggregation: AggregationType.SUM,
+            color: CHART_COLOR_OPTIONS[0].value,
+            multicolor: false
+        });
+    };
+
+    const isManualConfigValid = () => {
+        if (!manualConfig.title.trim() || !manualConfig.dataKey) return false;
+        if (manualConfig.type !== ChartType.KPI && !manualConfig.xAxisKey) return false;
+        if ((manualConfig.type === ChartType.HEATMAP || manualConfig.type === ChartType.MATRIX) && !manualConfig.yAxisKey) return false;
+        return true;
     };
 
     const addSection = () => {
@@ -580,28 +705,171 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         onGenerateReport(bucket, Array.from(selectedFilterCols), sections);
     };
 
-    const getIcon = (type: string) => {
-        switch (type) {
-            case 'BAR': return <BarChart3 className="w-5 h-5" />;
-            case 'HORIZONTAL_BAR': return <BarChartHorizontal className="w-5 h-5" />;
-            case 'GROUPED_BAR': return <GitBranch className="w-5 h-5" />;
-            case 'STACKED_BAR': return <Layers className="w-5 h-5" />;
-            case 'COMBO': return <Activity className="w-5 h-5" />;
-            case 'PIE': return <PieChart className="w-5 h-5" />;
-            case 'LINE': return <LineChart className="w-5 h-5" />;
-            case 'AREA': return <Activity className="w-5 h-5" />;
-            case 'SCATTER': return <ScatterChartIcon className="w-5 h-5" />;
-            case 'WATERFALL': return <Droplets className="w-5 h-5" />;
-            case 'HEATMAP': return <Grid3x3 className="w-5 h-5" />;
-            case 'MATRIX': return <Grid3x3 className="w-5 h-5" />;
-            case 'TABLE': return <TableIcon className="w-5 h-5" />;
-            case 'KPI': return <div className="text-xs font-bold border border-current px-1 rounded">123</div>;
-            default: return <BarChart3 className="w-5 h-5" />;
-        }
-    };
 
     return (
         <div className={`flex h-screen ${colors.bgPrimary} ${colors.textSecondary} overflow-hidden relative`}>
+            {/* Manual Chart Builder Modal */}
+            {isManualOpen && (
+                <div className={`fixed inset-0 z-[100] ${colors.overlayBg} glass-effect flex items-center justify-center p-2 sm:p-4 animate-fade-in`}>
+                    <div className={`w-full max-w-2xl ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}>
+                        {/* Header */}
+                        <div className={`p-4 sm:p-6 border-b ${colors.borderPrimary} flex justify-between items-center`}>
+                            <h2 className={`font-bold ${colors.textPrimary} text-lg sm:text-xl flex items-center gap-2`}>
+                                <BarChart3 className="w-5 h-5 text-indigo-400" />
+                                Manual Chart Builder
+                            </h2>
+                            <button onClick={() => setIsManualOpen(false)} className={`p-2 hover:${colors.bgTertiary} rounded-full ${colors.textMuted} transition`}>
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        {/* Content */}
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
+                            {/* Title */}
+                            <div>
+                                <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Chart Title</label>
+                                <input
+                                    type="text"
+                                    value={manualConfig.title}
+                                    onChange={e => setManualConfig({...manualConfig, title: e.target.value})}
+                                    placeholder="e.g., Sales by Region"
+                                    className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                />
+                            </div>
+
+                            {/* Chart Type Selection */}
+                            <div>
+                                <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Chart Type</label>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {ALL_CHART_TYPES.map(opt => (
+                                        <button
+                                            key={opt.type}
+                                            onClick={() => setManualConfig({...manualConfig, type: opt.type})}
+                                            className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-2 ${manualConfig.type === opt.type 
+                                                ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400 shadow-lg shadow-indigo-500/10' 
+                                                : `${colors.bgPrimary} border-transparent ${colors.textSecondary} hover:border-indigo-500/30`}`}
+                                        >
+                                            <div className={manualConfig.type === opt.type ? 'text-indigo-400' : colors.textMuted}>
+                                                {getChartIcon(opt.type)}
+                                            </div>
+                                            <span className="text-[10px] font-bold text-center">{opt.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Column Selection */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {/* Dimension / X-Axis */}
+                                {manualConfig.type !== ChartType.KPI && (
+                                    <div>
+                                        <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>
+                                            {manualConfig.type === ChartType.HORIZONTAL_BAR ? 'Y-Axis (Category)' : 'X-Axis (Dimension)'}
+                                        </label>
+                                        <div className="relative">
+                                            <select
+                                                value={manualConfig.xAxisKey}
+                                                onChange={e => setManualConfig({...manualConfig, xAxisKey: e.target.value})}
+                                                className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
+                                            >
+                                                <option value="">Select a column...</option>
+                                                {allColumns.map(col => <option key={col} value={col}>{col}</option>)}
+                                            </select>
+                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Metric / Data Key */}
+                                <div>
+                                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>
+                                        {manualConfig.type === ChartType.HORIZONTAL_BAR ? 'X-Axis (Metric)' : 'Metric (Value)'}
+                                    </label>
+                                    <div className="relative">
+                                        <select
+                                            value={manualConfig.dataKey}
+                                            onChange={e => setManualConfig({...manualConfig, dataKey: e.target.value})}
+                                            className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
+                                        >
+                                            <option value="">Select a column...</option>
+                                            {allColumns.map(col => <option key={col} value={col}>{col}</option>)}
+                                        </select>
+                                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                                    </div>
+                                </div>
+
+                                {/* Aggregation */}
+                                <div>
+                                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Aggregation</label>
+                                    <div className="relative">
+                                        <select
+                                            value={manualConfig.aggregation}
+                                            onChange={e => setManualConfig({...manualConfig, aggregation: e.target.value as AggregationType})}
+                                            className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
+                                        >
+                                            {Object.values(AggregationType).map(type => <option key={type} value={type}>{type}</option>)}
+                                        </select>
+                                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                                    </div>
+                                </div>
+
+                                {/* Heatmap / Matrix Y-Axis */}
+                                {(manualConfig.type === ChartType.HEATMAP || manualConfig.type === ChartType.MATRIX) && (
+                                    <div>
+                                        <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Y-Axis (Dimension 2)</label>
+                                        <div className="relative">
+                                            <select
+                                                value={manualConfig.yAxisKey || ''}
+                                                onChange={e => setManualConfig({...manualConfig, yAxisKey: e.target.value})}
+                                                className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
+                                            >
+                                                <option value="">Select a column...</option>
+                                                {allColumns.map(col => <option key={col} value={col}>{col}</option>)}
+                                            </select>
+                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Secondary Metric for Combo/Grouped/Stacked */}
+                                {(manualConfig.type === ChartType.COMBO || manualConfig.type === ChartType.GROUPED_BAR || manualConfig.type === ChartType.STACKED_BAR) && (
+                                    <div>
+                                        <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Secondary Metric (Optional)</label>
+                                        <div className="relative">
+                                            <select
+                                                value={manualConfig.dataKey2 || ''}
+                                                onChange={e => setManualConfig({...manualConfig, dataKey2: e.target.value})}
+                                                className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
+                                            >
+                                                <option value="">None</option>
+                                                {allColumns.map(col => <option key={col} value={col}>{col}</option>)}
+                                            </select>
+                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        
+                        {/* Footer */}
+                        <div className={`p-4 sm:p-6 border-t ${colors.borderPrimary} flex justify-end gap-3`}>
+                            <button
+                                onClick={() => setIsManualOpen(false)}
+                                className={`px-5 py-2 rounded-xl border ${colors.borderSecondary} ${colors.textSecondary} hover:${colors.bgTertiary} transition-all font-bold text-sm`}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleAddManualChart}
+                                disabled={!isManualConfigValid()}
+                                title={!isManualConfigValid() ? "Please fill in all required fields" : "Add to Dashboard"}
+                                className={`px-8 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all font-bold text-sm shadow-lg shadow-indigo-900/40 disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                                Add Chart
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Data Preview Modal - Responsive */}
             {showData && (
                 <div className={`fixed inset-0 z-50 ${colors.overlayBg} glass-effect flex items-center justify-center p-2 sm:p-4 lg:p-8 animate-fade-in`}>
@@ -649,13 +917,13 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
             {/* Mobile Sidebar Overlay */}
             {sidebarOpen && (
                 <div
-                    className="md:hidden fixed inset-0 bg-black/50 z-30 animate-fade-in"
+                    className="md:hidden fixed inset-0 bg-black/50 z-40 animate-fade-in"
                     onClick={() => setSidebarOpen(false)}
                 />
             )}
 
             {/* Left: AI Suggestions - Responsive Sidebar */}
-            <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:relative w-80 sm:w-[350px] lg:w-[400px] max-w-[85vw] border-r ${colors.borderPrimary} ${colors.bgSecondary} flex flex-col z-40 md:z-10 shadow-2xl transition-transform duration-300 h-full glass-effect`}>
+            <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:relative w-80 sm:w-[350px] lg:w-[400px] max-w-[85vw] border-r ${colors.borderPrimary} ${colors.bgSecondary} flex flex-col z-50 md:z-10 shadow-2xl transition-transform duration-300 h-full glass-effect`}>
                 {/* Mobile: Close button */}
                 <div className={`md:hidden flex justify-between items-center p-4 border-b ${colors.borderPrimary}`}>
                     <h3 className={`font-bold ${colors.textPrimary}`}>AI Insights</h3>
@@ -720,7 +988,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                             return (
                                 <div
                                     key={chart.id}
-                                    className={`group relative rounded-lg sm:rounded-xl p-4 sm:p-5 transition-all duration-300 border hover-lift elevation-md
+                                    className={`group relative rounded-lg sm:rounded-xl p-4 sm:p-5 transition-all duration-300 border hover-lift elevation-md ${activeSuggestionTypeMenuId === chart.id ? 'z-50' : 'z-auto'}
                                     ${inBucket
                                             ? 'bg-indigo-900/10 border-indigo-500/30 opacity-60'
                                             : `${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200'} hover:border-indigo-500/50 hover:${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-50'} hover:shadow-lg hover:shadow-indigo-500/10`
@@ -728,11 +996,42 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                 `}
                                 >
                                     <div className="flex justify-between items-start mb-3">
-                                        <div className="flex items-center gap-2 text-indigo-400">
-                                            {getIcon(chart.type)}
-                                            <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-500/10 px-2 py-0.5 rounded text-indigo-300">
-                                                {chart.type}
-                                            </span>
+                                        <div className="relative" ref={activeSuggestionTypeMenuId === chart.id ? suggestionTypeMenuRef : null}>
+                                            <button 
+                                                onClick={() => setActiveSuggestionTypeMenuId(activeSuggestionTypeMenuId === chart.id ? null : chart.id)}
+                                                className={`flex items-center gap-2 px-2 py-1 rounded-lg transition-all ${activeSuggestionTypeMenuId === chart.id ? 'bg-indigo-500/20 ring-1 ring-indigo-500/50' : 'hover:bg-indigo-500/10'}`}
+                                                title="Change chart type"
+                                            >
+                                                <div className="text-indigo-400">
+                                                    {getChartIcon(chart.type)}
+                                                </div>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+                                                    {chart.type}
+                                                </span>
+                                                <ChevronDown className={`w-3 h-3 text-indigo-400 transition-transform ${activeSuggestionTypeMenuId === chart.id ? 'rotate-180' : ''}`} />
+                                            </button>
+
+                                            {activeSuggestionTypeMenuId === chart.id && (
+                                                <div className={`absolute left-0 top-full mt-1 w-48 max-h-64 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-50 p-1.5 animate-fade-in custom-scrollbar`}>
+                                                    <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-2 pt-1 ${colors.textMuted}`}>Suggested Type</p>
+                                                    {ALL_CHART_TYPES.map(opt => {
+                                                        const active = chart.type === opt.type;
+                                                        return (
+                                                            <button
+                                                                key={opt.type}
+                                                                onClick={() => { onTypeChangeSuggested(chart.id, opt.type); setActiveSuggestionTypeMenuId(null); }}
+                                                                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition-all mb-0.5 text-left ${active ? 'bg-indigo-500/10 text-indigo-400' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                            >
+                                                                <div className={`shrink-0 ${active ? 'text-indigo-400' : colors.textMuted}`}>
+                                                                    {React.cloneElement(getChartIcon(opt.type) as React.ReactElement, { className: "w-3.5 h-3.5" })}
+                                                                </div>
+                                                                <span className={`font-medium ${active ? 'font-bold' : ''}`}>{opt.label}</span>
+                                                                {active && <Check className="w-3 h-3 ml-auto text-indigo-400" />}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
                                         {!inBucket && (
                                             <button
@@ -756,7 +1055,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
             {/* Right: Workspace */}
             <div className="flex-1 flex flex-col relative">
                 {/* Header - Responsive */}
-                <header className={`px-3 sm:px-6 md:px-8 py-3 sm:py-5 md:py-6 flex justify-between items-center z-20 pointer-events-none bg-gradient-to-b ${theme === 'dark' ? 'from-slate-950 to-slate-950/0' : 'from-slate-50 to-slate-50/0'}`}>
+                <header className={`px-3 sm:px-6 md:px-8 py-3 sm:py-5 md:py-6 flex justify-between items-center z-30 pointer-events-none bg-gradient-to-b ${theme === 'dark' ? 'from-slate-950 to-slate-950/0' : 'from-slate-50 to-slate-50/0'}`}>
                     <div className="flex items-center gap-2 sm:gap-3 md:gap-4 pointer-events-auto">
                         {/* Mobile: Sidebar toggle */}
                         <button
@@ -914,6 +1213,13 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                         {isListening ? <MicOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Mic className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                                     </button>
                                     <button
+                                        onClick={() => setIsManualOpen(true)}
+                                        className={`p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl transition hover:${colors.bgTertiary} ${colors.textMuted}`}
+                                        title="Manual Chart Builder"
+                                    >
+                                        <Settings2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                    </button>
+                                    <button
                                         onClick={handleCustomChart}
                                         disabled={isGeneratingCustom || !customPrompt.trim()}
                                         className="bg-indigo-600 hover:bg-indigo-500 text-white p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl transition disabled:opacity-50 disabled:bg-slate-700"
@@ -1007,8 +1313,8 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                         index={i}
                                                         theme={theme}
                                                         colors={colors}
-                                                        getIcon={getIcon}
                                                         onRemove={removeFromBucket}
+                                                        onTypeChange={onTypeChangeBucket}
                                                         onColorChange={(id, color) =>
                                                             setBucket(prev => prev.map(c => c.id === id ? { ...c, color } : c))
                                                         }
@@ -1052,8 +1358,8 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                 index={i}
                                                 theme={theme}
                                                 colors={colors}
-                                                getIcon={getIcon}
                                                 onRemove={removeFromBucket}
+                                                onTypeChange={onTypeChangeBucket}
                                                 onColorChange={(id, color) =>
                                                     setBucket(prev => prev.map(c => c.id === id ? { ...c, color } : c))
                                                 }

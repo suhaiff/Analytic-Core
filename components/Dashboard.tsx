@@ -1872,7 +1872,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
     const charts = useMemo(() => {
         if (!Array.isArray(currentCharts)) return [];
-        return currentCharts.filter(c => c && c.type !== ChartType.KPI);
+        // Include ALL charts (including KPIs) so they are placed in sections together
+        return currentCharts.filter(c => !!c);
     }, [currentCharts]);
 
     const [isExporting, setIsExporting] = useState(false);
@@ -2074,66 +2075,54 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         const pages: PDFPageContent[] = [];
         if (sections.length === 0) return [];
 
-        // Tab 1
-        const tab1Name = resolvedTabNames[0] || "Summary";
-        const tab1Charts = sections[0] || [];
-
-        // Calculate how much space KPIs take on the first page to adjust chart count
-        const kpiRows = Math.ceil(kpis.length / 4);
-        let chartsOnFirstPage = 6;
-        
-        if (kpiRows >= 5) {
-            chartsOnFirstPage = 0; // If lots of KPIs, don't put charts on first page
-        } else if (kpiRows >= 4) {
-            chartsOnFirstPage = 2; // 4 rows of KPIs = 2 charts
-        } else if (kpiRows >= 1) {
-            chartsOnFirstPage = 4; // 1-3 rows of KPIs = 4 charts
-        }
-
-        // First page of Tab 1 (and PDF)
-        pages.push({
-            pageId: 1,
-            tabIndex: 0,
-            tabName: tab1Name,
-            charts: tab1Charts.slice(0, chartsOnFirstPage),
-            isFirstPageOfTab: true,
-            isFirstPageOfPDF: true,
-            pageKPIs: kpis
-        });
-
-        // Tab 1 Overflow
-        if (tab1Charts.length > chartsOnFirstPage) {
-            for (let i = chartsOnFirstPage; i < tab1Charts.length; i += 6) {
-                pages.push({
-                    pageId: pages.length + 1,
-                    tabIndex: 0,
-                    tabName: tab1Name,
-                    charts: tab1Charts.slice(i, i + 6),
-                    isFirstPageOfTab: false,
-                    isFirstPageOfPDF: false
-                });
-            }
-        }
-
-        // Subsequent Tabs
-        for (let t = 1; t < sections.length; t++) {
+        for (let t = 0; t < sections.length; t++) {
             const tabName = resolvedTabNames[t] || `Section ${t + 1}`;
-            const tabCharts = sections[t] || [];
+            const tabAllItems = sections[t] || [];
+            
+            // Separate KPIs from other charts within the section to manage layout distribution
+            const tabKPIs = tabAllItems.filter(c => c && c.type === ChartType.KPI);
+            const tabCharts = tabAllItems.filter(c => c && c.type !== ChartType.KPI);
 
-            for (let i = 0; i < tabCharts.length; i += 6) {
-                pages.push({
-                    pageId: pages.length + 1,
-                    tabIndex: t,
-                    tabName: tabName,
-                    charts: tabCharts.slice(i, i + 6),
-                    isFirstPageOfTab: i === 0,
-                    isFirstPageOfPDF: false
-                });
+            // Calculate how much space KPIs take on the first page of this tab to adjust chart capacity
+            const kpiRows = Math.ceil(tabKPIs.length / 4);
+            let chartsOnFirstPageOfTab = 6;
+            
+            if (kpiRows >= 5) {
+                chartsOnFirstPageOfTab = 0; // Dedicate page to KPIs if many are present
+            } else if (kpiRows >= 4) {
+                chartsOnFirstPageOfTab = 2; // High density KPIs: space for 2 charts
+            } else if (kpiRows >= 1) {
+                chartsOnFirstPageOfTab = 4; // Moderate KPIs: space for 4 charts
+            }
+
+            // Push the main/first page for this section which includes the KPIs
+            pages.push({
+                pageId: pages.length + 1,
+                tabIndex: t,
+                tabName: tabName,
+                charts: tabCharts.slice(0, chartsOnFirstPageOfTab),
+                isFirstPageOfTab: true,
+                isFirstPageOfPDF: t === 0,
+                pageKPIs: tabKPIs
+            });
+
+            // Handle overflow charts for this section on subsequent pages
+            if (tabCharts.length > chartsOnFirstPageOfTab) {
+                for (let i = chartsOnFirstPageOfTab; i < tabCharts.length; i += 6) {
+                    pages.push({
+                        pageId: pages.length + 1,
+                        tabIndex: t,
+                        tabName: tabName,
+                        charts: tabCharts.slice(i, i + 6),
+                        isFirstPageOfTab: false,
+                        isFirstPageOfPDF: false
+                    });
+                }
             }
         }
 
         return pages;
-    }, [isExportingPDF, sections, kpis, resolvedTabNames]);
+    }, [isExportingPDF, sections, resolvedTabNames]);
 
     const handleExportPDF = async () => {
         setIsExporting(true);
@@ -2691,31 +2680,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
                     <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 print:p-4">
 
-                        {/* KPIs Row */}
-                        {kpis.length > 0 && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 print:grid-cols-4">
-                                {kpis.map((kpi, i) => {
-                                    const baseData = kpi.ignoreGlobalFilters ? dataModel.data : filteredData;
-                                    const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi);
-                                    const value = data[0]?.value || 0;
-                                    const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata);
-                                    return (
-                                        <div key={kpi.id} className={`${colors.bgSecondary} rounded-xl border ${colors.borderPrimary} p-6 shadow-xl relative overflow-hidden group print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} hover-lift elevation-lg`}>
-                                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition transform group-hover:scale-110 print:hidden">
-                                                <TrendingUp className="w-16 h-16 text-indigo-500" />
-                                            </div>
-                                            <h3 className={`text-xs font-bold ${colors.textMuted} uppercase tracking-wider mb-1`}>{kpi.title}</h3>
-                                            <div className={`text-3xl font-bold ${colors.textPrimary} mt-2`}>
-                                                {displayValue}
-                                            </div>
-                                            <div className={`mt-4 h-1 w-full ${theme === 'dark' ? 'bg-slate-800 print:bg-slate-700' : 'bg-slate-200 print:bg-slate-300'} rounded-full overflow-hidden`}>
-                                                <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 w-2/3 rounded-full print:bg-indigo-600"></div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                        {/* KPIs Row - REMOVED from global and moved to sections below */}
 
                         {/* Section Tabs - show whenever there are charts */}
                         {sections.length > 0 && resolvedTabNames.length > 0 && (
@@ -2763,8 +2728,37 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
                         {/* Charts Grid - shows only active section */}
                         {sections.length > 0 ? (
-                            <div key={activeTab} className="grid grid-cols-1 lg:grid-cols-2 gap-8 print:grid-cols-2 print:gap-4 animate-fade-in">
-                                {activeSection.map(chart => {
+                            <div key={activeTab} className="animate-fade-in flex flex-col gap-6">
+                                {/* Sectional KPIs (Rendered before charts in the same section) */}
+                                {activeSection.some(c => c.type === ChartType.KPI) && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-2 print:grid-cols-4">
+                                        {activeSection.filter(c => c.type === ChartType.KPI).map((kpi) => {
+                                            const baseData = kpi.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                            const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi);
+                                            const value = data[0]?.value || 0;
+                                            const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata);
+                                            return (
+                                                <div key={kpi.id} className={`${colors.bgSecondary} rounded-xl border ${colors.borderPrimary} p-6 shadow-xl relative overflow-hidden group print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} hover-lift elevation-lg`}>
+                                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition transform group-hover:scale-110 print:hidden">
+                                                        <TrendingUp className="w-16 h-16 text-indigo-500" />
+                                                    </div>
+                                                    <h3 className={`text-xs font-bold ${colors.textMuted} uppercase tracking-wider mb-1`}>{kpi.title}</h3>
+                                                    <div className={`text-3xl font-bold ${colors.textPrimary} mt-2`}>
+                                                        {displayValue}
+                                                    </div>
+                                                    <div className={`mt-4 h-1 w-full ${theme === 'dark' ? 'bg-slate-800 print:bg-slate-700' : 'bg-slate-200 print:bg-slate-300'} rounded-full overflow-hidden`}>
+                                                        <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 w-2/3 rounded-full print:bg-indigo-600"></div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* Main Charts Grid for non-KPI charts */}
+                                {activeSection.some(c => c.type !== ChartType.KPI) && (
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 print:grid-cols-2 print:gap-4">
+                                        {activeSection.filter(c => c.type !== ChartType.KPI).map(chart => {
                                     const isXDate = (dataModel.columnMetadata?.[chart.xAxisKey])
                                         ? (dataModel.columnMetadata[chart.xAxisKey].finalType || dataModel.columnMetadata[chart.xAxisKey].detectedType) === 'DATE'
                                         : isDateTimeColumn(chart.xAxisKey);
@@ -2798,7 +2792,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             key={chart.id}
                                             onMouseEnter={() => { hoveredChartRef.current = chart.id; }}
                                             onMouseLeave={() => { hoveredChartRef.current = null; }}
-                                            className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] print:h-[380px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid print:p-4 relative elevation-md overflow-hidden group`}>
+                                            className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] print:h-[380px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid print:p-4 relative elevation-md group ${chartFilterMenuOpen === chart.id || topBottomMenuOpen === chart.id ? 'z-10' : 'overflow-hidden'}`}>
                                             <div className="mb-6 pr-20">
                                                 <h3 className={`font-bold text-lg ${colors.textSecondary} truncate`}>{chart.title}</h3>
                                                 <p className={`text-xs ${colors.textMuted} mt-1 truncate`}>{chart.description}</p>
@@ -3088,7 +3082,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             </div>
                                         </div>
                                     );
-                                })}
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         ) : null}
 

@@ -4,6 +4,7 @@ import { LogOut, Settings, ChevronDown, User as UserIcon, Info, HelpCircle, X, A
 import { User as UserType } from '../../types';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
+import { generatePDFGuide } from '../../utils/generatePDFGuide';
 
 interface ProfileMenuProps {
     user: UserType | null;
@@ -199,7 +200,9 @@ export const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, onLogout }) => {
                                 </div>
                             </div>
                         ))}
-                        <button className="w-full mt-4 py-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 font-bold text-sm hover:bg-indigo-500/20 transition-all flex items-center justify-center gap-2">
+                        <button
+                            onClick={() => generatePDFGuide()}
+                            className="w-full mt-4 py-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 font-bold text-sm hover:bg-indigo-500/20 transition-all flex items-center justify-center gap-2 active-press">
                             Download Full PDF Guide
                             <ArrowRight className="w-4 h-4" />
                         </button>
