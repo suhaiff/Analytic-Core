@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { DataModel, ProcessedRow, DataTable, JoinConfig, JoinType, ColumnType, ColumnMetadata, AggregationType, AggregatedColumnDefinition } from '../types';
+import { DataModel, ProcessedRow, DataTable, JoinConfig, JoinType, ColumnType, ColumnMetadata, AggregationType, AggregatedColumnDefinition, AppendConfig } from '../types';
 import { ArrowRight, Table, CheckSquare, Square, Database, Columns, Plus, Link as LinkIcon, Trash2, Upload, Settings2, Home, Eye, X, FileText, Loader2, Activity, ChevronDown, Wand2 } from 'lucide-react';
 import { processFile } from '../utils/fileParser';
 import { performJoins, processRawData } from '../utils/dataProcessing';
@@ -33,6 +33,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
     // Configuration State
     const [activeTab, setActiveTab] = useState<'JOIN' | 'TRANSFORM'>('JOIN');
     const [joins, setJoins] = useState<JoinConfig[]>([]);
+    const [appends, setAppends] = useState<AppendConfig[]>([]);
     const [headerIndices, setHeaderIndices] = useState<{ [key: string]: number }>({});
 
     // File Viewer State
@@ -112,23 +113,41 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
         setJoins(joins.map(j => j.id === id ? { ...j, [field]: value } : j));
     };
 
+    const addAppend = () => {
+        if (tables.length < 2) return;
+        const newAppend: AppendConfig = {
+            id: String(Date.now()),
+            topTableId: tables[0].id,
+            bottomTableId: tables[1].id
+        };
+        setAppends([...appends, newAppend]);
+    };
+
+    const removeAppend = (id: string) => {
+        setAppends(appends.filter(a => a.id !== id));
+    };
+
+    const updateAppend = (id: string, field: keyof AppendConfig, value: string) => {
+        setAppends(appends.map(a => a.id === id ? { ...a, [field]: value } : a));
+    };
+
     // --- Effect: Calculate Merged Data ---
     useEffect(() => {
-        // If no joins, just process the first table
+        // If no joins and no appends, just process the first table
         if (tables.length === 0) return;
 
-        if (tables.length === 1 || joins.length === 0) {
+        if (tables.length === 1 || (joins.length === 0 && appends.length === 0)) {
             const t = tables[0];
             const res = processRawData(t.rawData, headerIndices[t.id] || 0);
             setMergedData(res.rows);
             setMergedColumns(res.headers);
         } else {
-            // Perform Joins
-            const result = performJoins(tables, joins, headerIndices);
+            // Perform Merge Operations (Joins + Appends)
+            const result = performJoins(tables, joins, headerIndices, appends);
             setMergedData(result.data);
             setMergedColumns(result.columns);
         }
-    }, [tables, joins, headerIndices]);
+    }, [tables, joins, appends, headerIndices]);
 
     // --- Effect: Validate and Auto-Select Columns ---
     useEffect(() => {
@@ -320,6 +339,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             sourceType: sourceType as 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database',
             headerIndex: tables.length === 1 ? (headerIndices[tables[0].id] || 0) : undefined,
             joinConfigs: joins,
+            appendConfigs: appends,
             tableConfigs: tableConfigs
         };
 
@@ -660,14 +680,24 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                         <h2 className={`responsive-text-lg font-bold ${colors.textPrimary}`}>Join Configuration</h2>
                                         <p className={`sm:block responsive-text-sm ${colors.textMuted}`}>Connect multiple tables to create a unified dataset.</p>
                                     </div>
-                                    <button
-                                        onClick={addJoin}
-                                        disabled={tables.length < 2}
-                                        className="responsive-button bg-indigo-600 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-white rounded-lg font-medium flex items-center gap-1 sm:gap-1.5 md:gap-2 transition w-full sm:w-auto justify-center"
-                                    >
-                                        <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />
-                                        <span className="text-[10px] sm:text-xs md:text-sm">Add Join</span>
-                                    </button>
+                                    <div className="flex gap-2 w-full sm:w-auto">
+                                        <button
+                                            onClick={addJoin}
+                                            disabled={tables.length < 2}
+                                            className="responsive-button bg-indigo-600 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-white rounded-lg font-medium flex items-center gap-1 sm:gap-1.5 md:gap-2 transition flex-1 sm:flex-none justify-center"
+                                        >
+                                            <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />
+                                            <span className="text-[10px] sm:text-xs md:text-sm">Add Join</span>
+                                        </button>
+                                        <button
+                                            onClick={addAppend}
+                                            disabled={tables.length < 2}
+                                            className="responsive-button bg-emerald-600 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-white rounded-lg font-medium flex items-center gap-1 sm:gap-1.5 md:gap-2 transition flex-1 sm:flex-none justify-center"
+                                        >
+                                            <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />
+                                            <span className="text-[10px] sm:text-xs md:text-sm">Append</span>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {tables.length < 2 && (
@@ -762,6 +792,57 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                             >
                                                                 <option value="" className="text-slate-900">Select Column...</option>
                                                                 {rightCols.map(c => <option key={c} value={c} className="text-slate-900">{c}</option>)}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    
+                                    {appends.map((append, index) => {
+                                        const topTable = tables.find(t => t.id === append.topTableId);
+                                        const bottomTable = tables.find(t => t.id === append.bottomTableId);
+                                        const topCols = topTable ? getTableColumns(topTable.id) : [];
+                                        const bottomCols = bottomTable ? getTableColumns(bottomTable.id) : [];
+                                        const matchError = topCols.length > 0 && bottomCols.length > 0 && (JSON.stringify(topCols) !== JSON.stringify(bottomCols));
+
+                                        return (
+                                            <div key={append.id} className={`responsive-card ${theme === 'dark' ? 'bg-slate-800/40' : 'bg-slate-100'} border ${colors.borderSecondary} rounded-lg animate-fade-in-up`}>
+                                                <div className="flex justify-between items-center mb-3 sm:mb-4">
+                                                    <span className={`responsive-text-xs font-bold text-emerald-500 uppercase flex items-center gap-2`}>
+                                                        Append #{index + 1}
+                                                        {matchError && <span className="text-red-400 normal-case text-[10px] bg-red-400/10 px-2 py-0.5 rounded border border-red-400/20">Column names do not match exactly</span>}
+                                                    </span>
+                                                    <button onClick={() => removeAppend(append.id)} className={`${colors.textMuted} hover:text-red-400 p-1`}>
+                                                        <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                                    </button>
+                                                </div>
+                                                <div className="flex flex-col lg:grid lg:grid-cols-5 gap-3 sm:gap-4 items-center">
+                                                    <div className="lg:col-span-2 space-y-2 w-full">
+                                                        <div className={`${colors.bgSecondary} p-2.5 sm:p-3 rounded border ${colors.borderPrimary}`}>
+                                                            <label className={`responsive-text-xs ${colors.textMuted} uppercase font-bold mb-1 block`}>Top Table</label>
+                                                            <select
+                                                                value={append.topTableId}
+                                                                onChange={(e) => updateAppend(append.id, 'topTableId', e.target.value)}
+                                                                className={`w-full bg-transparent responsive-text-sm ${colors.textPrimary} outline-none cursor-pointer`}
+                                                            >
+                                                                {tables.map(t => <option key={t.id} value={t.id} className="text-slate-900">{t.name}</option>)}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex justify-center items-center w-full lg:w-auto py-2 lg:py-0">
+                                                        <span className={`text-xl ${colors.textMuted}`}>+</span>
+                                                    </div>
+                                                    <div className="lg:col-span-2 space-y-2 w-full">
+                                                        <div className={`${colors.bgSecondary} p-2.5 sm:p-3 rounded border ${colors.borderPrimary}`}>
+                                                            <label className={`responsive-text-xs ${colors.textMuted} uppercase font-bold mb-1 block`}>Bottom Table</label>
+                                                            <select
+                                                                value={append.bottomTableId}
+                                                                onChange={(e) => updateAppend(append.id, 'bottomTableId', e.target.value)}
+                                                                className={`w-full bg-transparent responsive-text-sm ${colors.textPrimary} outline-none cursor-pointer`}
+                                                            >
+                                                                {tables.map(t => <option key={t.id} value={t.id} className="text-slate-900">{t.name}</option>)}
                                                             </select>
                                                         </div>
                                                     </div>

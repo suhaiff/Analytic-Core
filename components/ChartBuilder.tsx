@@ -62,18 +62,27 @@ const getChartIcon = (type: string) => {
 interface BucketChartCardProps {
     chart: ChartConfig;
     index: number;
-    theme: 'dark' | 'light';
-    colors: ReturnType<typeof getThemeClasses>;
+    theme: string;
+    colors: any;
+    onRemove: (id: string) => void;
     onTypeChange: (id: string, type: ChartType) => void;
+    onColorChange: (id: string, color: string) => void;
+    onColor2Change: (id: string, color2: string) => void;
+    onMulticolorChange: (id: string, multicolor: boolean) => void;
     onTitleChange: (id: string, title: string) => void;
-    onDragStart: (e: React.DragEvent, chartId: string) => void;
+    onDragStart: (e: React.DragEvent, id: string) => void;
     sections: DashboardSection[];
     currentSectionId?: string;
-    onMoveToSection: (chartId: string, sectionId: string) => void;
+    onMoveToSection: (id: string, sectionId: string) => void;
+    allColumns: string[];
+    onXAxisChange: (id: string, key: string) => void;
+    onMetricChange: (id: string, key: string) => void;
+    onAggregationChange: (id: string, agg: AggregationType) => void;
+    onYAxisChange: (id: string, key: string) => void;
 }
 
 const BucketChartCard: React.FC<BucketChartCardProps> = ({
-    chart, index, theme, colors, onRemove, onTypeChange, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart, sections, currentSectionId, onMoveToSection
+    chart, index, theme, colors, onRemove, onTypeChange, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart, sections, currentSectionId, onMoveToSection, allColumns, onXAxisChange, onMetricChange, onAggregationChange, onYAxisChange
 }) => {
     const [showTypeMenu, setShowTypeMenu] = useState(false);
     const typeMenuRef = useRef<HTMLDivElement>(null);
@@ -83,6 +92,14 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
     const color2MenuRef = useRef<HTMLDivElement>(null);
     const [showSectionMenu, setShowSectionMenu] = useState(false);
     const sectionMenuRef = useRef<HTMLDivElement>(null);
+    const [showXAxisMenu, setShowXAxisMenu] = useState(false);
+    const xAxisMenuRef = useRef<HTMLDivElement>(null);
+    const [showMetricMenu, setShowMetricMenu] = useState(false);
+    const metricMenuRef = useRef<HTMLDivElement>(null);
+    const [showAggMenu, setShowAggMenu] = useState(false);
+    const aggMenuRef = useRef<HTMLDivElement>(null);
+    const [showYAxisMenu, setShowYAxisMenu] = useState(false);
+    const yAxisMenuRef = useRef<HTMLDivElement>(null);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [editedTitle, setEditedTitle] = useState(chart.title);
     const titleInputRef = useRef<HTMLInputElement>(null);
@@ -101,6 +118,18 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
             }
             if (typeMenuRef.current && !typeMenuRef.current.contains(e.target as Node)) {
                 setShowTypeMenu(false);
+            }
+            if (xAxisMenuRef.current && !xAxisMenuRef.current.contains(e.target as Node)) {
+                setShowXAxisMenu(false);
+            }
+            if (metricMenuRef.current && !metricMenuRef.current.contains(e.target as Node)) {
+                setShowMetricMenu(false);
+            }
+            if (aggMenuRef.current && !aggMenuRef.current.contains(e.target as Node)) {
+                setShowAggMenu(false);
+            }
+            if (yAxisMenuRef.current && !yAxisMenuRef.current.contains(e.target as Node)) {
+                setShowYAxisMenu(false);
             }
         };
         document.addEventListener('mousedown', handler);
@@ -131,7 +160,7 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
     const activeColor = chart.color || CHART_COLOR_OPTIONS[0].value;
     const activeColor2 = chart.color2 || CHART_COLOR_OPTIONS[1].value;
 
-    const anyMenuOpen = showColorMenu || showColor2Menu || showSectionMenu || showTypeMenu;
+    const anyMenuOpen = showColorMenu || showColor2Menu || showSectionMenu || showTypeMenu || showXAxisMenu || showMetricMenu || showAggMenu || showYAxisMenu;
 
     return (
         <div
@@ -384,21 +413,99 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
             )}
 
             <div className={`grid grid-cols-3 gap-1.5 sm:gap-2 py-2 sm:py-3 border-t ${theme === 'dark' ? 'border-slate-800/50' : 'border-slate-200'} mt-auto`}>
-                <div className={`text-center p-1.5 sm:p-2 ${theme === 'dark' ? 'bg-slate-950/50' : 'bg-slate-100'} rounded-md sm:rounded-lg overflow-hidden`}>
-                    <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>X-Axis</div>
-                    <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.xAxisKey || "-"}>{chart.xAxisKey || "-"}</div>
+                {/* X-Axis / Dimension 1 */}
+                <div className="relative" ref={xAxisMenuRef}>
+                    <button
+                        onClick={() => setShowXAxisMenu(!showXAxisMenu)}
+                        className={`w-full text-center p-1.5 sm:p-2 rounded-md sm:rounded-lg overflow-hidden transition-all ${showXAxisMenu ? 'ring-2 ring-indigo-500 bg-indigo-500/10' : `${theme === 'dark' ? 'bg-slate-950/50 hover:bg-slate-900' : 'bg-slate-100 hover:bg-slate-200'}`}`}
+                    >
+                        <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>X-Axis</div>
+                        <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.xAxisKey || "-"}>{chart.xAxisKey || "-"}</div>
+                    </button>
+                    {showXAxisMenu && (
+                        <div className={`absolute left-0 bottom-full mb-2 w-48 max-h-64 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-[60] p-1.5 animate-fade-in custom-scrollbar`}>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-2 pt-1 ${colors.textMuted}`}>Change X-Axis</p>
+                            {allColumns.map(col => (
+                                <button
+                                    key={col}
+                                    onClick={() => { onXAxisChange(chart.id, col); setShowXAxisMenu(false); }}
+                                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-all mb-0.5 ${chart.xAxisKey === col ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                >
+                                    {col}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
-                <div className={`text-center p-1.5 sm:p-2 ${theme === 'dark' ? 'bg-slate-950/50' : 'bg-slate-100'} rounded-md sm:rounded-lg overflow-hidden`}>
-                    <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>Metric</div>
-                    <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.dataKey}>{chart.dataKey}</div>
+
+                {/* Metric / DataKey */}
+                <div className="relative" ref={metricMenuRef}>
+                    <button
+                        onClick={() => setShowMetricMenu(!showMetricMenu)}
+                        className={`w-full text-center p-1.5 sm:p-2 rounded-md sm:rounded-lg overflow-hidden transition-all ${showMetricMenu ? 'ring-2 ring-indigo-500 bg-indigo-500/10' : `${theme === 'dark' ? 'bg-slate-950/50 hover:bg-slate-900' : 'bg-slate-100 hover:bg-slate-200'}`}`}
+                    >
+                        <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>Metric</div>
+                        <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={chart.dataKey}>{chart.dataKey}</div>
+                    </button>
+                    {showMetricMenu && (
+                        <div className={`absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 max-h-64 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-[60] p-1.5 animate-fade-in custom-scrollbar`}>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-2 pt-1 ${colors.textMuted}`}>Change Metric</p>
+                            {allColumns.map(col => (
+                                <button
+                                    key={col}
+                                    onClick={() => { onMetricChange(chart.id, col); setShowMetricMenu(false); }}
+                                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-all mb-0.5 ${chart.dataKey === col ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                >
+                                    {col}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
-                <div className={`text-center p-1.5 sm:p-2 ${theme === 'dark' ? 'bg-slate-950/50' : 'bg-slate-100'} rounded-md sm:rounded-lg overflow-hidden`}>
-                    <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>
-                        {(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? 'Y-Axis' : 'Agg'}
-                    </div>
-                    <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? chart.yAxisKey : chart.aggregation}>
-                        {(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? (chart.yAxisKey || "-") : chart.aggregation}
-                    </div>
+
+                {/* Aggregation / Y-Axis */}
+                <div className="relative" ref={(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? yAxisMenuRef : aggMenuRef}>
+                    <button
+                        onClick={() => (chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? setShowYAxisMenu(!showYAxisMenu) : setShowAggMenu(!showAggMenu)}
+                        className={`w-full text-center p-1.5 sm:p-2 rounded-md sm:rounded-lg overflow-hidden transition-all ${((chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? showYAxisMenu : showAggMenu) ? 'ring-2 ring-indigo-500 bg-indigo-500/10' : `${theme === 'dark' ? 'bg-slate-950/50 hover:bg-slate-900' : 'bg-slate-100 hover:bg-slate-200'}`}`}
+                    >
+                        <div className={`text-[9px] sm:text-[10px] ${colors.textMuted} uppercase`}>
+                            {(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? 'Y-Axis' : 'Agg'}
+                        </div>
+                        <div className={`text-[10px] sm:text-xs ${colors.textTertiary} font-mono mt-0.5 sm:mt-1 truncate`} title={(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? chart.yAxisKey : chart.aggregation}>
+                            {(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? (chart.yAxisKey || "-") : chart.aggregation}
+                        </div>
+                    </button>
+                    
+                    {showAggMenu && !(chart.type === 'HEATMAP' || chart.type === 'MATRIX') && (
+                        <div className={`absolute right-0 bottom-full mb-2 w-40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-[60] p-1.5 animate-fade-in`}>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-2 pt-1 ${colors.textMuted}`}>Change Aggregation</p>
+                            {Object.values(AggregationType).map(agg => (
+                                <button
+                                    key={agg}
+                                    onClick={() => { onAggregationChange(chart.id, agg); setShowAggMenu(false); }}
+                                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-all mb-0.5 ${chart.aggregation === agg ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                >
+                                    {agg}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {showYAxisMenu && (chart.type === 'HEATMAP' || chart.type === 'MATRIX') && (
+                        <div className={`absolute right-0 bottom-full mb-2 w-48 max-h-64 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-[60] p-1.5 animate-fade-in custom-scrollbar`}>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-2 pt-1 ${colors.textMuted}`}>Change Y-Axis</p>
+                            {allColumns.map(col => (
+                                <button
+                                    key={col}
+                                    onClick={() => { onYAxisChange(chart.id, col); setShowYAxisMenu(false); }}
+                                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-all mb-0.5 ${chart.yAxisKey === col ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                >
+                                    {col}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -442,6 +549,14 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [activeSuggestionTypeMenuId, setActiveSuggestionTypeMenuId] = useState<string | null>(null);
     const suggestionTypeMenuRef = useRef<HTMLDivElement>(null);
+    const [activeSuggestionXAxisMenuId, setActiveSuggestionXAxisMenuId] = useState<string | null>(null);
+    const suggestionXAxisMenuRef = useRef<HTMLDivElement>(null);
+    const [activeSuggestionMetricMenuId, setActiveSuggestionMetricMenuId] = useState<string | null>(null);
+    const suggestionMetricMenuRef = useRef<HTMLDivElement>(null);
+    const [activeSuggestionAggMenuId, setActiveSuggestionAggMenuId] = useState<string | null>(null);
+    const suggestionAggMenuRef = useRef<HTMLDivElement>(null);
+    const [activeSuggestionYAxisMenuId, setActiveSuggestionYAxisMenuId] = useState<string | null>(null);
+    const suggestionYAxisMenuRef = useRef<HTMLDivElement>(null);
 
     // Manual Chart Builder State
     const [isManualOpen, setIsManualOpen] = useState(false);
@@ -473,6 +588,18 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
             }
             if (suggestionTypeMenuRef.current && !suggestionTypeMenuRef.current.contains(e.target as Node)) {
                 setActiveSuggestionTypeMenuId(null);
+            }
+            if (suggestionXAxisMenuRef.current && !suggestionXAxisMenuRef.current.contains(e.target as Node)) {
+                setActiveSuggestionXAxisMenuId(null);
+            }
+            if (suggestionMetricMenuRef.current && !suggestionMetricMenuRef.current.contains(e.target as Node)) {
+                setActiveSuggestionMetricMenuId(null);
+            }
+            if (suggestionAggMenuRef.current && !suggestionAggMenuRef.current.contains(e.target as Node)) {
+                setActiveSuggestionAggMenuId(null);
+            }
+            if (suggestionYAxisMenuRef.current && !suggestionYAxisMenuRef.current.contains(e.target as Node)) {
+                setActiveSuggestionYAxisMenuId(null);
             }
         };
         document.addEventListener('mousedown', handler);
@@ -571,6 +698,32 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
 
     const onTypeChangeBucket = (id: string, type: ChartType) => {
         setBucket(prev => prev.map(c => c.id === id ? { ...c, type } : c));
+    };
+
+    const onXAxisChangeSuggested = (id: string, xAxisKey: string) => {
+        setSuggestedCharts(prev => prev.map(c => c.id === id ? { ...c, xAxisKey } : c));
+    };
+    const onMetricChangeSuggested = (id: string, dataKey: string) => {
+        setSuggestedCharts(prev => prev.map(c => c.id === id ? { ...c, dataKey } : c));
+    };
+    const onAggregationChangeSuggested = (id: string, aggregation: AggregationType) => {
+        setSuggestedCharts(prev => prev.map(c => c.id === id ? { ...c, aggregation } : c));
+    };
+    const onYAxisChangeSuggested = (id: string, yAxisKey: string) => {
+        setSuggestedCharts(prev => prev.map(c => c.id === id ? { ...c, yAxisKey } : c));
+    };
+
+    const onXAxisChangeBucket = (id: string, xAxisKey: string) => {
+        setBucket(prev => prev.map(c => c.id === id ? { ...c, xAxisKey } : c));
+    };
+    const onMetricChangeBucket = (id: string, dataKey: string) => {
+        setBucket(prev => prev.map(c => c.id === id ? { ...c, dataKey } : c));
+    };
+    const onAggregationChangeBucket = (id: string, aggregation: AggregationType) => {
+        setBucket(prev => prev.map(c => c.id === id ? { ...c, aggregation } : c));
+    };
+    const onYAxisChangeBucket = (id: string, yAxisKey: string) => {
+        setBucket(prev => prev.map(c => c.id === id ? { ...c, yAxisKey } : c));
     };
 
     const handleCustomChart = async () => {
@@ -715,7 +868,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                         {/* Header */}
                         <div className={`p-4 sm:p-6 border-b ${colors.borderPrimary} flex justify-between items-center`}>
                             <h2 className={`font-bold ${colors.textPrimary} text-lg sm:text-xl flex items-center gap-2`}>
-                                <BarChart3 className="w-5 h-5 text-indigo-400" />
+                                <Plus className="w-5 h-5 text-indigo-400" />
                                 Manual Chart Builder
                             </h2>
                             <button onClick={() => setIsManualOpen(false)} className={`p-2 hover:${colors.bgTertiary} rounded-full ${colors.textMuted} transition`}>
@@ -1044,7 +1197,112 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                         )}
                                     </div>
                                     <h3 className={`font-bold ${colors.textSecondary} responsive-text-sm leading-snug`}>{chart.title}</h3>
-                                    <p className={`responsive-text-xs ${colors.textMuted} mt-2 leading-relaxed line-clamp-2`}>{chart.description}</p>
+                                    <p className={`responsive-text-xs ${colors.textMuted} mt-2 leading-relaxed line-clamp-2 pb-3`}>{chart.description}</p>
+                                    
+                                    <div className={`grid grid-cols-3 gap-1 mt-auto pt-3 border-t ${theme === 'dark' ? 'border-slate-700/50' : 'border-slate-100'}`}>
+                                        {/* X-Axis */}
+                                        <div className="relative" ref={activeSuggestionXAxisMenuId === chart.id ? suggestionXAxisMenuRef : null}>
+                                            <button 
+                                                onClick={() => setActiveSuggestionXAxisMenuId(activeSuggestionXAxisMenuId === chart.id ? null : chart.id)}
+                                                className={`w-full flex flex-col items-center justify-center p-1.5 rounded-lg transition-all ${activeSuggestionXAxisMenuId === chart.id ? 'bg-indigo-500/10 ring-1 ring-indigo-500/50' : `hover:bg-indigo-500/5 ${theme === 'dark' ? 'bg-slate-900/40' : 'bg-slate-50'}`}`}
+                                            >
+                                                <span className={`text-[8px] font-bold uppercase tracking-wider ${colors.textMuted}`}>X-Axis</span>
+                                                <span className={`text-[10px] font-medium truncate w-full text-center ${colors.textTertiary}`}>{chart.xAxisKey || '-'}</span>
+                                            </button>
+                                            
+                                            {activeSuggestionXAxisMenuId === chart.id && (
+                                                <div className={`absolute left-0 bottom-full mb-1 w-48 max-h-48 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-50 p-1.5 animate-fade-in custom-scrollbar`}>
+                                                    <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-2 pt-1 ${colors.textMuted}`}>Change X-Axis</p>
+                                                    {allColumns.map(col => (
+                                                        <button
+                                                            key={col}
+                                                            onClick={() => { onXAxisChangeSuggested(chart.id, col); setActiveSuggestionXAxisMenuId(null); }}
+                                                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] transition-all mb-0.5 ${chart.xAxisKey === col ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                        >
+                                                            {col}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Metric */}
+                                        <div className="relative" ref={activeSuggestionMetricMenuId === chart.id ? suggestionMetricMenuRef : null}>
+                                            <button 
+                                                onClick={() => setActiveSuggestionMetricMenuId(activeSuggestionMetricMenuId === chart.id ? null : chart.id)}
+                                                className={`w-full flex flex-col items-center justify-center p-1.5 rounded-lg transition-all ${activeSuggestionMetricMenuId === chart.id ? 'bg-indigo-500/10 ring-1 ring-indigo-500/50' : `hover:bg-indigo-500/5 ${theme === 'dark' ? 'bg-slate-900/40' : 'bg-slate-50'}`}`}
+                                            >
+                                                <span className={`text-[8px] font-bold uppercase tracking-wider ${colors.textMuted}`}>Metric</span>
+                                                <span className={`text-[10px] font-medium truncate w-full text-center ${colors.textTertiary}`}>{chart.dataKey}</span>
+                                            </button>
+                                            
+                                            {activeSuggestionMetricMenuId === chart.id && (
+                                                <div className={`absolute left-1/2 -translate-x-1/2 bottom-full mb-1 w-48 max-h-48 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-50 p-1.5 animate-fade-in custom-scrollbar`}>
+                                                    <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-2 pt-1 ${colors.textMuted}`}>Change Metric</p>
+                                                    {allColumns.map(col => (
+                                                        <button
+                                                            key={col}
+                                                            onClick={() => { onMetricChangeSuggested(chart.id, col); setActiveSuggestionMetricMenuId(null); }}
+                                                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] transition-all mb-0.5 ${chart.dataKey === col ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                        >
+                                                            {col}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Agg / Y-Axis */}
+                                        <div className="relative" ref={(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? (activeSuggestionYAxisMenuId === chart.id ? suggestionYAxisMenuRef : null) : (activeSuggestionAggMenuId === chart.id ? suggestionAggMenuRef : null)}>
+                                            <button 
+                                                onClick={() => {
+                                                    if (chart.type === 'HEATMAP' || chart.type === 'MATRIX') {
+                                                        setActiveSuggestionYAxisMenuId(activeSuggestionYAxisMenuId === chart.id ? null : chart.id);
+                                                    } else {
+                                                        setActiveSuggestionAggMenuId(activeSuggestionAggMenuId === chart.id ? null : chart.id);
+                                                    }
+                                                }}
+                                                className={`w-full flex flex-col items-center justify-center p-1.5 rounded-lg transition-all ${((chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? activeSuggestionYAxisMenuId === chart.id : activeSuggestionAggMenuId === chart.id) ? 'bg-indigo-500/10 ring-1 ring-indigo-500/50' : `hover:bg-indigo-500/5 ${theme === 'dark' ? 'bg-slate-900/40' : 'bg-slate-50'}`}`}
+                                            >
+                                                <span className={`text-[8px] font-bold uppercase tracking-wider ${colors.textMuted}`}>
+                                                    {(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? 'Y-Axis' : 'Agg'}
+                                                </span>
+                                                <span className={`text-[10px] font-medium truncate w-full text-center ${colors.textTertiary}`}>
+                                                    {(chart.type === 'HEATMAP' || chart.type === 'MATRIX') ? (chart.yAxisKey || '-') : chart.aggregation}
+                                                </span>
+                                            </button>
+                                            
+                                            {activeSuggestionAggMenuId === chart.id && !(chart.type === 'HEATMAP' || chart.type === 'MATRIX') && (
+                                                <div className={`absolute right-0 bottom-full mb-1 w-40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-50 p-1.5 animate-fade-in`}>
+                                                    <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-2 pt-1 ${colors.textMuted}`}>Change Aggregation</p>
+                                                    {Object.values(AggregationType).map(agg => (
+                                                        <button
+                                                            key={agg}
+                                                            onClick={() => { onAggregationChangeSuggested(chart.id, agg); setActiveSuggestionAggMenuId(null); }}
+                                                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] transition-all mb-0.5 ${chart.aggregation === agg ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                        >
+                                                            {agg}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {activeSuggestionYAxisMenuId === chart.id && (chart.type === 'HEATMAP' || chart.type === 'MATRIX') && (
+                                                <div className={`absolute right-0 bottom-full mb-1 w-48 max-h-48 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-50 p-1.5 animate-fade-in custom-scrollbar`}>
+                                                    <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-2 pt-1 ${colors.textMuted}`}>Change Y-Axis</p>
+                                                    {allColumns.map(col => (
+                                                        <button
+                                                            key={col}
+                                                            onClick={() => { onYAxisChangeSuggested(chart.id, col); setActiveSuggestionYAxisMenuId(null); }}
+                                                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] transition-all mb-0.5 ${chart.yAxisKey === col ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                        >
+                                                            {col}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             )
                         })
@@ -1217,7 +1475,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                         className={`p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl transition hover:${colors.bgTertiary} ${colors.textMuted}`}
                                         title="Manual Chart Builder"
                                     >
-                                        <Settings2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     </button>
                                     <button
                                         onClick={handleCustomChart}
@@ -1331,6 +1589,11 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                         sections={sections}
                                                         currentSectionId={section.id}
                                                         onMoveToSection={(chartId, newSectionId) => setBucket(prev => prev.map(c => c.id === chartId ? { ...c, sectionId: newSectionId || undefined } : c))}
+                                                        allColumns={allColumns}
+                                                        onXAxisChange={onXAxisChangeBucket}
+                                                        onMetricChange={onMetricChangeBucket}
+                                                        onAggregationChange={onAggregationChangeBucket}
+                                                        onYAxisChange={onYAxisChangeBucket}
                                                     />
                                                 ))}
                                             </div>
@@ -1376,6 +1639,11 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                 sections={sections}
                                                 currentSectionId={undefined}
                                                 onMoveToSection={(chartId, newSectionId) => setBucket(prev => prev.map(c => c.id === chartId ? { ...c, sectionId: newSectionId || undefined } : c))}
+                                                allColumns={allColumns}
+                                                onXAxisChange={onXAxisChangeBucket}
+                                                onMetricChange={onMetricChangeBucket}
+                                                onAggregationChange={onAggregationChangeBucket}
+                                                onYAxisChange={onYAxisChangeBucket}
                                             />
                                         ))}
                                     </div>

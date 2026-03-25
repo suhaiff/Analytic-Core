@@ -29,6 +29,7 @@ interface DashboardProps {
     onHome: () => void;
     onSave: (name: string, charts: ChartConfig[], sections?: DashboardSection[], filterColumns?: string[]) => void;
     onRefresh?: () => Promise<void>;
+    isReadOnly?: boolean;
 }
 
 // Vibrant dark mode palette
@@ -277,28 +278,28 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
             return (
                 <div style={{ width: '100%', height: '100%', overflowX: data.length > 15 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
                     <div style={{ minWidth: data.length > 15 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart {...commonProps}>
-                                <defs>
-                                    <linearGradient id={`barGradient-${config.id}`} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor={config.color || COLORS[0]} stopOpacity={0.9} />
-                                        <stop offset="100%" stopColor={config.color || COLORS[0]} stopOpacity={0.6} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
-                                <XAxis
-                                    dataKey={config.xAxisKey}
-                                    {...AxisProps}
-                                    tick={<InteractiveTick tickFormatter={xAxisFormatter} isDate={isXDate} />}
-                                    angle={isXDate ? 0 : -25}
-                                    textAnchor={isXDate ? "middle" : "end"}
-                                    height={isXDate ? (isExporting ? 40 : 50) : (isExporting ? 75 : 90)}
-                                    interval={data.length > 30 ? 'preserveStartEnd' : 0}
-                                />
-                                <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
-                                <Tooltip content={<CustomTooltip />} />
-                                <Legend verticalAlign="top" height={isExporting ? 28 : 36} content={<ChartLegend />} />
-                                <Bar
+            <ResponsiveContainer width="100%" height="100%">
+                        <BarChart {...commonProps}>
+                            <defs>
+                                <linearGradient id={`barGradient-${config.id}`} x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor={config.color || COLORS[0]} stopOpacity={0.9} />
+                                    <stop offset="100%" stopColor={config.color || COLORS[0]} stopOpacity={0.6} />
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                            <XAxis
+                                dataKey={config.xAxisKey}
+                                {...AxisProps}
+                                tick={<InteractiveTick tickFormatter={xAxisFormatter} isDate={isXDate} />}
+                                angle={isXDate ? 0 : -25}
+                                textAnchor={isXDate ? "middle" : "end"}
+                                height={isXDate ? (isExporting ? 40 : 50) : (isExporting ? 75 : 90)}
+                                interval={data.length > 30 ? 'preserveStartEnd' : 0}
+                            />
+                            <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
+                            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
+                            <Legend verticalAlign="top" height={isExporting ? 28 : 36} content={<ChartLegend />} />
+                            <Bar
                                     dataKey={config.dataKey}
                                     radius={0}
                                     onClick={(d: any) => {
@@ -370,7 +371,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                         return str.length > 20 ? str.substring(0, 17) + '..' : str;
                                     }} />}
                                 />
-                                <Tooltip content={<CustomTooltip />} />
+                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                                 <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
                                 <Bar
                                     dataKey={config.dataKey}
@@ -427,7 +428,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
-                                <Tooltip content={<CustomTooltip />} />
+                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                                 <Legend verticalAlign="top" height={isExporting ? 28 : 36} content={<ChartLegend />} />
                                 <Bar
                                     dataKey={config.dataKey}
@@ -499,7 +500,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
-                                <Tooltip content={<CustomTooltip />} />
+                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                                 <Legend verticalAlign="top" height={isExporting ? 28 : 36} content={<ChartLegend />} />
                                 <Bar
                                     dataKey={config.dataKey}
@@ -553,7 +554,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
-                                <Tooltip content={<CustomTooltip />} />
+                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                                 <Legend verticalAlign="top" height={isExporting ? 28 : 36} content={<ChartLegend />} />
                                 <Bar
                                     dataKey={config.dataKey}
@@ -620,7 +621,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
-                                <Tooltip content={<CustomTooltip />} />
+                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                                 <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
                                 <Line
                                     type="monotone"
@@ -674,7 +675,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
-                                <Tooltip content={<CustomTooltip />} />
+                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                                 <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
                                 <defs>
                                     <linearGradient id={`areaGradient-${config.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -803,42 +804,8 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     interval={data.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
-                                <Tooltip
-                                    content={({ active, payload, label }: any) => {
-                                        if (active && payload && payload.length) {
-                                            const d = payload[0]?.payload;
-                                            let displayLabel = label || 'Not Specified';
-                                            if (label && isXDate) {
-                                                const num = typeof label === 'number' ? label : parseFloat(label);
-                                                if (!isNaN(num) && isExcelSerialDate(num)) {
-                                                    displayLabel = excelSerialToDate(num);
-                                                }
-                                            } else if (label && isXCurrency && typeof label === 'number') {
-                                                displayLabel = formatCurrency(label);
-                                            }
-                                            return (
-                                                <div style={{
-                                                    backgroundColor: themeColors.chartTooltipBg,
-                                                    border: `1px solid ${themeColors.chartTooltipBorder}`,
-                                                    borderRadius: '8px',
-                                                    padding: '8px 12px',
-                                                    boxShadow: theme === 'dark' ? '0 10px 15px -3px rgba(0,0,0,0.5)' : '0 10px 15px -3px rgba(0,0,0,0.1)',
-                                                }}>
-                                                    <p style={{ color: themeColors.chartTooltipText, fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>
-                                                        {displayLabel}
-                                                    </p>
-                                                    <p style={{ color: d?._isPositive ? '#10b981' : '#f43f5e', fontSize: '11px', margin: '2px 0' }}>
-                                                        Change: <strong>{formatByColumn(d?.[config.dataKey], config.dataKey)}</strong>
-                                                    </p>
-                                                    <p style={{ color: themeColors.chartTooltipText, fontSize: '11px', margin: '2px 0' }}>
-                                                        Running Total: <strong>{formatByColumn(d?._total, config.dataKey)}</strong>
-                                                    </p>
-                                                </div>
-                                            );
-                                        }
-                                        return null;
-                                    }}
-                                />
+                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
+                                {/* Custom tooltip code above was replaced by standard CustomTooltip for consistency, or I should just add cursor to the existing one */}
                                 <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
                                 {/* Invisible base bar */}
                                 <Bar dataKey="_base" stackId="waterfall" fill="transparent" isAnimationActive={false} />
@@ -1446,7 +1413,7 @@ const FilterSidebar = React.memo<FilterSidebarProps>(({
 });
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
-export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, sections: explicitSections = [], filterColumns = [], onHome, onSave, onRefresh }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, sections: explicitSections = [], filterColumns = [], onHome, onSave, onRefresh, isReadOnly = false }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
 
@@ -1455,6 +1422,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     const [currentSections, setCurrentSections] = useState<DashboardSection[]>(explicitSections);
     const [currentFilterColumns, setCurrentFilterColumns] = useState<string[]>(filterColumns);
     const [isEditing, setIsEditing] = useState(false);
+    // Ref to prevent the prop-sync useEffect from overwriting local state after a self-save
+    const isSelfSaveRef = useRef(false);
 
     // --- TIME INTELLIGENCE STATE ---
     const [chartDrillStates, setChartDrillStates] = useState<{ [chartId: string]: { level: 'year' | 'month' | 'day', year: number | null, month: number | null } }>({});
@@ -1856,14 +1825,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         }
     };
 
-    // Update local state if props change (e.g. loading a new dashboard)
+    // Update local state if props change (e.g. loading a new dashboard from Landing page)
+    // But do NOT reset if this was a self-save (isSelfSaveRef guards against that)
     useEffect(() => {
-        if (dataModel) {
-            setCurrentCharts(chartConfigs);
-            setCurrentFilterColumns(filterColumns);
-            setDashboardName(dataModel.name);
+        if (isSelfSaveRef.current) {
+            isSelfSaveRef.current = false;
+            return;
         }
-    }, [chartConfigs, filterColumns, dataModel?.name]);
+        if (dataModel) {
+            setCurrentCharts(Array.isArray(chartConfigs) ? chartConfigs : []);
+            setCurrentFilterColumns(filterColumns);
+            setCurrentSections(explicitSections);
+            setDashboardName(dataModel.name || "Untitled Dashboard");
+        }
+    }, [chartConfigs, filterColumns, dataModel?.name, explicitSections]);
 
     const kpis = useMemo(() => {
         if (!Array.isArray(currentCharts)) return [];
@@ -1880,7 +1855,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     const [expandedChartId, setExpandedChartId] = useState<string | null>(null);
 
     // --- Section-based Tabs ---
-    const CHARTS_PER_TAB = 4;
+    const CHARTS_PER_TAB = 6;
 
     // Words to skip when picking a section name from chart titles
     const STOP_WORDS = new Set([
@@ -1891,28 +1866,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         'report', 'overview', 'summary', 'data', 'view', 'all', 'each'
     ]);
 
-    // Splits chart list into sections
+    // Splits chart list into sections based on explicit sectionId assignments from ChartBuilder.
+    // No automatic redistribution or splitting — trust the user's assignments exactly.
     const sections = useMemo(() => {
         if (currentSections && currentSections.length > 0) {
-            // Group by explicit sectionId
             return currentSections.map(s =>
                 charts.filter(c => c.sectionId === s.id)
-            ).filter(group => group.length > 0 || currentSections.length > 0);
-            // We keep empty sections if they were explicitly defined
+            );
         }
-
-        // Fallback to automatic splitting
-        const result: ChartConfig[][] = [];
-        for (let i = 0; i < charts.length; i += CHARTS_PER_TAB) {
-            result.push(charts.slice(i, i + CHARTS_PER_TAB));
-        }
-        return result;
-    }, [charts, explicitSections]);
+        // Fallback: no sections defined — show all charts in a single group
+        return charts.length > 0 ? [charts] : [];
+    }, [charts, currentSections]);
 
     // Derive unique names for ALL sections
     const deriveSectionNames = (allSections: ChartConfig[][]): string[] => {
         if (currentSections && currentSections.length > 0) {
             return currentSections.map(s => s.name);
+        }
+        
+        if (allSections.length === 0) return [];
+        if (allSections.length === 1) {
+             // For a single section, try to pick a good name from its charts, or fallback to 'Overview'
+             const firstSec = allSections[0];
+             const commonWords = new Array<string>();
+             firstSec.slice(0, 5).forEach(c => {
+                 c.title.split(/\s+/).forEach(w => {
+                     const clean = w.toLowerCase().replace(/[^a-z]/g, '');
+                     if (clean.length > 3 && !STOP_WORDS.has(clean)) commonWords.push(clean);
+                 });
+             });
+             
+             if (commonWords.length > 0) {
+                 const counts: Record<string, number> = {};
+                 commonWords.forEach(w => counts[w] = (counts[w] || 0) + 1);
+                 const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+                 return [best.charAt(0).toUpperCase() + best.slice(1)];
+             }
+             return ["Overview"];
         }
 
         // Normalize a word: lowercase, strip trailing 's'/'es' for basic plural handling
@@ -2041,11 +2031,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
     const saveTabName = () => {
         if (editingTabIndex !== null) {
-            const derived = deriveSectionNames(sections);
-            const originalName = derived[editingTabIndex] || `Section ${editingTabIndex + 1}`;
-            const newName = editingTabValue.trim() || originalName;
-            // Key by the original auto-derived name so rename survives chart additions
-            setUserRenamedTabs(prev => ({ ...prev, [originalName]: newName }));
+            const newName = editingTabValue.trim();
+            if (!newName) { setEditingTabIndex(null); return; }
+
+            if (currentSections && currentSections.length > editingTabIndex) {
+                // Directly update the name in currentSections — this persists with the save
+                setCurrentSections(prev => prev.map((s, i) =>
+                    i === editingTabIndex ? { ...s, name: newName } : s
+                ));
+            } else {
+                // Fallback-mode (no explicit sections): store in the rename map for display only
+                const derived = deriveSectionNames(sections);
+                const originalName = derived[editingTabIndex] || `Section ${editingTabIndex + 1}`;
+                setUserRenamedTabs(prev => ({ ...prev, [originalName]: newName }));
+            }
             setEditingTabIndex(null);
         }
     };
@@ -2194,6 +2193,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
             alert("Please enter a valid name");
             return;
         }
+
+        // Mark this as a self-save so the prop-sync useEffect doesn't reset our local state
+        isSelfSaveRef.current = true;
+
+        // Save exactly what is in local state — ChartBuilder already assigned correct sectionIds
         onSave(dashboardName, currentCharts, currentSections, currentFilterColumns);
         setIsSaveModalOpen(false);
     };
@@ -2449,14 +2453,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
                             <div className="flex items-center gap-2 sm:gap-3 no-export w-full md:w-auto justify-between md:justify-end overflow-x-auto pb-1 md:pb-0">
                                 <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => setIsEditing(true)}
-                                        className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} whitespace-nowrap active-press`}
-                                        title="Edit Charts"
-                                    >
-                                        <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                        <span className="hidden sm:inline">Edit / Add Charts</span>
-                                    </button>
+                                    {!isReadOnly && (
+                                        <button
+                                            onClick={() => setIsEditing(true)}
+                                            className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} whitespace-nowrap active-press`}
+                                            title="Edit Charts"
+                                        >
+                                            <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                            <span className="hidden sm:inline">Edit / Add Charts</span>
+                                        </button>
+                                    )}
                                     <button
                                         onClick={openSaveModal}
                                         className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} active-press`}

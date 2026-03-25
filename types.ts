@@ -29,6 +29,12 @@ export interface JoinConfig {
   type: JoinType;
 }
 
+export interface AppendConfig {
+  id: string;
+  topTableId: string;
+  bottomTableId: string;
+}
+
 export enum ChartType {
   BAR = 'BAR',
   LINE = 'LINE',
@@ -84,6 +90,7 @@ export interface DataModel {
   sourceType?: 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database';
   headerIndex?: number;
   joinConfigs?: JoinConfig[];
+  appendConfigs?: AppendConfig[];
   tableConfigs?: { [tableId: string]: { headerIndex: number; name: string } };
 }
 

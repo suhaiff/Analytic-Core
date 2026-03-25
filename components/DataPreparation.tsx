@@ -60,7 +60,7 @@ interface CustomColumnConfig {
     name: string;
     columnA: string;
     columnB: string;
-    operation: 'add' | 'subtract' | 'multiply' | 'divide' | 'concat' | 'upper' | 'lower' | 'trim';
+    operation: 'add' | 'subtract' | 'multiply' | 'divide' | 'concat';
 }
 
 const OPERATOR_LABELS: Record<ConditionalOperator, string> = {
@@ -81,9 +81,6 @@ const OPERATION_LABELS: Record<string, string> = {
     multiply: 'Multiply (×)',
     divide: 'Divide (÷)',
     concat: 'Concatenate Text',
-    upper: 'UPPER CASE',
-    lower: 'lower case',
-    trim: 'Trim Whitespace',
 };
 
 const OPERATION_SYMBOLS: Record<string, string> = {
@@ -92,12 +89,7 @@ const OPERATION_SYMBOLS: Record<string, string> = {
     multiply: '×',
     divide: '÷',
     concat: '&',
-    upper: 'ABC',
-    lower: 'abc',
-    trim: '✂️',
-};
-
-// ─── Helper: Evaluate a conditional clause against a row ────────────────────
+}; // ─── Helper: Evaluate a conditional clause against a row ────────────────────
 
 function evaluateClause(clause: ConditionalClause, row: any): boolean {
     const cellValue = row[clause.column];
@@ -504,6 +496,22 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
         setShowConditionalModal(false);
     };
 
+    // ─── Filter Helpers ──────────────────────────────────────────────────────
+
+    const detectColType = (col: string): ColFilterType => {
+        const vals = mergedData.slice(0, 30).map(r => r[col]).filter(v => v !== null && v !== undefined && v !== '');
+        if (vals.length === 0) return 'text';
+        
+        // Remove currency symbols and formatting for number detection
+        const cleanVals = vals.map(v => String(v).replace(/[$€£₹,]/g, '').trim());
+        const numCount = cleanVals.filter(v => !isNaN(Number(v)) && v !== '').length;
+        if (numCount >= vals.length * 0.7) return 'number';
+        
+        const dateCount = vals.filter(v => { const d = new Date(v); return !isNaN(d.getTime()) && String(v).match(/\d{4}[-/]\d{1,2}/); }).length;
+        if (dateCount >= vals.length * 0.7) return 'date';
+        return 'text';
+    };
+
     // ─── Custom (Computed) Column ───────────────────────────────────────────
 
     const openCustomModal = () => {
@@ -517,8 +525,10 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
     };
 
     const computeCustomValue = (a: any, b: any, op: string): any => {
-        const numA = Number(a) || 0;
-        const numB = Number(b) || 0;
+        const cleanA = String(a ?? '').replace(/[$€£₹,]/g, '').trim();
+        const cleanB = String(b ?? '').replace(/[$€£₹,]/g, '').trim();
+        const numA = Number(cleanA) || 0;
+        const numB = Number(cleanB) || 0;
         const strA = String(a ?? '');
         const strB = String(b ?? '');
         switch (op) {
@@ -527,9 +537,6 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
             case 'multiply': return numA * numB;
             case 'divide': return numB !== 0 ? numA / numB : 0;
             case 'concat': return strA + strB;
-            case 'upper': return strA.toUpperCase();
-            case 'lower': return strA.toLowerCase();
-            case 'trim': return strA.trim();
             default: return 0;
         }
     };
@@ -554,6 +561,23 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
             return;
         }
 
+        // Validate types
+        const typeA = detectColType(customCol.columnA);
+        const typeB = detectColType(customCol.columnB);
+        const isArithmetic = ['add', 'subtract', 'multiply', 'divide'].includes(customCol.operation);
+        
+        if (isArithmetic) {
+            if (typeA !== 'number' || typeB !== 'number') {
+                alert(`Cannot perform arithmetic operations on non-numeric columns.\nColumn A (${customCol.columnA}) is ${typeA}.\nColumn B (${customCol.columnB}) is ${typeB}.`);
+                return;
+            }
+        } else if (customCol.operation === 'concat') {
+            if (typeA !== 'text' || typeB !== 'text') {
+                alert(`Concatenation is only allowed when both columns are text.\nColumn A (${customCol.columnA}) is ${typeA}.\nColumn B (${customCol.columnB}) is ${typeB}.`);
+                return;
+            }
+        }
+
         const newData = mergedData.map(row => ({
             ...row,
             [trimmedName]: computeCustomValue(row[customCol.columnA], row[customCol.columnB], customCol.operation),
@@ -575,17 +599,6 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
         });
         setAddedColumns(prev => prev.filter(c => c !== colName));
         onDataChange(newData, newColumns);
-    };
-
-    // ─── Filter Helpers ──────────────────────────────────────────────────────
-
-    const detectColType = (col: string): ColFilterType => {
-        const vals = mergedData.slice(0, 30).map(r => r[col]).filter(v => v !== null && v !== undefined && v !== '');
-        const numCount = vals.filter(v => !isNaN(Number(v))).length;
-        if (numCount >= vals.length * 0.7 && vals.length > 0) return 'number';
-        const dateCount = vals.filter(v => { const d = new Date(v); return !isNaN(d.getTime()) && String(v).match(/\d{4}[-/]\d{1,2}/); }).length;
-        if (dateCount >= vals.length * 0.7 && vals.length > 0) return 'date';
-        return 'text';
     };
 
     const openFilterModal = (col: string) => {
@@ -953,6 +966,7 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                             {displayColumns.map((col, idx) => {
                                 const isAdded = addedColumns.includes(col);
                                 const isMenuOpen = menuColumn === col;
+                                const colType = detectColType(col);
                                 return (
                                     <th
                                         key={`${col}-${idx}`}
@@ -1031,7 +1045,8 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                                     <Scissors className="w-3.5 h-3.5 text-amber-400" /> Split Column
                                                 </button>
                                                 {/* Format sub-menu */}
-                                                <div className={`relative`}>
+                                                {colType === 'text' && (
+                                                    <div className={`relative`}>
                                                     <div
                                                         className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs ${colors.textSecondary} hover:${theme === 'dark' ? 'bg-slate-700/60' : 'bg-slate-100'} transition cursor-pointer ${formatSubMenuOpen ? (theme === 'dark' ? 'bg-slate-700/60' : 'bg-slate-100') : ''}`}
                                                         onClick={(e) => { e.stopPropagation(); setFormatSubMenuOpen(prev => !prev); }}
@@ -1046,18 +1061,23 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                                             <button onClick={() => applyFormat(col, 'title')} className={`block w-full px-3 py-2 text-xs ${colors.textSecondary} hover:${theme === 'dark' ? 'bg-slate-700/60' : 'bg-slate-100'} transition text-left`}>Title Case</button>
                                                             <button onClick={() => applyFormat(col, 'capitalize')} className={`block w-full px-3 py-2 text-xs ${colors.textSecondary} hover:${theme === 'dark' ? 'bg-slate-700/60' : 'bg-slate-100'} transition text-left`}>Capitalize</button>
                                                         </div>
-                                                    )}
-                                                </div>
-                                                <button onClick={() => handleColumnAction('trim', col)} className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs ${colors.textSecondary} hover:${theme === 'dark' ? 'bg-slate-700/60' : 'bg-slate-100'} transition text-left`}>
-                                                    <ArrowDownAZ className="w-3.5 h-3.5 text-cyan-400" /> Trim Whitespace
-                                                </button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {colType === 'text' && (
+                                                    <button onClick={() => handleColumnAction('trim', col)} className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs ${colors.textSecondary} hover:${theme === 'dark' ? 'bg-slate-700/60' : 'bg-slate-100'} transition text-left`}>
+                                                        <ArrowDownAZ className="w-3.5 h-3.5 text-cyan-400" /> Trim Whitespace
+                                                    </button>
+                                                )}
                                                 <div className={`my-1 border-t ${colors.borderPrimary}`} />
                                                 <button onClick={() => handleColumnAction('duplicate', col)} className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs ${colors.textSecondary} hover:${theme === 'dark' ? 'bg-slate-700/60' : 'bg-slate-100'} transition text-left`}>
                                                     <Copy className="w-3.5 h-3.5 text-violet-400" /> Duplicate Column
                                                 </button>
-                                                <button onClick={() => handleColumnAction('datetime', col)} className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs ${colors.textSecondary} hover:${theme === 'dark' ? 'bg-slate-700/60' : 'bg-slate-100'} transition text-left`}>
-                                                    <Calendar className="w-3.5 h-3.5 text-orange-400" /> Date / Time
-                                                </button>
+                                                {colType === 'date' && (
+                                                    <button onClick={() => handleColumnAction('datetime', col)} className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs ${colors.textSecondary} hover:${theme === 'dark' ? 'bg-slate-700/60' : 'bg-slate-100'} transition text-left`}>
+                                                        <Calendar className="w-3.5 h-3.5 text-orange-400" /> Date / Time
+                                                    </button>
+                                                )}
                                             </div>
                                         )}
                                     </th>
@@ -1414,7 +1434,7 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                     <div className="flex justify-center flex-col items-center">
                                         <label className={`block text-[10px] uppercase font-bold ${colors.textMuted} mb-1 text-center`}>Operation</label>
                                         <div className="flex flex-wrap justify-center gap-1.5 max-w-[170px] sm:max-w-none">
-                                            {(['add', 'subtract', 'multiply', 'divide', 'concat', 'upper', 'lower', 'trim'] as const).map(op => (
+                                            {(['add', 'subtract', 'multiply', 'divide', 'concat'] as const).map(op => (
                                                 <button
                                                     key={op}
                                                     onClick={() => setCustomCol(prev => ({ ...prev, operation: op }))}
@@ -1651,16 +1671,9 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                 </button>
                             </div>
                             <div className="flex gap-2 mt-3">
-                                {(['text', 'number', 'date'] as const).map(t => (
-                                    <button key={t} onClick={() => setFilterType(t)}
-                                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition border ${
-                                            filterType === t
-                                                ? 'bg-indigo-600 border-indigo-500 text-white'
-                                                : `${colors.borderPrimary} ${colors.textMuted} hover:${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-100'}`
-                                        }`}>
-                                        {t === 'text' ? 'Text / List' : t === 'number' ? '123 Number' : '📅 Date'}
-                                    </button>
-                                ))}
+                                <span className="px-3 py-1 rounded-lg text-xs font-semibold transition border bg-indigo-600 border-indigo-500 text-white">
+                                    {filterType === 'text' ? 'Text / List' : filterType === 'number' ? '123 Number' : '📅 Date'}
+                                </span>
                             </div>
                         </div>
 

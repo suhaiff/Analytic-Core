@@ -59,6 +59,7 @@ function AppContent() {
 
   // Saved Dashboards State
   const [savedDashboards, setSavedDashboards] = useState<SavedDashboard[]>([]);
+  const [isSavedView, setIsSavedView] = useState(false);
 
   // Check for logged in user on init
   useEffect(() => {
@@ -304,8 +305,8 @@ function AppContent() {
           headerIndices[id] = cfg.headerIndex;
         });
 
-        // Re-perform joins on refreshed data
-        const joinResult = performJoins(tables, dataModel.joinConfigs, headerIndices);
+        // Re-perform joins and appends on refreshed data
+        const joinResult = performJoins(tables, dataModel.joinConfigs, headerIndices, dataModel.appendConfigs);
         finalRows = joinResult.data;
       } else {
         // ── Single-sheet fallback ──
@@ -360,6 +361,7 @@ function AppContent() {
     setFilterColumns(cols);
     if (sections) setDashboardSections(sections);
     setStep(Step.DASHBOARD);
+    setIsSavedView(false);
   };
 
   const handleReturnHomeRequest = () => {
@@ -392,10 +394,10 @@ function AppContent() {
       filterColumns: finalFilterColumns
     };
 
-    // Also update current App state so the UI stays in sync
-    if (updatedFilterColumns) {
-      setFilterColumns(updatedFilterColumns);
-    }
+    // Update App state after successful save so Dashboard props match current state
+    setChartConfigs(currentCharts);
+    if (currentSections) setDashboardSections(currentSections);
+    if (updatedFilterColumns) setFilterColumns(updatedFilterColumns);
 
     try {
       await dashboardService.saveDashboard(currentUser.id, newDash);
@@ -414,6 +416,7 @@ function AppContent() {
     setDashboardSections(dash.sections || []);
     setFilterColumns(dash.filterColumns || []);
     setStep(Step.DASHBOARD);
+    setIsSavedView(true);
   };
 
   const handleDeleteDashboard = async (id: string) => {
@@ -549,6 +552,7 @@ function AppContent() {
             onHome={handleReturnHomeRequest}
             onSave={handleSaveDashboard}
             onRefresh={handleRefresh}
+            isReadOnly={isSavedView}
           />
         )}
       </div>

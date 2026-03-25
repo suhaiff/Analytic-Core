@@ -1,4 +1,4 @@
-import { DataTable, JoinConfig, JoinType, ProcessedRow, RawData } from '../types';
+import { DataTable, JoinConfig, JoinType, AppendConfig, ProcessedRow, RawData } from '../types';
 
 export const processRawData = (rawData: RawData, headerIndex: number): { headers: string[], rows: any[] } => {
   if (!rawData.rows.length) return { headers: [], rows: [] };
@@ -21,7 +21,8 @@ export const processRawData = (rawData: RawData, headerIndex: number): { headers
 export const performJoins = (
   tables: DataTable[], 
   joins: JoinConfig[], 
-  headerIndices: {[tableId: string]: number}
+  headerIndices: {[tableId: string]: number},
+  appends: AppendConfig[] = []
 ): { data: any[], columns: string[] } => {
   
   // 1. Process all raw tables into structured arrays of objects
@@ -34,11 +35,30 @@ export const performJoins = (
 
   if (tables.length === 0) return { data: [], columns: [] };
 
+  // 1.5. Apply Appends
+  // We append bottom rules into top rules
+  appends.forEach(append => {
+    const top = processedTables[append.topTableId];
+    const bottom = processedTables[append.bottomTableId];
+    if (top && bottom) {
+       // Only append if headers match exactly
+       if (JSON.stringify(top.headers) === JSON.stringify(bottom.headers)) {
+           top.rows = top.rows.concat(bottom.rows);
+       }
+    }
+  });
+
   // Start with the first table as the base
-  // Important: The base data MUST start with table 0 prefix to match join logic expectation
   const table0 = tables[0];
   const table0Data = processedTables[table0.id];
-  
+
+  // If there are no joins, we just return the first table's data (which now includes any appends assigned to it)
+  // without modifying the column names (no table prefixes).
+  if (joins.length === 0) {
+      return { data: table0Data.rows, columns: table0Data.headers };
+  }
+
+  // Important: The base data MUST start with table 0 prefix to match join logic expectation
   let resultData = table0Data.rows.map(row => {
     const newRow: any = {};
     Object.keys(row).forEach(key => {
