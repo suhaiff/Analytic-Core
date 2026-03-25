@@ -66,6 +66,7 @@ interface BucketChartCardProps {
     colors: ReturnType<typeof getThemeClasses>;
     onTypeChange: (id: string, type: ChartType) => void;
     onTitleChange: (id: string, title: string) => void;
+    onTypeChange: (id: string, type: ChartType) => void;
     onDragStart: (e: React.DragEvent, chartId: string) => void;
     sections: DashboardSection[];
     currentSectionId?: string;
@@ -73,7 +74,11 @@ interface BucketChartCardProps {
 }
 
 const BucketChartCard: React.FC<BucketChartCardProps> = ({
+<<<<<<< HEAD
     chart, index, theme, colors, onRemove, onTypeChange, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart, sections, currentSectionId, onMoveToSection
+=======
+    chart, index, theme, colors, getIcon, onRemove, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onTypeChange, onDragStart, sections, currentSectionId, onMoveToSection
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
 }) => {
     const [showTypeMenu, setShowTypeMenu] = useState(false);
     const typeMenuRef = useRef<HTMLDivElement>(null);
@@ -83,6 +88,11 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
     const color2MenuRef = useRef<HTMLDivElement>(null);
     const [showSectionMenu, setShowSectionMenu] = useState(false);
     const sectionMenuRef = useRef<HTMLDivElement>(null);
+<<<<<<< HEAD
+=======
+    const [showTypeMenu, setShowTypeMenu] = useState(false);
+    const typeMenuRef = useRef<HTMLDivElement>(null);
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [editedTitle, setEditedTitle] = useState(chart.title);
     const titleInputRef = useRef<HTMLInputElement>(null);
@@ -137,7 +147,11 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
         <div
             draggable
             onDragStart={(e) => onDragStart(e, chart.id)}
+<<<<<<< HEAD
             className={`responsive-card p-3 sm:p-4 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-lg sm:rounded-xl relative group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-900/10 transition-all duration-300 animate-fade-in-up flex flex-col h-full hover-lift elevation-md cursor-grab active:cursor-grabbing ${anyMenuOpen ? 'z-50' : 'z-auto'}`}
+=======
+            className={`responsive-card p-3 sm:p-4 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-lg sm:rounded-xl relative group hover:border-indigo-500/30 hover:shadow-xl hover:shadow-indigo-900/10 transition-all duration-300 animate-fade-in-up flex flex-col h-full hover-lift elevation-md cursor-grab active:cursor-grabbing ${(showColorMenu || showColor2Menu || showSectionMenu || showTypeMenu) ? 'z-30' : 'z-auto'}`}
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
             style={{ animationDelay: `${index * 50}ms` }}
         >
             <button
@@ -149,6 +163,7 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
 
             <div className="flex items-start gap-2 mb-2 sm:mb-3 flex-1">
                 <div className="relative" ref={typeMenuRef}>
+<<<<<<< HEAD
                     <button 
                         onClick={() => setShowTypeMenu(v => !v)}
                         className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${showTypeMenu ? 'ring-2 ring-indigo-500 ring-offset-2' : ''} ${chart.id.startsWith('custom') ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20' : 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20'}`}
@@ -176,6 +191,37 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
                                     </button>
                                 );
                             })}
+=======
+                    <button
+                        onClick={() => setShowTypeMenu(v => !v)}
+                        className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${chart.id.startsWith('custom') ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20' : 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20'} ${showTypeMenu ? 'ring-2 ring-indigo-500 shadow-lg scale-105' : ''}`}
+                        title="Change chart type"
+                    >
+                        {React.cloneElement(getIcon(chart.type) as React.ReactElement, { className: "w-3.5 h-3.5 sm:w-5 sm:h-5" })}
+                    </button>
+
+                    {showTypeMenu && (
+                        <div className={`absolute left-0 top-full mt-2 w-56 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 shadow-slate-900' : 'bg-white border-slate-200 shadow-slate-200'} border rounded-xl shadow-2xl z-50 p-1.5 animate-fade-in max-h-80 overflow-y-auto custom-scrollbar`}>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-2 px-1.5 pt-1 ${colors.textMuted}`}>Change Chart Type</p>
+                            <div className="space-y-0.5">
+                                {Object.values(ChartType).map(type => {
+                                    const active = chart.type === type;
+                                    return (
+                                        <button
+                                            key={type}
+                                            onClick={() => { onTypeChange(chart.id, type as ChartType); setShowTypeMenu(false); }}
+                                            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${active ? 'bg-indigo-500/10 text-indigo-400' : theme === 'dark' ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-600 hover:bg-slate-100'}`}
+                                        >
+                                            <div className={`${active ? 'text-indigo-400' : 'text-slate-500'}`}>
+                                                {React.cloneElement(getIcon(type as string) as React.ReactElement, { className: "w-3.5 h-3.5" })}
+                                            </div>
+                                            <span className="truncate flex-1 text-left capitalize">{(type as string).toLowerCase().replace('_', ' ')}</span>
+                                            {active && <Check className="w-3 h-3" />}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
                         </div>
                     )}
                 </div>
@@ -401,6 +447,7 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
                     </div>
                 </div>
             </div>
+
         </div>
     );
 };
@@ -440,6 +487,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     const [isListening, setIsListening] = useState(false);
     const [showData, setShowData] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+<<<<<<< HEAD
     const [activeSuggestionTypeMenuId, setActiveSuggestionTypeMenuId] = useState<string | null>(null);
     const suggestionTypeMenuRef = useRef<HTMLDivElement>(null);
 
@@ -455,6 +503,21 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         aggregation: AggregationType.SUM,
         color: CHART_COLOR_OPTIONS[0].value,
         multicolor: false
+=======
+    const [showManualBuilder, setShowManualBuilder] = useState(false);
+    const [manualChartData, setManualChartData] = useState<{
+        title: string;
+        type: ChartType;
+        xAxisKey: string;
+        dataKey: string;
+        aggregation: AggregationType;
+    }>({
+        title: '',
+        type: ChartType.BAR,
+        xAxisKey: '',
+        dataKey: '',
+        aggregation: AggregationType.COUNT
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
     });
 
     // Filter Columns state
@@ -1213,8 +1276,13 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                         {isListening ? <MicOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Mic className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                                     </button>
                                     <button
+<<<<<<< HEAD
                                         onClick={() => setIsManualOpen(true)}
                                         className={`p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl transition hover:${colors.bgTertiary} ${colors.textMuted}`}
+=======
+                                        onClick={() => setShowManualBuilder(true)}
+                                        className={`p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl transition hover:${colors.bgTertiary} ${colors.textMuted} hover:text-indigo-400`}
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
                                         title="Manual Chart Builder"
                                     >
                                         <Settings2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -1327,6 +1395,9 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                         onTitleChange={(id, title) =>
                                                             setBucket(prev => prev.map(c => c.id === id ? { ...c, title } : c))
                                                         }
+                                                        onTypeChange={(id, type) =>
+                                                            setBucket(prev => prev.map(c => c.id === id ? { ...c, type } : c))
+                                                        }
                                                         onDragStart={onDragStart}
                                                         sections={sections}
                                                         currentSectionId={section.id}
@@ -1372,6 +1443,9 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                 onTitleChange={(id, title) =>
                                                     setBucket(prev => prev.map(c => c.id === id ? { ...c, title } : c))
                                                 }
+                                                onTypeChange={(id, type) =>
+                                                    setBucket(prev => prev.map(c => c.id === id ? { ...c, type } : c))
+                                                }
                                                 onDragStart={onDragStart}
                                                 sections={sections}
                                                 currentSectionId={undefined}
@@ -1385,6 +1459,141 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Manual Chart Builder Modal */}
+            {showManualBuilder && (
+                <div className={`fixed inset-0 z-[60] ${colors.overlayBg} backdrop-blur-md flex items-center justify-center p-4 animate-fade-in`}>
+                    <div className={`${colors.bgSecondary} border ${colors.borderPrimary} w-full max-w-2xl rounded-3xl flex flex-col shadow-2xl overflow-hidden max-h-[90vh]`}>
+                        <div className={`p-6 border-b ${colors.borderPrimary} flex justify-between items-center ${colors.bgSecondary} shrink-0`}>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center">
+                                    <Settings2 className="w-6 h-6 text-indigo-400" />
+                                </div>
+                                <h2 className={`font-bold ${colors.textPrimary} text-xl`}>Manual Chart Builder</h2>
+                            </div>
+                            <button onClick={() => setShowManualBuilder(false)} className={`p-2 hover:${colors.bgTertiary} rounded-full ${colors.textMuted} hover:${colors.textPrimary} transition`}>
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                            {/* Chart Title */}
+                            <div>
+                                <label className={`block text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${colors.textMuted}`}>Chart Title</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g., Monthly Sales Performance"
+                                    value={manualChartData.title}
+                                    onChange={e => setManualChartData({...manualChartData, title: e.target.value})}
+                                    className={`w-full ${colors.bgPrimary} border ${colors.borderPrimary} rounded-xl px-5 py-3.5 text-sm ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                />
+                            </div>
+
+                            {/* Chart Type Grid */}
+                            <div>
+                                <label className={`block text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${colors.textMuted}`}>Chart Type</label>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    {Object.values(ChartType).map(type => {
+                                        const active = manualChartData.type === type;
+                                        return (
+                                            <button
+                                                key={type}
+                                                onClick={() => setManualChartData({...manualChartData, type: type as ChartType})}
+                                                className={`flex flex-col items-center justify-center gap-3 p-4 rounded-2xl border transition-all hover-lift ${active 
+                                                    ? 'bg-indigo-600/10 border-indigo-500 text-indigo-400 shadow-lg shadow-indigo-500/10' 
+                                                    : `${colors.bgPrimary} border-transparent ${colors.textMuted} hover:border-slate-500`}`}
+                                            >
+                                                {React.cloneElement(getIcon(type as string) as React.ReactElement, { className: `w-6 h-6 ${active ? 'text-indigo-400' : colors.textMuted}` })}
+                                                <span className="text-[10px] font-bold capitalize whitespace-nowrap">{type.toLowerCase().replace('_', ' ')}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Data Mapping */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                <div>
+                                    <label className={`block text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${colors.textMuted}`}>X-Axis (Dimension)</label>
+                                    <select
+                                        value={manualChartData.xAxisKey}
+                                        onChange={e => setManualChartData({...manualChartData, xAxisKey: e.target.value})}
+                                        className={`w-full ${colors.bgPrimary} border ${colors.borderPrimary} rounded-xl px-4 py-3 text-sm ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                    >
+                                        <option value="">Select Column</option>
+                                        {dataModel.columns.map(col => <option key={col} value={col}>{col}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={`block text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${colors.textMuted}`}>Metric (Measure)</label>
+                                    <select
+                                        value={manualChartData.dataKey}
+                                        onChange={e => setManualChartData({...manualChartData, dataKey: e.target.value})}
+                                        className={`w-full ${colors.bgPrimary} border ${colors.borderPrimary} rounded-xl px-4 py-3 text-sm ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                    >
+                                        <option value="">Select Column</option>
+                                        {dataModel.columns.map(col => <option key={col} value={col}>{col}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={`block text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${colors.textMuted}`}>Aggregation</label>
+                                    <select
+                                        value={manualChartData.aggregation}
+                                        onChange={e => setManualChartData({...manualChartData, aggregation: e.target.value})}
+                                        className={`w-full ${colors.bgPrimary} border ${colors.borderPrimary} rounded-xl px-4 py-3 text-sm ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                    >
+                                        <option value={AggregationType.SUM}>Sum</option>
+                                        <option value={AggregationType.AVERAGE}>Average</option>
+                                        <option value={AggregationType.COUNT}>Count (rows)</option>
+                                        <option value={AggregationType.MINIMUM}>Minimum</option>
+                                        <option value={AggregationType.MAXIMUM}>Maximum</option>
+                                        <option value={AggregationType.DISTINCT}>Distinct Count</option>
+                                    </select>
+                                </div>
+                                <div className="flex flex-col justify-end">
+                                    <p className={`text-[10px] ${colors.textMuted} italic mb-1.5`}>* Ensure selected columns match chart type requirements.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className={`p-6 border-t ${colors.borderPrimary} ${colors.bgSecondary} flex justify-end gap-3 shrink-0`}>
+                            <button
+                                onClick={() => setShowManualBuilder(false)}
+                                className={`px-6 py-2.5 rounded-xl text-sm font-bold ${colors.textSecondary} hover:${colors.bgTertiary} transition-all`}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                disabled={!manualChartData.title || !manualChartData.xAxisKey || !manualChartData.dataKey}
+                                onClick={() => {
+                                    const newChart: ChartConfig = {
+                                        id: `manual-${Date.now()}`,
+                                        type: manualChartData.type,
+                                        title: manualChartData.title,
+                                        description: `Manually created ${manualChartData.type.toLowerCase()} chart for ${manualChartData.dataKey} by ${manualChartData.xAxisKey}`,
+                                        xAxisKey: manualChartData.xAxisKey,
+                                        dataKey: manualChartData.dataKey,
+                                        aggregation: manualChartData.aggregation,
+                                        sectionId: sections.length > 0 ? sections[0].id : undefined
+                                    };
+                                    setBucket([newChart, ...bucket]);
+                                    setShowManualBuilder(false);
+                                    setManualChartData({
+                                        title: '',
+                                        type: ChartType.BAR,
+                                        xAxisKey: '',
+                                        dataKey: '',
+                                        aggregation: AggregationType.COUNT
+                                    });
+                                }}
+                                className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-900/20 transition-all active-press"
+                            >
+                                Add Chart
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

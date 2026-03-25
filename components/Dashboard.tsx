@@ -8,7 +8,7 @@ import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType } 
 import { aggregateData } from '../utils/aggregator';
 import {
     LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2,
-    X, Home, Save, Edit, RefreshCw, Plus, ArrowRight, Filter, Trash2,
+    X, Home, Save, Edit, RefreshCw, Plus, ArrowRight, ArrowLeft, Filter, Trash2,
     ChevronDown, Check, MousePointer2, Table as TableIcon, Grid3x3
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
@@ -17,7 +17,7 @@ import { ChartBuilder } from './ChartBuilder';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses, type Theme } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
-import { formatCurrency, formatCompactCurrency, isCurrencyColumn, isCountColumn, isDateTimeColumn, isExcelSerialDate, excelSerialToDate, smartFormat, formatDateForTick, getYear, getMonth, getDay, getMonthName } from '../utils/formatters';
+import { formatCurrency, formatCompactCurrency, isCurrencyColumn, isCountColumn, isDateTimeColumn, isExcelSerialDate, excelSerialToDate, smartFormat, formatDateForTick, getYear, getMonth, getDay, getMonthName, parseNumericValue as parseNumeric } from '../utils/formatters';
 import { DashboardLoader } from './DashboardLoader';
 
 
@@ -1041,8 +1041,8 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                 </ResponsiveContainer>
             );
         case ChartType.TABLE: {
-            const tableTotal = data.reduce((acc, row) => acc + (Number(row[config.dataKey]) || 0), 0);
-            const tableTotal2 = config.dataKey2 ? data.reduce((acc, row) => acc + (Number(row[config.dataKey2]) || 0), 0) : 0;
+            const tableTotal = data.reduce((acc, row) => acc + (parseNumeric(row[config.dataKey])), 0);
+            const tableTotal2 = config.dataKey2 ? data.reduce((acc, row) => acc + (parseNumeric(row[config.dataKey2])), 0) : 0;
             const fmtNum = (v: number, key: string) => formatByColumn(v, key);
             return (
                 <div style={{ width: '100%', height: '100%', overflow: 'auto' }} className="custom-chart-scrollbar">
@@ -1064,8 +1064,8 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                 >
                                     <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-[10px]'} text-center ${theme === 'dark' ? 'text-slate-600' : 'text-slate-400'} font-mono`}>{i + 1}</td>
                                     <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{formatByColumn(row[config.xAxisKey], config.xAxisKey)}</td>
-                                    <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold text-right font-mono ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{fmtNum(Number(row[config.dataKey]) || 0, config.dataKey)}</td>
-                                    {config.dataKey2 && <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold text-right font-mono ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>{fmtNum(Number(row[config.dataKey2]) || 0, config.dataKey2)}</td>}
+                                    <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold text-right font-mono ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{fmtNum(parseNumeric(row[config.dataKey]), config.dataKey)}</td>
+                                    {config.dataKey2 && <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold text-right font-mono ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>{fmtNum(parseNumeric(row[config.dataKey2]), config.dataKey2)}</td>}
                                 </tr>
                             ))}
                         </tbody>
@@ -1652,8 +1652,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         const groups: { [key: string]: { count: number; sum: number, sum2: number, min: number, max: number, min2: number, max2: number } } = {};
         processedData.forEach(row => {
             const key = String(xAxisTransform(row[chart.xAxisKey]));
-            const val = Number(row[chart.dataKey]) || 0;
-            const val2 = chart.dataKey2 ? (Number(row[chart.dataKey2]) || 0) : 0;
+            const val = parseNumeric(row[chart.dataKey]);
+            const val2 = chart.dataKey2 ? parseNumeric(row[chart.dataKey2]) : 0;
 
             if (!groups[key]) groups[key] = { count: 0, sum: 0, sum2: 0, min: val, max: val, min2: val2, max2: val2 };
             groups[key].count++;
@@ -1668,10 +1668,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         // Convert back to chart data format
         return Object.keys(groups).map(key => {
             let primaryVal = 0;
-            if (chart.aggregation === AggregationType.COUNT) primaryVal = groups[key].count;
-            else if (chart.aggregation === AggregationType.AVERAGE) primaryVal = groups[key].sum / groups[key].count;
-            else if (chart.aggregation === AggregationType.MINIMUM) primaryVal = groups[key].min;
-            else if (chart.aggregation === AggregationType.MAXIMUM) primaryVal = groups[key].max;
+            const agg = String(chart.aggregation).toUpperCase();
+            if (agg === AggregationType.COUNT) primaryVal = groups[key].count;
+            else if (agg === AggregationType.AVERAGE) primaryVal = groups[key].sum / groups[key].count;
+            else if (agg === AggregationType.MINIMUM) primaryVal = groups[key].min;
+            else if (agg === AggregationType.MAXIMUM) primaryVal = groups[key].max;
             else primaryVal = groups[key].sum;
 
             const result: any = {
@@ -1757,7 +1758,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         yearRows.forEach(row => {
             const m = getMonth(row[dateCol]);
             if (!m) return;
-            const val = Number(row[sourceChart.dataKey]) || 0;
+            const val = parseNumeric(row[sourceChart.dataKey]);
             if (!monthGroups[m]) monthGroups[m] = { sum: 0, count: 0, min: val, max: val, distinct: new Set() };
             monthGroups[m].sum += val;
             monthGroups[m].count += 1;
@@ -1865,16 +1866,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         }
     }, [chartConfigs, filterColumns, dataModel?.name]);
 
-    const kpis = useMemo(() => {
+    const allChartsAndKPIs = useMemo(() => {
         if (!Array.isArray(currentCharts)) return [];
-        return currentCharts.filter(c => c && c.type === ChartType.KPI);
+        return currentCharts.filter(c => c !== null);
     }, [currentCharts]);
 
+    const kpis = useMemo(() => {
+        return allChartsAndKPIs.filter(c => c.type === ChartType.KPI);
+    }, [allChartsAndKPIs]);
+
     const charts = useMemo(() => {
+<<<<<<< HEAD
         if (!Array.isArray(currentCharts)) return [];
         // Include ALL charts (including KPIs) so they are placed in sections together
         return currentCharts.filter(c => !!c);
     }, [currentCharts]);
+=======
+        return allChartsAndKPIs.filter(c => c.type !== ChartType.KPI);
+    }, [allChartsAndKPIs]);
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
 
     const [isExporting, setIsExporting] = useState(false);
     const [expandedChartId, setExpandedChartId] = useState<string | null>(null);
@@ -1894,20 +1904,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     // Splits chart list into sections
     const sections = useMemo(() => {
         if (currentSections && currentSections.length > 0) {
-            // Group by explicit sectionId
+            // Group by explicit sectionId - includes both KPIs and Charts
             return currentSections.map(s =>
-                charts.filter(c => c.sectionId === s.id)
+                allChartsAndKPIs.filter(c => c.sectionId === s.id)
             ).filter(group => group.length > 0 || currentSections.length > 0);
-            // We keep empty sections if they were explicitly defined
         }
 
         // Fallback to automatic splitting
         const result: ChartConfig[][] = [];
-        for (let i = 0; i < charts.length; i += CHARTS_PER_TAB) {
-            result.push(charts.slice(i, i + CHARTS_PER_TAB));
+        for (let i = 0; i < allChartsAndKPIs.length; i += CHARTS_PER_TAB) {
+            result.push(allChartsAndKPIs.slice(i, i + CHARTS_PER_TAB));
         }
         return result;
-    }, [charts, explicitSections]);
+    }, [allChartsAndKPIs, currentSections]);
+
+    // Redundant now that KPIs are inside sections, kept for type compatibility but empty if handled in sections
+    const sectionKPIs = useMemo(() => {
+        return sections.map(() => []);
+    }, [sections]);
 
     // Derive unique names for ALL sections
     const deriveSectionNames = (allSections: ChartConfig[][]): string[] => {
@@ -2075,6 +2089,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         const pages: PDFPageContent[] = [];
         if (sections.length === 0) return [];
 
+<<<<<<< HEAD
         for (let t = 0; t < sections.length; t++) {
             const tabName = resolvedTabNames[t] || `Section ${t + 1}`;
             const tabAllItems = sections[t] || [];
@@ -2118,6 +2133,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                         isFirstPageOfPDF: false
                     });
                 }
+=======
+        let currentPageId = 1;
+        const PAGE_MAX_HEIGHT = 1350; // Total height of content area in PDF pixels
+
+        for (let t = 0; t < sections.length; t++) {
+            const tabName = resolvedTabNames[t] || (t === 0 ? "Summary" : `Section ${t + 1}`);
+            const allItems = sections[t] || [];
+            
+            let i = 0;
+            while (i < allItems.length) {
+                const pageStartedAt = i;
+                let currentHeight = 0;
+                let itemsInPage: ChartConfig[] = [];
+                
+                // Pack as many items as possible into the current page
+                while (i < allItems.length) {
+                    const item = allItems[i];
+                    const kpisInPage = itemsInPage.filter(it => it.type === ChartType.KPI).length;
+                    const chartsInPage = itemsInPage.filter(it => it.type !== ChartType.KPI).length;
+                    
+                    let addedHeight = 0;
+                    if (item.type === ChartType.KPI) {
+                        // KPIs sit 4 per row. A new row starts every 4th KPI.
+                        if (kpisInPage % 4 === 0) addedHeight = 150; // Row height + gap
+                    } else {
+                        // Charts sit 2 per row
+                        if (chartsInPage % 2 === 0) addedHeight = 420; // Row height + gap
+                    }
+                    
+                    // If adding this item's row would exceed the page limit, break to next page
+                    // UNLESS the page is currently empty (must have at least one item)
+                    if (itemsInPage.length > 0 && currentHeight + addedHeight > PAGE_MAX_HEIGHT) {
+                        break;
+                    }
+                    
+                    itemsInPage.push(item);
+                    currentHeight += addedHeight;
+                    i++;
+                }
+                
+                pages.push({
+                    pageId: currentPageId++,
+                    tabIndex: t,
+                    tabName: tabName,
+                    charts: itemsInPage,
+                    isFirstPageOfTab: pageStartedAt === 0,
+                    isFirstPageOfPDF: t === 0 && pageStartedAt === 0,
+                    pageKPIs: [] 
+                });
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
             }
         }
 
@@ -2680,8 +2745,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
                     <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 print:p-4">
 
+<<<<<<< HEAD
                         {/* KPIs Row - REMOVED from global and moved to sections below */}
 
+=======
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
                         {/* Section Tabs - show whenever there are charts */}
                         {sections.length > 0 && resolvedTabNames.length > 0 && (
                             <div className="mb-6">
@@ -2726,8 +2794,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                             </div>
                         )}
 
-                        {/* Charts Grid - shows only active section */}
+
+                        {/* Charts Grid - shows only active section inside a responsive section container */}
                         {sections.length > 0 ? (
+<<<<<<< HEAD
                             <div key={activeTab} className="animate-fade-in flex flex-col gap-6">
                                 {/* Sectional KPIs (Rendered before charts in the same section) */}
                                 {activeSection.some(c => c.type === ChartType.KPI) && (
@@ -2821,8 +2891,37 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                         })}
                                                     </div>
                                                 )}
+=======
+                            <div key={activeTab} className={`p-4 sm:p-6 rounded-2xl border transition-all ${theme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'} animate-fade-in`}>
+                                    <div className="flex flex-col gap-8 w-full">
+                                        {/* KPI Cards Layer: Always at the top of the section */}
+                                        {activeSection.some(c => c.type === ChartType.KPI) && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 print:grid-cols-4">
+                                                {activeSection.filter(c => c.type === ChartType.KPI).map(kpi => {
+                                                    const baseData = kpi.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                                    const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi);
+                                                    const value = data[0]?.value || 0;
+                                                    const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata);
+                                                    return (
+                                                        <div key={kpi.id} className={`${colors.bgSecondary} rounded-xl border ${colors.borderPrimary} p-6 shadow-xl relative overflow-hidden group print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} hover-lift elevation-lg col-span-1`}>
+                                                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition transform group-hover:scale-110 print:hidden">
+                                                                <TrendingUp className="w-16 h-16 text-indigo-500" />
+                                                            </div>
+                                                            <h3 className={`text-xs font-bold ${colors.textMuted} uppercase tracking-wider mb-1`}>{kpi.title}</h3>
+                                                            <div className={`text-2xl sm:text-3xl font-bold ${colors.textPrimary} mt-2`}>
+                                                                {displayValue}
+                                                            </div>
+                                                            <div className={`mt-4 h-1 w-full ${theme === 'dark' ? 'bg-slate-800 print:bg-slate-700' : 'bg-slate-200 print:bg-slate-300'} rounded-full overflow-hidden`}>
+                                                                <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 w-2/3 rounded-full print:bg-indigo-600"></div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
                                             </div>
+                                        )}
 
+<<<<<<< HEAD
                                             <div className={`absolute top-4 right-4 z-20 chart-controls no-print flex gap-2 items-center transition-opacity duration-200 opacity-0 group-hover:opacity-100 ${chartFilterMenuOpen === chart.id || topBottomMenuOpen === chart.id ? 'opacity-100' : ''}`}>
                                                 {hasChartFilters && (
                                                     <button
@@ -2934,116 +3033,76 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     >
                                                         <Filter className="w-4 h-4" />
                                                     </button>
+=======
+                                        {/* Charts Layer: Positioned below KPIs */}
+                                        {activeSection.some(c => c.type !== ChartType.KPI) && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 print:grid-cols-4">
+                                                {activeSection.filter(c => c.type !== ChartType.KPI).map(chart => {
+                                                    const isXDate = (dataModel.columnMetadata?.[chart.xAxisKey])
+                                                        ? (dataModel.columnMetadata[chart.xAxisKey].finalType || dataModel.columnMetadata[chart.xAxisKey].detectedType) === 'DATE'
+                                                        : isDateTimeColumn(chart.xAxisKey);
+                                                        
+                                                    // Base data: ignoring global filters if configured to do so
+                                                    const baseData = chart.ignoreGlobalFilters ? dataModel.data : filteredData;
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
 
-                                                    {chartFilterMenuOpen === chart.id && (
-                                                        <>
-                                                            <div 
-                                                                className="fixed inset-0 z-40 pointer-events-none"
-                                                            ></div>
-                                                            <div 
-                                                                className={`absolute top-full right-0 mt-2 w-72 max-h-[400px] overflow-hidden ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 flex flex-col pointer-events-auto`}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                }}
-                                                            >
-                                                                {!chartFilterColumn[chart.id] ? (
-                                                                    // STEP 1: Select Column
-                                                                    <>
-                                                                        <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
-                                                                            <div className="flex items-center justify-between mb-2">
-                                                                                <span className={`text-[10px] font-bold uppercase tracking-widest ${colors.textMuted}`}>Filter by Column</span>
-                                                                                <X className="w-3.5 h-3.5 cursor-pointer opacity-50 hover:opacity-100" onClick={() => setChartFilterMenuOpen(null)} />
-                                                                            </div>
-                                                                            <input
-                                                                                type="text"
-                                                                                placeholder="Search columns..."
-                                                                                autoFocus
-                                                                                className={`w-full px-3 py-2 text-xs rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
-                                                                                value={chartFilterSearch[chart.id] || ''}
-                                                                                onChange={(e) => setChartFilterSearch(prev => ({ ...prev, [chart.id]: e.target.value }))}
-                                                                            />
-                                                                        </div>
-                                                                        <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80 pointer-events-auto">
-                                                                            {filterableColumns
-                                                                                .filter(c => c.toLowerCase().includes((chartFilterSearch[chart.id] || '').toLowerCase()))
-                                                                                .map(col => (
-                                                                                    <button
-                                                                                        type="button"
-                                                                                        key={col}
-                                                                                        onClick={(e) => {
-                                                                                            e.preventDefault();
-                                                                                            e.stopPropagation();
-                                                                                            setChartFilterColumn(prev => ({ ...prev, [chart.id]: col }));
-                                                                                        }}
-                                                                                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${(chartFilters[chart.id]?.[col]) ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
-                                                                                    >
-                                                                                        <div className="flex flex-col items-start truncate mr-2">
-                                                                                            {col.includes('.') && <span className="text-[9px] opacity-50 block">{col.split('.')[0]}</span>}
-                                                                                            <span className="truncate">{col.includes('.') ? col.split('.').pop() : col}</span>
-                                                                                        </div>
-                                                                                        <ArrowRight className="w-3.5 h-3.5 shrink-0 opacity-30" />
-                                                                                    </button>
-                                                                                ))}
-                                                                        </div>
-                                                                    </>
-                                                                ) : (
-                                                                    // STEP 2: Select Value
-                                                                    <>
-                                                                        <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
-                                                                            <div className="flex items-center gap-2 mb-2">
-                                                                                <button
-                                                                                    onClick={() => setChartFilterColumn(prev => ({ ...prev, [chart.id]: null }))}
-                                                                                    className="p-1 rounded-md hover:bg-slate-700/50 transition"
-                                                                                >
-                                                                                    <Home className="w-3.5 h-3.5" />
-                                                                                </button>
-                                                                                <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 truncate">
-                                                                                    {chartFilterColumn[chart.id]?.includes('.') ? chartFilterColumn[chart.id]?.split('.').pop() : chartFilterColumn[chart.id]}
+                                                    // Apply Page Filters (only for charts in this section)
+                                                    let pageFilteredData = baseData;
+                                                    const activePageFilters = pageFilters[activeTab];
+                                                    if (activePageFilters && Object.keys(activePageFilters).length > 0) {
+                                                        pageFilteredData = pageFilteredData.filter(row => {
+                                                            if (!row) return false;
+                                                            return Object.entries(activePageFilters).every(([col, vals]) => {
+                                                                if (!Array.isArray(vals) || vals.length === 0) return true;
+                                                                return vals.some(v => String(row[col]) === String(v));
+                                                            });
+                                                        });
+                                                    }
+
+                                                    // Apply per-chart filters BEFORE aggregation for proper filtering
+                                                    const chartPreFilteredData = applyChartFilters(pageFilteredData, chart.id);
+                                                    const aggregatedData = isXDate 
+                                                        ? getDrillDownData(chart, chartPreFilteredData)
+                                                        : aggregateData(chartPreFilteredData, chart);
+                                                    const hasChartFilters = chartFilters[chart.id] && Object.keys(chartFilters[chart.id]).length > 0;
+                                                    const drillState = chartDrillStates[chart.id];
+                                                    const isDrilled = drillState && drillState.level !== 'year' && (drillState.level !== 'month' || drillState.year !== null);
+                                                    return (
+                                                        <div 
+                                                            key={chart.id}
+                                                            onMouseEnter={() => { hoveredChartRef.current = chart.id; }}
+                                                            onMouseLeave={() => { hoveredChartRef.current = null; }}
+                                                            className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] print:h-[380px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid print:p-4 relative elevation-md overflow-hidden group col-span-1 lg:col-span-2`}>
+                                                            <div className="mb-6 pr-20">
+                                                                <h3 className={`font-bold text-lg ${colors.textSecondary} truncate`}>{chart.title}</h3>
+                                                                <p className={`text-xs ${colors.textMuted} mt-1 truncate`}>{chart.description}</p>
+                                                                {isDrilled && (
+                                                                    <div className="flex items-center gap-1.5 mt-2">
+                                                                        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter">
+                                                                            {drillState.level === 'month' ? `Year: ${drillState.year}` : `Month: ${getMonthName(drillState.month!)} ${drillState.year}`}
+                                                                        </span>
+                                                                        <button 
+                                                                            onClick={() => resetDrillDown(chart.id)}
+                                                                            className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-all border border-indigo-500/20"
+                                                                        >
+                                                                            Reset View
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                                {hasChartFilters && (
+                                                                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                                                        {Object.entries(chartFilters[chart.id] || {}).map(([col, vals]) => {
+                                                                            const valArray = Array.isArray(vals) ? vals : [vals];
+                                                                            return valArray.map((val, idx) => (
+                                                                                <span key={`${col}-${idx}`} className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                                                                    {col}: <span className="font-bold">{String(val).slice(0, 12)}</span>
                                                                                 </span>
-                                                                            </div>
-                                                                            <input
-                                                                                type="text"
-                                                                                placeholder="Search values..."
-                                                                                autoFocus
-                                                                                className={`w-full px-3 py-2 text-xs rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
-                                                                                value={chartFilterSearch[chart.id] || ''}
-                                                                                onChange={(e) => setChartFilterSearch(prev => ({ ...prev, [chart.id]: e.target.value }))}
-                                                                            />
-                                                                        </div>
-                                                                        <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80 pointer-events-auto">
-                                                                            {getUniqueValues(chartFilterColumn[chart.id] || '')
-                                                                                .filter(v => String(v).toLowerCase().includes((chartFilterSearch[chart.id] || '').toLowerCase()))
-                                                                                .map(val => {
-                                                                                    const valueStr = String(val);
-                                                                                    const actualVal = valueStr === '(Empty)' ? '' : valueStr;
-                                                                                    const col = chartFilterColumn[chart.id] || '';
-                                                                                    const selectedValues = chartFilters[chart.id]?.[col] || [];
-                                                                                    const isSelected = selectedValues.some((v: any) => String(v) === String(actualVal));
-                                                                                    return (
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            key={`${col}-${valueStr}`}
-                                                                                            onClick={(e) => {
-                                                                                                e.preventDefault();
-                                                                                                e.stopPropagation();
-                                                                                                console.log('Button clicked:', valueStr, 'for column:', col);
-                                                                                                toggleChartFilter(chart.id, col, actualVal);
-                                                                                            }}
-                                                                                            onMouseDown={(e) => {
-                                                                                                e.preventDefault();
-                                                                                                e.stopPropagation();
-                                                                                            }}
-                                                                                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${isSelected ? 'bg-indigo-500/20 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
-                                                                                        >
-                                                                                            <span className="truncate mr-4">{valueStr}</span>
-                                                                                            {isSelected && <Check className="w-4 h-4 shrink-0 text-indigo-400" />}
-                                                                                        </button>
-                                                                                    );
-                                                                                })}
-                                                                        </div>
-                                                                    </>
+                                                                            ));
+                                                                        })}
+                                                                    </div>
                                                                 )}
                                                             </div>
+<<<<<<< HEAD
                                                         </>
                                                     )}
                                                 </div>
@@ -3065,26 +3124,205 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     <Maximize2 className="w-4 h-4" />
                                                 </button>
                                             </div>
+=======
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
 
-                                            <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden">
-                                                <RenderChart
-                                                    config={chart}
-                                                    data={aggregatedData}
-                                                    theme={theme}
-                                                    isAnimationActive={!isExporting}
-                                                    onItemClick={(val) => {
-                                                        const drilled = handleDrillDown(chart.id, chart, val);
-                                                        if (!drilled) toggleFilter(chart.xAxisKey, val);
-                                                    }}
-                                                    activeFilterValue={chartFilters[chart.id]?.[chart.xAxisKey]}
-                                                    columnMetadata={dataModel.columnMetadata}
-                                                />
+                                                            <div className={`absolute top-4 right-4 z-20 chart-controls no-print flex gap-2 items-center transition-opacity duration-200 opacity-0 group-hover:opacity-100 ${chartFilterMenuOpen === chart.id || topBottomMenuOpen === chart.id ? 'opacity-100' : ''}`}>
+                                                                {hasChartFilters && (
+                                                                    <button
+                                                                        onClick={() => clearChartFilters(chart.id)}
+                                                                        className={`p-2 ${colors.bgTertiary} hover:bg-red-600/20 ${colors.textMuted} hover:text-red-400 rounded-lg transition-all shadow-lg active-press`}
+                                                                        title="Clear Chart Filters"
+                                                                    >
+                                                                        <X className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
+                                                                {TOPBOTTOM_ELIGIBLE_TYPES.has(chart.type) && (
+                                                                    <div className="relative">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setTopBottomMenuOpen(topBottomMenuOpen === chart.id ? null : chart.id);
+                                                                                setChartFilterMenuOpen(null);
+                                                                            }}
+                                                                            className={`p-2 rounded-lg transition-all shadow-lg active-press ${topBottomMenuOpen === chart.id ? 'bg-indigo-600 text-white' : (chart.topN ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' : `${colors.bgTertiary} ${colors.textMuted} hover:bg-indigo-600/20 hover:text-indigo-400`)}`}
+                                                                            title={chart.topN ? `${chart.sortOrder === 'DESC' ? 'Top' : 'Bottom'} ${chart.topN}` : 'Top / Bottom N'}
+                                                                        >
+                                                                            <TrendingUp className="w-4 h-4" />
+                                                                        </button>
+
+                                                                        {topBottomMenuOpen === chart.id && (
+                                                                            <>
+                                                                                <div className="fixed inset-0 z-40" onClick={() => setTopBottomMenuOpen(null)}></div>
+                                                                                <div
+                                                                                    className={`absolute top-full right-0 mt-2 w-56 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 flex flex-col overflow-hidden pointer-events-auto`}
+                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                >
+                                                                                    <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
+                                                                                        <div className="flex items-center justify-between">
+                                                                                            <span className={`text-[10px] font-bold uppercase tracking-widest ${colors.textMuted}`}>Top / Bottom N</span>
+                                                                                            <X className="w-3.5 h-3.5 cursor-pointer opacity-50 hover:opacity-100" onClick={() => setTopBottomMenuOpen(null)} />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="p-3 space-y-3">
+                                                                                        <div className="flex gap-2">
+                                                                                            <button
+                                                                                                onClick={() => updateChartTopBottom(chart.id, 'DESC', chart.topN || 5)}
+                                                                                                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
+                                                                                                    chart.sortOrder === 'DESC'
+                                                                                                        ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400'
+                                                                                                        : `${colors.bgPrimary} ${colors.borderSecondary} ${colors.textMuted} hover:${colors.borderPrimary}`
+                                                                                                }`}
+                                                                                            >
+                                                                                                Top N
+                                                                                            </button>
+                                                                                            <button
+                                                                                                onClick={() => updateChartTopBottom(chart.id, 'ASC', chart.topN || 5)}
+                                                                                                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
+                                                                                                    chart.sortOrder === 'ASC'
+                                                                                                        ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400'
+                                                                                                        : `${colors.bgPrimary} ${colors.borderSecondary} ${colors.textMuted} hover:${colors.borderPrimary}`
+                                                                                                }`}
+                                                                                            >
+                                                                                                Bottom N
+                                                                                            </button>
+                                                                                        </div>
+                                                                                        {chart.sortOrder && (
+                                                                                            <input
+                                                                                                type="number"
+                                                                                                min={1}
+                                                                                                max={100}
+                                                                                                value={chart.topN || ''}
+                                                                                                onChange={(e) => {
+                                                                                                    const val = parseInt(e.target.value);
+                                                                                                    if (!isNaN(val) && val > 0) updateChartTopBottom(chart.id, chart.sortOrder, val);
+                                                                                                }}
+                                                                                                className={`w-full px-3 py-2 text-sm rounded-lg ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} outline-none transition-all`}
+                                                                                            />
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                <div className="relative">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setChartFilterMenuOpen(chartFilterMenuOpen === chart.id ? null : chart.id);
+                                                                            setChartFilterColumn(prev => ({ ...prev, [chart.id]: null }));
+                                                                            setTopBottomMenuOpen(null);
+                                                                        }}
+                                                                        className={`p-2 rounded-lg transition-all shadow-lg active-press ${chartFilterMenuOpen === chart.id ? 'bg-indigo-600 text-white' : `${colors.bgTertiary} ${colors.textMuted} hover:bg-indigo-600/20 hover:text-indigo-400`}`}
+                                                                        title="Add Chart Filter"
+                                                                    >
+                                                                        <Filter className="w-4 h-4" />
+                                                                    </button>
+
+                                                                    {chartFilterMenuOpen === chart.id && (
+                                                                        <>
+                                                                            <div className="fixed inset-0 z-40 pointer-events-none"></div>
+                                                                            <div 
+                                                                                className={`absolute top-full right-0 mt-2 w-72 max-h-[400px] overflow-hidden ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 flex flex-col pointer-events-auto`}
+                                                                                onClick={(e) => e.stopPropagation()}
+                                                                            >
+                                                                                {!chartFilterColumn[chart.id] ? (
+                                                                                    <>
+                                                                                        <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
+                                                                                            <div className="flex items-center justify-between mb-2">
+                                                                                                <span className={`text-[10px] font-bold uppercase tracking-widest ${colors.textMuted}`}>Filter by Column</span>
+                                                                                                <X className="w-3.5 h-3.5 cursor-pointer opacity-50 hover:opacity-100" onClick={() => setChartFilterMenuOpen(null)} />
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80">
+                                                                                            {filterableColumns.map(col => (
+                                                                                                <button
+                                                                                                    key={col}
+                                                                                                    onClick={() => setChartFilterColumn(prev => ({ ...prev, [chart.id]: col }))}
+                                                                                                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${(chartFilters[chart.id]?.[col]) ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                                                                >
+                                                                                                    <span className="truncate">{col}</span>
+                                                                                                    <ArrowRight className="w-3.5 h-3.5 opacity-30" />
+                                                                                                </button>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <div className={`p-3 border-b ${colors.borderPrimary} ${colors.bgTertiary}/30`}>
+                                                                                            <div className="flex items-center gap-2 mb-2">
+                                                                                                <button onClick={() => setChartFilterColumn(prev => ({ ...prev, [chart.id]: null }))} className="p-1 rounded-md hover:bg-slate-700/50 transition">
+                                                                                                    <ArrowLeft className="w-3.5 h-3.5" />
+                                                                                                </button>
+                                                                                                <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 truncate">{chartFilterColumn[chart.id]}</span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="overflow-y-auto p-1.5 no-scrollbar max-h-80">
+                                                                                            {getUniqueValues(chartFilterColumn[chart.id] || '').map(val => {
+                                                                                                const isSelected = (chartFilters[chart.id]?.[chartFilterColumn[chart.id]!] || []).includes(String(val));
+                                                                                                return (
+                                                                                                    <button
+                                                                                                        key={String(val)}
+                                                                                                        onClick={() => toggleChartFilter(chart.id, chartFilterColumn[chart.id]!, val)}
+                                                                                                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all mb-0.5 ${isSelected ? 'bg-indigo-500/20 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                                                                                    >
+                                                                                                        <span className="truncate">{String(val)}</span>
+                                                                                                        {isSelected && <Check className="w-4 h-4 text-indigo-400" />}
+                                                                                                    </button>
+                                                                                                );
+                                                                                            })}
+                                                                                        </div>
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                                {(chart.type === ChartType.BAR || chart.type === ChartType.HORIZONTAL_BAR) && (
+                                                                    <button
+                                                                        onClick={() => toggleChartOrientation(chart.id)}
+                                                                        className={`p-2 ${colors.bgTertiary} hover:bg-emerald-600/20 ${colors.textMuted} hover:text-emerald-400 rounded-lg transition-all shadow-lg active-press`}
+                                                                        title={chart.type === ChartType.BAR ? "Switch to Horizontal Bar" : "Switch to Vertical Bar"}
+                                                                    >
+                                                                        <RefreshCw className="w-4 h-4" />
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => setExpandedChartId(chart.id)}
+                                                                    className={`p-2 ${colors.bgTertiary} hover:bg-indigo-600 ${colors.textMuted} hover:text-white rounded-lg transition-all shadow-lg active-press`}
+                                                                    title="Maximize Chart"
+                                                                >
+                                                                    <Maximize2 className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+
+                                                            <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden">
+                                                                <RenderChart
+                                                                    config={chart}
+                                                                    data={aggregatedData}
+                                                                    theme={theme}
+                                                                    isAnimationActive={!isExporting}
+                                                                    onItemClick={(val) => {
+                                                                        const drilled = handleDrillDown(chart.id, chart, val);
+                                                                        if (!drilled) toggleFilter(chart.xAxisKey, val);
+                                                                    }}
+                                                                    activeFilterValue={chartFilters[chart.id]?.[chart.xAxisKey]}
+                                                                    columnMetadata={dataModel.columnMetadata}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
+<<<<<<< HEAD
                                         </div>
                                     );
                                         })}
                                     </div>
                                 )}
+=======
+                                        )}
+                                    </div>
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
                             </div>
                         ) : null}
 
@@ -3126,17 +3364,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                     </div>
                                 )}
 
-                                {!page.isFirstPageOfPDF && (
-                                    <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, paddingBottom: '12px' }}>
-                                        <h2 style={{ fontSize: '18px', fontWeight: '700', color: theme === 'dark' ? '#f8fafc' : '#0f172a', margin: 0 }}>
-                                            {page.tabName} {page.isFirstPageOfTab ? '' : '(Continued)'}
-                                        </h2>
-                                        <span style={{ fontSize: '11px', color: theme === 'dark' ? '#475569' : '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                                            {dataModel.name} • Page {pIdx + 1}
-                                        </span>
-                                    </div>
-                                )}
+                                {/* Section Title Header - Always visible at the top of content */}
+                                <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `2px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, paddingBottom: '12px' }}>
+                                    <h2 style={{ fontSize: page.isFirstPageOfPDF ? '20px' : '22px', fontWeight: '800', color: theme === 'dark' ? '#f8fafc' : '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
+                                        {page.tabName} {!page.isFirstPageOfTab ? '(Continued)' : ''}
+                                    </h2>
+                                    <span style={{ fontSize: '11px', color: theme === 'dark' ? '#64748b' : '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                        {dataModel.name} • Page {pIdx + 1}
+                                    </span>
+                                </div>
 
+<<<<<<< HEAD
                                 {/* KPIs Section (Only on first page) */}
                                 {page.pageKPIs && page.pageKPIs.length > 0 && (
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '32px', width: '100%' }}>
@@ -3200,13 +3438,92 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     isExporting={true}
                                                 />
                                             </div>
+=======
+                                {/* Separate KPIs and Charts into distinct "layers" in PDF Export Grid */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '40px', flex: 1, width: '100%', minHeight: 0 }}>
+                                    {/* 1. KPIs Layer: Row for all KPIs on this page - Uses dynamic layout for better space utilization */}
+                                    {page.charts.some(c => c.type === ChartType.KPI) && (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', width: '100%' }}>
+                                            {page.charts.filter(c => c.type === ChartType.KPI).map((chart) => {
+                                                const baseData = chart.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                                const data = aggregateData(applyChartFilters(baseData, chart.id), chart);
+                                                const value = data[0]?.value || 0;
+                                                const displayValue = smartFormat(value, chart.dataKey, dataModel.columnMetadata);
+                                                return (
+                                                    <div key={chart.id} style={{ 
+                                                        flex: '1 1 calc(25% - 18px)',
+                                                        minWidth: '220px',
+                                                        maxWidth: 'calc(50% - 12px)', // Don't let a single KPI become too wide
+                                                        minHeight: '110px', 
+                                                        background: theme === 'dark' ? '#1e293b' : '#ffffff', 
+                                                        border: `1px solid ${theme === 'dark' ? '#334155' : '#e5e7eb'}`, 
+                                                        padding: '24px', 
+                                                        borderRadius: '20px', 
+                                                        textAlign: 'center', 
+                                                        boxShadow: 'none', 
+                                                        display: 'flex', 
+                                                        flexDirection: 'column', 
+                                                        justifyContent: 'center',
+                                                        boxSizing: 'border-box'
+                                                    }}>
+                                                        <p style={{ fontSize: '11px', color: theme === 'dark' ? '#94a3b8' : '#64748b', fontWeight: '800', textTransform: 'uppercase', margin: '0 0 8px 0', letterSpacing: '0.8px' }}>{chart.title}</p>
+                                                        <p style={{ fontSize: '32px', fontWeight: '900', color: theme === 'dark' ? '#f8fafc' : '#0f172a', margin: '0' }}>{displayValue}</p>
+                                                        <div style={{ marginTop: '16px', height: '3px', width: '40%', alignSelf: 'center', background: 'linear-gradient(90deg, #6366f1, #8b5cf6)', borderRadius: '10px' }}></div>
+                                                    </div>
+                                                );
+                                            })}
+>>>>>>> bc93b204 (Data Preparation and manual chart builder update)
                                         </div>
-                                    ))}
+                                    )}
+
+                                    {/* 2. Charts Layer: Professional multi-chart grid with row normalization */}
+                                    {page.charts.some(c => c.type !== ChartType.KPI) && (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '30px', width: '100%' }}>
+                                            {page.charts.filter(c => c.type !== ChartType.KPI).map((chart) => {
+                                                const nonKpiCount = page.charts.filter(c => c.type !== ChartType.KPI).length;
+                                                return (
+                                                    <div key={chart.id} style={{ 
+                                                        flex: nonKpiCount === 1 ? '1 1 100%' : '1 1 calc(50% - 15px)',
+                                                        minWidth: '400px',
+                                                        background: theme === 'dark' ? '#1e293b' : '#ffffff', 
+                                                        border: `1px solid ${theme === 'dark' ? '#334155' : '#e5e7eb'}`, 
+                                                        padding: '24px', 
+                                                        borderRadius: '20px', 
+                                                        height: nonKpiCount === 1 ? '480px' : '390px',
+                                                        display: 'flex', 
+                                                        flexDirection: 'column', 
+                                                        boxSizing: 'border-box', 
+                                                        overflow: 'hidden'
+                                                    }}>
+                                                        <div style={{ marginBottom: '16px', flexShrink: 0 }}>
+                                                            <h4 style={{ fontSize: '17px', fontWeight: '800', color: theme === 'dark' ? '#f1f5f9' : '#1e293b', margin: '0 0 4px 0', lineHeight: '1.2' }}>{chart.title}</h4>
+                                                            <p style={{ fontSize: '12px', color: theme === 'dark' ? '#64748b' : '#94a3b8', margin: 0, lineHeight: '1.4' }}>{chart.description}</p>
+                                                        </div>
+                                                        <div style={{ flex: 1, minHeight: 0, width: '100%', position: 'relative' }}>
+                                                            <RenderChart
+                                                                config={chart}
+                                                                data={(() => {
+                                                                    const baseData = chart.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                                                    return isDateTimeColumn(chart.xAxisKey)
+                                                                        ? getDrillDownData(chart, applyChartFilters(baseData, chart.id))
+                                                                        : aggregateData(applyChartFilters(baseData, chart.id), chart);
+                                                                })()}
+                                                                theme={theme}
+                                                                isAnimationActive={false}
+                                                                columnMetadata={dataModel.columnMetadata}
+                                                                isExporting={true}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Page Footer */}
-                                <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: `1px solid ${theme === 'dark' ? '#1e293b' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <p style={{ fontSize: '9px', color: theme === 'dark' ? '#475569' : '#94a3b8', margin: 0 }}>© {new Date().getFullYear()} InsightAI Analytics Engine • Confidental Report</p>
+                                <div style={{ marginTop: 'auto', paddingTop: '24px', borderTop: `1px solid ${theme === 'dark' ? '#1e293b' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <p style={{ fontSize: '9px', color: theme === 'dark' ? '#475569' : '#94a3b8', margin: 0 }}>© {new Date().getFullYear()} InsightAI Analytics Engine • Professional Report Edition</p>
                                     <p style={{ fontSize: '10px', fontWeight: 'bold', color: theme === 'dark' ? '#6366f1' : '#4f46e5', margin: 0 }}>Page {pIdx + 1}</p>
                                 </div>
                             </div>

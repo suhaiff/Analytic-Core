@@ -1,14 +1,36 @@
+# Node modules
 node_modules/
+**/node_modules/
+
+# Files to ignore
 .env
 .env.local
 .env.*
 .env.example
 *.log
 .DS_Store
+
+# Build output
 dist/
 build/
+.next/
+out/
 coverage/
+
+# Specific binary/large files
+*.zip
+*.rar
+*.7z
+*.xlsx
+*.xls
+*.csv
+server/uploads/
+
+# Package manager stuff
 package-lock.json
 !package-lock.json
-user file log.xlsx
-*.xlsx
+yarn.lock
+
+# OS files
+Thumbs.db
+desktop.ini

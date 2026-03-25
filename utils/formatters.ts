@@ -3,6 +3,18 @@
  */
 
 /**
+ * Parses a string that may contain currency symbols or commas into a number
+ */
+export const parseNumericValue = (val: any): number => {
+    if (val === null || val === undefined || val === '') return 0;
+    if (typeof val === 'number') return val;
+    // Remove currency symbols, commas, and other non-numeric chars except . and -
+    const cleaned = String(val).replace(/[^0-9.-]/g, '');
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? 0 : num;
+};
+
+/**
  * Formats a number as Indian Rupee currency
  * @param value - The numeric value to format
  * @param decimals - Number of decimal places (default: 0 for whole numbers, 2 for decimals)

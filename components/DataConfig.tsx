@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { DataModel, ProcessedRow, DataTable, JoinConfig, JoinType, ColumnType, ColumnMetadata, AggregationType, AggregatedColumnDefinition } from '../types';
-import { ArrowRight, Table, CheckSquare, Square, Database, Columns, Plus, Link as LinkIcon, Trash2, Upload, Settings2, Home, Eye, X, FileText, Loader2, Activity, ChevronDown } from 'lucide-react';
+import { ArrowRight, Table, CheckSquare, Square, Database, Columns, Plus, Link as LinkIcon, Trash2, Upload, Settings2, Home, Eye, X, FileText, Loader2, Activity, ChevronDown, Wand2 } from 'lucide-react';
 import { processFile } from '../utils/fileParser';
 import { performJoins, processRawData } from '../utils/dataProcessing';
 import { useTheme } from '../ThemeContext';
@@ -9,6 +9,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { fileService, FileContent } from '../services/fileService';
 import { smartFormat } from '../utils/formatters';
 import { performSchemaAudit } from '../services/schemaService';
+import { DataPreparation } from './DataPreparation';
 
 interface DataConfigProps {
     initialTables: DataTable[];
@@ -30,7 +31,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
     const [dashboardTitle, setDashboardTitle] = useState('');
 
     // Configuration State
-    const [activeTab, setActiveTab] = useState<'JOIN' | 'COLUMNS'>('JOIN');
+    const [activeTab, setActiveTab] = useState<'JOIN' | 'TRANSFORM'>('JOIN');
     const [joins, setJoins] = useState<JoinConfig[]>([]);
     const [headerIndices, setHeaderIndices] = useState<{ [key: string]: number }>({});
 
@@ -383,14 +384,14 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                         <span className="hidden lg:inline">Data Relationships</span>
                     </button>
                     <button
-                        onClick={() => setActiveTab('COLUMNS')}
+                        onClick={() => setActiveTab('TRANSFORM')}
                         className={`px-1.5 sm:px-2.5 md:px-3 lg:px-4 py-0.5 sm:py-1 md:py-1.5 text-[10px] sm:text-xs font-bold rounded-md transition-all flex items-center gap-0.5 sm:gap-1 md:gap-1.5 whitespace-nowrap
-                    ${activeTab === 'COLUMNS' ? 'bg-indigo-600 text-white shadow-lg' : `${colors.textMuted} hover:${colors.textPrimary}`}
+                    ${activeTab === 'TRANSFORM' ? 'bg-violet-600 text-white shadow-lg' : `${colors.textMuted} hover:${colors.textPrimary}`}
                 `}
-                        title="Select Columns"
+                        title="Data Preparation"
                     >
-                        <Columns className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 flex-shrink-0" />
-                        <span className="hidden sm:inline">Select Columns</span>
+                        <Wand2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 flex-shrink-0" />
+                        <span className="hidden sm:inline">Data Preparation</span>
                     </button>
                 </div>
 
@@ -506,7 +507,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                         </div>
                     </div>
 
-                    {activeTab === 'COLUMNS' && (
+                    {activeTab === 'TRANSFORM' && (
                         <div className="flex-1 p-4 sm:p-6">
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className={`text-xs font-bold ${colors.textMuted} uppercase tracking-wider flex items-center gap-2`}>
@@ -817,25 +818,27 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                         </div>
                     )}
 
-                    {activeTab === 'COLUMNS' && (
-                        <div className={`flex-1 flex flex-col items-center justify-center text-center p-6 sm:p-8 md:p-12 ${colors.textMuted}`}>
-                            <CheckSquare className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 ${theme === 'dark' ? 'text-slate-700' : 'text-slate-300'} mb-3 sm:mb-4`} />
-                            <h3 className={`responsive-text-lg md:text-xl font-bold ${colors.textTertiary}`}>Review Your Selection</h3>
-                            <p className="max-w-md mt-2 responsive-text-sm sm:text-base px-4">
-                                Use the sidebar to check or uncheck specific columns.
-                                Only selected columns will be analyzed by the AI for chart recommendations.
-                            </p>
-                            <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-left max-w-2xl w-full px-4">
-                                <div className={`responsive-card ${colors.bgSecondary} rounded border ${colors.borderPrimary}`}>
-                                    <div className={`responsive-text-xs ${colors.textMuted} uppercase mb-1`}>Total Rows</div>
-                                    <div className={`responsive-text-xl md:text-2xl font-bold ${colors.textPrimary}`}>{mergedData.length.toLocaleString()}</div>
-                                </div>
-                                <div className={`responsive-card ${colors.bgSecondary} rounded border ${colors.borderPrimary}`}>
-                                    <div className={`responsive-text-xs ${colors.textMuted} uppercase mb-1`}>Selected Columns</div>
-                                    <div className="responsive-text-xl md:text-2xl font-bold text-indigo-400">{selectedColumns.size} <span className={`responsive-text-sm ${colors.textMuted} font-normal`}>/ {mergedColumns.length}</span></div>
-                                </div>
-                            </div>
-                        </div>
+                    {activeTab === 'TRANSFORM' && (
+                        <DataPreparation
+                            mergedData={mergedData}
+                            mergedColumns={mergedColumns}
+                            visibleColumns={selectedColumns}
+                            columnMetadata={columnMetadata}
+                            onDataChange={(newData, newColumns) => {
+                                setMergedData(newData);
+                                setMergedColumns(newColumns);
+                                // Auto-select any newly added columns
+                                setSelectedColumns(prev => {
+                                    const updated = new Set(prev);
+                                    newColumns.forEach(col => {
+                                        if (!mergedColumns.includes(col)) {
+                                            updated.add(col);
+                                        }
+                                    });
+                                    return updated;
+                                });
+                            }}
+                        />
                     )}
                 </main>
             </div>
