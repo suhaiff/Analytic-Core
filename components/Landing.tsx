@@ -583,11 +583,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                       { title: "Upload Data", desc: "Supports multiple source files", icon: FileSpreadsheet },
                       { title: "Configure & Join", desc: "Merge tables and select key columns", icon: Settings },
                       { title: "Aggregate Setup", desc: "Summarize data using column aggregation", icon: BarChart3 },
-<<<<<<< HEAD
                       { title: "AI Analysis & Charts", desc: "Gemini suggests relevant charts and actionable insights", icon: Sparkles },
-=======
-                      { title: "AI Analysis", desc: "Gemini suggests relevant charts", icon: Sparkles },
->>>>>>> bc93b204 (Data Preparation and manual chart builder update)
                       { title: "Interact & Export", desc: "Filter, zoom, and save as PDF", icon: LayoutDashboard }
                     ].map((step, idx) => (
                       <div key={idx} className="relative flex items-start gap-4 sm:gap-6 group">
