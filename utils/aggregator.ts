@@ -1,5 +1,5 @@
 import { ProcessedRow, ChartConfig, AggregationType } from '../types';
-import { getYear, getMonth, getDay, parseNumericValue as parseNumeric } from './formatters';
+import { getYear, getMonth, getDay } from './formatters';
 
 export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] => {
   // --- DATE FILTERS: Narrow the dataset by year/month/day before any aggregation ---
@@ -33,18 +33,14 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
     });
   }
 
-<<<<<<< HEAD
 
-=======
->>>>>>> bc93b204 (Data Preparation and manual chart builder update)
   if (config.type === 'KPI') {
     // For KPI, we just return a single value
-    const agg = String(config.aggregation).toUpperCase();
-    if (agg === AggregationType.COUNT) {
+    if (config.aggregation === AggregationType.COUNT) {
       return [{ value: workingData.length, label: config.title }];
     }
 
-    if (agg === AggregationType.DISTINCT) {
+    if (config.aggregation === AggregationType.DISTINCT) {
       const uniqueValues = new Set(
         workingData
           .map(row => row[config.dataKey])
@@ -59,16 +55,16 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
     let sum = 0;
 
     workingData.forEach(row => {
-      const val = parseNumeric(row[config.dataKey]);
+      const val = Number(row[config.dataKey]) || 0;
       sum += val;
       if (val < min) min = val;
       if (val > max) max = val;
     });
 
     let value = sum;
-    if (agg === AggregationType.AVERAGE) value = workingData.length > 0 ? sum / workingData.length : 0;
-    else if (agg === AggregationType.MINIMUM) value = min === Infinity ? 0 : min;
-    else if (agg === AggregationType.MAXIMUM) value = max === -Infinity ? 0 : max;
+    if (config.aggregation === AggregationType.AVERAGE) value = workingData.length > 0 ? sum / workingData.length : 0;
+    else if (config.aggregation === AggregationType.MINIMUM) value = min === Infinity ? 0 : min;
+    else if (config.aggregation === AggregationType.MAXIMUM) value = max === -Infinity ? 0 : max;
 
     return [{ value: parseFloat(value.toFixed(2)), label: config.title }];
   }
@@ -77,18 +73,18 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
   if (config.type === 'SCATTER') {
     return workingData
       .filter(row => {
-        const x = parseNumeric(row[config.xAxisKey]);
-        const y = parseNumeric(row[config.dataKey]);
+        const x = Number(row[config.xAxisKey]);
+        const y = Number(row[config.dataKey]);
         return !isNaN(x) && !isNaN(y);
       })
       .slice(0, 500)
       .map(row => ({
-        [config.xAxisKey]: parseNumeric(row[config.xAxisKey]),
-        [config.dataKey]: parseNumeric(row[config.dataKey]),
+        [config.xAxisKey]: Number(row[config.xAxisKey]),
+        [config.dataKey]: Number(row[config.dataKey]),
       }));
   }
 
-  // --- HEATMAP & MATRIX: Cross-tabulate two categorical dimensions ---
+  // --- HEATMAP & MATRIX: Cross-tabulate two categorical columns ---
   if ((config.type === 'HEATMAP' || config.type === 'MATRIX') && config.yAxisKey) {
     const matrix: { [key: string]: { [key: string]: { sum: number; count: number; min: number; max: number; distinct: Set<string> } } } = {};
     const xValues = new Set<string>();
@@ -97,7 +93,7 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
     workingData.forEach(row => {
       const xVal = String(row[config.xAxisKey] ?? 'Unknown');
       const yVal = String(row[config.yAxisKey!] ?? 'Unknown');
-      const numVal = parseNumeric(row[config.dataKey]);
+      const numVal = Number(row[config.dataKey]) || 0;
 
       xValues.add(xVal);
       yValues.add(yVal);
@@ -115,16 +111,15 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
     const yArr = Array.from(yValues).sort().slice(0, 20);
 
     const result: any[] = [];
-    const agg = String(config.aggregation).toUpperCase();
     yArr.forEach(yVal => {
       xArr.forEach(xVal => {
         const cell = matrix[yVal]?.[xVal] || { sum: 0, count: 0, min: Infinity, max: -Infinity, distinct: new Set<string>() };
         let value = 0;
-        if (agg === AggregationType.COUNT) value = cell.count;
-        else if (agg === AggregationType.DISTINCT) value = cell.distinct.size;
-        else if (agg === AggregationType.AVERAGE) value = cell.count > 0 ? cell.sum / cell.count : 0;
-        else if (agg === AggregationType.MINIMUM) value = cell.count > 0 ? cell.min : 0;
-        else if (agg === AggregationType.MAXIMUM) value = cell.count > 0 ? cell.max : 0;
+        if (config.aggregation === AggregationType.COUNT) value = cell.count;
+        else if (config.aggregation === AggregationType.DISTINCT) value = cell.distinct.size;
+        else if (config.aggregation === AggregationType.AVERAGE) value = cell.count > 0 ? cell.sum / cell.count : 0;
+        else if (config.aggregation === AggregationType.MINIMUM) value = cell.count > 0 ? cell.min : 0;
+        else if (config.aggregation === AggregationType.MAXIMUM) value = cell.count > 0 ? cell.max : 0;
         else value = cell.sum;
 
         result.push({
@@ -138,8 +133,7 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
     return result;
   }
 
-  const agg = String(config.aggregation).toUpperCase();
-  if (agg === AggregationType.NONE) {
+  if (config.aggregation === AggregationType.NONE) {
     // For Trend charts and Tables, we want more data points to show the full story.
     if (config.type === 'LINE' || config.type === 'AREA' || config.type === 'TABLE') {
       return workingData.slice(0, 2000);
@@ -154,8 +148,8 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
   workingData.forEach(row => {
     const valRaw = row[config.xAxisKey];
     const key = (valRaw !== undefined && valRaw !== null) ? String(valRaw) : 'Unknown';
-    const val = parseNumeric(row[config.dataKey]);
-    const val2 = config.dataKey2 ? parseNumeric(row[config.dataKey2]) : 0;
+    const val = Number(row[config.dataKey]) || 0;
+    const val2 = config.dataKey2 ? (Number(row[config.dataKey2]) || 0) : 0;
 
     if (!groups[key]) {
       groups[key] = { count: 0, sum: 0, sum2: 0, count2: 0, min: val, max: val, min2: val2, max2: val2, distinct: new Set<string>(), distinct2: new Set<string>() };
@@ -177,22 +171,22 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
   let aggregated = Object.keys(groups).map(key => {
     let value = 0;
     let value2 = 0;
-    if (agg === AggregationType.COUNT) {
+    if (config.aggregation === AggregationType.COUNT) {
       value = groups[key].count;
       value2 = groups[key].count;
-    } else if (agg === AggregationType.DISTINCT) {
+    } else if (config.aggregation === AggregationType.DISTINCT) {
       value = groups[key].distinct.size;
       value2 = groups[key].distinct2.size;
-    } else if (agg === AggregationType.SUM) {
+    } else if (config.aggregation === AggregationType.SUM) {
       value = groups[key].sum;
       value2 = groups[key].sum2;
-    } else if (agg === AggregationType.AVERAGE) {
+    } else if (config.aggregation === AggregationType.AVERAGE) {
       value = groups[key].sum / groups[key].count;
       value2 = groups[key].count2 > 0 ? groups[key].sum2 / groups[key].count2 : 0;
-    } else if (agg === AggregationType.MINIMUM) {
+    } else if (config.aggregation === AggregationType.MINIMUM) {
       value = groups[key].min;
       value2 = groups[key].min2;
-    } else if (agg === AggregationType.MAXIMUM) {
+    } else if (config.aggregation === AggregationType.MAXIMUM) {
       value = groups[key].max;
       value2 = groups[key].max2;
     }
