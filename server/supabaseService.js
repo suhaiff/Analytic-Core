@@ -242,6 +242,40 @@ class SupabaseService {
         }
     }
 
+    async updateDashboard(dashboardId, name, dataModel, chartConfigs, sections = null, filterColumns = null) {
+        try {
+            console.log('Updating dashboard:', { dashboardId, name });
+
+            const chartConfigsWrapper = {
+                charts: chartConfigs,
+                sections: sections || [],
+                filterColumns: filterColumns || []
+            };
+
+            const { data, error } = await this.supabase
+                .from('dashboards')
+                .update({
+                    name,
+                    data_model: dataModel,
+                    chart_configs: chartConfigsWrapper
+                })
+                .eq('id', dashboardId)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            console.log('Dashboard updated successfully:', data);
+            return {
+                id: data.id,
+                message: 'Dashboard updated'
+            };
+        } catch (error) {
+            console.error('Error updating dashboard:', error.message);
+            throw error;
+        }
+    }
+
     async deleteDashboard(dashboardId) {
         try {
             const { error } = await this.supabase

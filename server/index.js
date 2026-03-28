@@ -1,5 +1,5 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
@@ -158,6 +158,24 @@ app.get('/api/dashboards', async (req, res) => {
         res.json(dashboards);
     } catch (error) {
         console.error('Get dashboards error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.put('/api/dashboards/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const { dashboard } = req.body;
+
+        if (!dashboard) {
+            return res.status(400).json({ error: 'Missing dashboard data' });
+        }
+
+        const { name, dataModel, chartConfigs, sections, filterColumns } = dashboard;
+        const result = await supabaseService.updateDashboard(id, name, dataModel, chartConfigs, sections, filterColumns);
+        res.json(result);
+    } catch (error) {
+        console.error('Update dashboard error:', error);
         res.status(500).json({ error: error.message });
     }
 });

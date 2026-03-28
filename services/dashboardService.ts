@@ -28,6 +28,23 @@ export const dashboardService = {
         if (!response.ok) throw new Error('Failed to save dashboard');
     },
 
+    async updateDashboard(id: string, dashboard: SavedDashboard): Promise<void> {
+        const response = await fetch(`${API_URL}/dashboards/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                dashboard: {
+                    name: dashboard.name,
+                    dataModel: dashboard.dataModel,
+                    chartConfigs: dashboard.chartConfigs,
+                    sections: dashboard.sections,
+                    filterColumns: dashboard.filterColumns
+                }
+            })
+        });
+        if (!response.ok) throw new Error('Failed to update dashboard');
+    },
+
     async deleteDashboard(id: string): Promise<void> {
         const response = await fetch(`${API_URL}/dashboards/${id}`, {
             method: 'DELETE'

@@ -3,6 +3,7 @@ import { Plus, X, Trash2, Wand2, Calculator, ChevronDown, Eye, Pencil, Check, Mo
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ColumnMetadata } from '../types';
+import { smartFormat } from '../utils/formatters';
 
 type ColumnMenuAction = 'find_replace' | 'remove' | 'split' | 'format' | 'trim' | 'duplicate' | 'datetime' | 'filter';
 
@@ -32,6 +33,7 @@ interface DataPreparationProps {
     mergedColumns: string[];
     visibleColumns?: Set<string>;
     columnMetadata: { [key: string]: ColumnMetadata };
+    columnCurrencies?: { [key: string]: string };
     onDataChange: (newData: any[], newColumns: string[]) => void;
 }
 
@@ -61,6 +63,8 @@ interface CustomColumnConfig {
     columnA: string;
     columnB: string;
     operation: 'add' | 'subtract' | 'multiply' | 'divide' | 'concat';
+    columnBMode: 'column' | 'manual';
+    manualValue: string;
 }
 
 const OPERATOR_LABELS: Record<ConditionalOperator, string> = {
@@ -128,6 +132,7 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
     mergedColumns,
     visibleColumns,
     columnMetadata,
+    columnCurrencies,
     onDataChange,
 }) => {
     const { theme } = useTheme();
@@ -162,6 +167,8 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
         columnA: mergedColumns[0] || '',
         columnB: mergedColumns[0] || '',
         operation: 'multiply',
+        columnBMode: 'column',
+        manualValue: '',
     });
 
     // --- Added Columns Tracking ---
@@ -520,6 +527,8 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
             columnA: mergedColumns[0] || '',
             columnB: mergedColumns[0] || '',
             operation: 'multiply',
+            columnBMode: 'column',
+            manualValue: '',
         });
         setShowCustomModal(true);
     };
@@ -542,13 +551,19 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
     };
 
     const customPreview = useMemo(() => {
-        if (!customCol.columnA || !customCol.columnB) return [];
-        return mergedData.slice(0, 5).map(row => ({
-            a: row[customCol.columnA],
-            b: row[customCol.columnB],
-            result: computeCustomValue(row[customCol.columnA], row[customCol.columnB], customCol.operation),
-        }));
-    }, [customCol.columnA, customCol.columnB, customCol.operation, mergedData]);
+        if (!customCol.columnA) return [];
+        const isManual = customCol.columnBMode === 'manual';
+        if (!isManual && !customCol.columnB) return [];
+        const bVal = isManual ? (Number(customCol.manualValue) || 0) : null;
+        return mergedData.slice(0, 5).map(row => {
+            const b = isManual ? bVal : row[customCol.columnB];
+            return {
+                a: row[customCol.columnA],
+                b: b,
+                result: computeCustomValue(row[customCol.columnA], b, customCol.operation),
+            };
+        });
+    }, [customCol.columnA, customCol.columnB, customCol.columnBMode, customCol.manualValue, customCol.operation, mergedData]);
 
     const applyCustomColumn = () => {
         const trimmedName = customCol.name.trim();
@@ -561,26 +576,47 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
             return;
         }
 
+        const isManual = customCol.columnBMode === 'manual';
+        const isArithmetic = ['add', 'subtract', 'multiply', 'divide'].includes(customCol.operation);
+
+        // Validate manual value
+        if (isManual && isArithmetic && (customCol.manualValue.trim() === '' || isNaN(Number(customCol.manualValue)))) {
+            alert('Please enter a valid number for the manual value.');
+            return;
+        }
+
         // Validate types
         const typeA = detectColType(customCol.columnA);
-        const typeB = detectColType(customCol.columnB);
-        const isArithmetic = ['add', 'subtract', 'multiply', 'divide'].includes(customCol.operation);
         
         if (isArithmetic) {
-            if (typeA !== 'number' || typeB !== 'number') {
-                alert(`Cannot perform arithmetic operations on non-numeric columns.\nColumn A (${customCol.columnA}) is ${typeA}.\nColumn B (${customCol.columnB}) is ${typeB}.`);
-                return;
+            if (isManual) {
+                if (typeA !== 'number') {
+                    alert(`Cannot perform arithmetic operations on non-numeric column.\nColumn A (${customCol.columnA}) is ${typeA}.`);
+                    return;
+                }
+            } else {
+                const typeB = detectColType(customCol.columnB);
+                if (typeA !== 'number' || typeB !== 'number') {
+                    alert(`Cannot perform arithmetic operations on non-numeric columns.\nColumn A (${customCol.columnA}) is ${typeA}.\nColumn B (${customCol.columnB}) is ${typeB}.`);
+                    return;
+                }
             }
         } else if (customCol.operation === 'concat') {
+            const typeB = isManual ? 'text' : detectColType(customCol.columnB);
             if (typeA !== 'text' || typeB !== 'text') {
                 alert(`Concatenation is only allowed when both columns are text.\nColumn A (${customCol.columnA}) is ${typeA}.\nColumn B (${customCol.columnB}) is ${typeB}.`);
                 return;
             }
         }
 
+        const manualVal = isManual ? (Number(customCol.manualValue) || 0) : null;
         const newData = mergedData.map(row => ({
             ...row,
-            [trimmedName]: computeCustomValue(row[customCol.columnA], row[customCol.columnB], customCol.operation),
+            [trimmedName]: computeCustomValue(
+                row[customCol.columnA],
+                isManual ? manualVal : row[customCol.columnB],
+                customCol.operation
+            ),
         }));
         const newColumns = [...mergedColumns, trimmedName];
         setAddedColumns(prev => [...prev, trimmedName]);
@@ -1117,7 +1153,9 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                 {mergedColumns.map((col, cIdx) => {
                                     const isEditing = editingCell?.row === rIdx && editingCell?.col === col;
                                     const cellValue = row[col];
-                                    const displayValue = cellValue !== null && cellValue !== undefined ? String(cellValue) : '';
+                                    const displayValue = cellValue !== null && cellValue !== undefined
+                                        ? smartFormat(cellValue, col, columnMetadata, columnCurrencies)
+                                        : '';
                                     const isAdded = addedColumns.includes(col);
 
                                     return (
@@ -1450,20 +1488,60 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                         </div>
                                     </div>
 
-                                    {/* Column B */}
+                                    {/* Column B / Manual Value */}
                                     {['add', 'subtract', 'multiply', 'divide', 'concat'].includes(customCol.operation) ? (
-                                        <div className="relative">
-                                            <label className={`block text-[10px] uppercase font-bold ${colors.textMuted} mb-1`}>Column B</label>
-                                            <select
-                                                value={customCol.columnB}
-                                                onChange={e => setCustomCol(prev => ({ ...prev, columnB: e.target.value }))}
-                                                className={`w-full appearance-none border ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-900' : 'bg-white'} ${colors.textPrimary} rounded-lg px-3 py-2.5 pr-8 text-sm outline-none focus:border-indigo-500 transition cursor-pointer`}
-                                            >
-                                                {displayColumns.map(c => (
-                                                    <option key={c} value={c}>{c}</option>
-                                                ))}
-                                            </select>
-                                            <ChevronDown className="absolute right-2.5 bottom-3 w-3.5 h-3.5 pointer-events-none opacity-50" />
+                                        <div>
+                                            {/* Toggle: Column vs Manual — only for arithmetic ops */}
+                                            {['add', 'subtract', 'multiply', 'divide'].includes(customCol.operation) && (
+                                                <div className="flex items-center gap-1 mb-1.5">
+                                                    <button
+                                                        onClick={() => setCustomCol(prev => ({ ...prev, columnBMode: 'column' }))}
+                                                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase transition ${customCol.columnBMode === 'column'
+                                                            ? 'bg-indigo-600 text-white shadow-md'
+                                                            : `${theme === 'dark' ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-white text-slate-500 hover:bg-slate-100'} border ${colors.borderPrimary}`
+                                                        }`}
+                                                    >
+                                                        Column
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setCustomCol(prev => ({ ...prev, columnBMode: 'manual' }))}
+                                                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase transition ${customCol.columnBMode === 'manual'
+                                                            ? 'bg-amber-600 text-white shadow-md'
+                                                            : `${theme === 'dark' ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-white text-slate-500 hover:bg-slate-100'} border ${colors.borderPrimary}`
+                                                        }`}
+                                                    >
+                                                        Manual Value
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {/* Column B dropdown (default, or when concat) */}
+                                            {(customCol.columnBMode === 'column' || customCol.operation === 'concat') ? (
+                                                <div className="relative">
+                                                    <label className={`block text-[10px] uppercase font-bold ${colors.textMuted} mb-1`}>Column B</label>
+                                                    <select
+                                                        value={customCol.columnB}
+                                                        onChange={e => setCustomCol(prev => ({ ...prev, columnB: e.target.value }))}
+                                                        className={`w-full appearance-none border ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-900' : 'bg-white'} ${colors.textPrimary} rounded-lg px-3 py-2.5 pr-8 text-sm outline-none focus:border-indigo-500 transition cursor-pointer`}
+                                                    >
+                                                        {displayColumns.map(c => (
+                                                            <option key={c} value={c}>{c}</option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDown className="absolute right-2.5 bottom-3 w-3.5 h-3.5 pointer-events-none opacity-50" />
+                                                </div>
+                                            ) : (
+                                                <div>
+                                                    <label className={`block text-[10px] uppercase font-bold ${colors.textMuted} mb-1`}>Value</label>
+                                                    <input
+                                                        type="number"
+                                                        value={customCol.manualValue}
+                                                        onChange={e => setCustomCol(prev => ({ ...prev, manualValue: e.target.value }))}
+                                                        placeholder="Enter a number"
+                                                        className={`w-full border ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-900' : 'bg-white'} ${colors.textPrimary} rounded-lg px-3 py-2.5 text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition`}
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <div className="flex flex-col justify-center h-full pt-4">
@@ -1486,7 +1564,11 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                                 <th className={`px-3 py-2 font-bold ${colors.textMuted} border-r ${colors.borderPrimary} w-[25%]`}>{customCol.columnA || 'Column A'}</th>
                                                 <th className={`px-3 py-2 font-bold text-center ${colors.textMuted} border-r ${colors.borderPrimary} w-12`}>{OPERATION_SYMBOLS[customCol.operation]}</th>
                                                 {['add', 'subtract', 'multiply', 'divide', 'concat'].includes(customCol.operation) && (
-                                                    <th className={`px-3 py-2 font-bold ${colors.textMuted} border-r ${colors.borderPrimary} w-[25%]`}>{customCol.columnB || 'Column B'}</th>
+                                                    <th className={`px-3 py-2 font-bold ${colors.textMuted} border-r ${colors.borderPrimary} w-[25%]`}>
+                                                        {customCol.columnBMode === 'manual' && customCol.operation !== 'concat'
+                                                            ? (customCol.manualValue || 'Value')
+                                                            : (customCol.columnB || 'Column B')}
+                                                    </th>
                                                 )}
                                                 <th className={`px-3 py-2 font-bold text-center ${colors.textMuted} border-r ${colors.borderPrimary} w-8`}>=</th>
                                                 <th className={`px-3 py-2 font-bold text-emerald-400 ${['add', 'subtract', 'multiply', 'divide', 'concat'].includes(customCol.operation) ? 'w-[30%]' : 'w-[50%]'}`}>{customCol.name || 'Result'}</th>

@@ -49,6 +49,7 @@ function AppContent() {
   const [dashboardSections, setDashboardSections] = useState<DashboardSection[]>([]);
   const [filterColumns, setFilterColumns] = useState<string[]>([]);
   const [sourceType, setSourceType] = useState<'file' | 'google_sheet' | 'sharepoint'>('file');
+  const [currentDashboardId, setCurrentDashboardId] = useState<string | null>(null);
 
 
   // UI State
@@ -59,7 +60,6 @@ function AppContent() {
 
   // Saved Dashboards State
   const [savedDashboards, setSavedDashboards] = useState<SavedDashboard[]>([]);
-  const [isSavedView, setIsSavedView] = useState(false);
 
   // Check for logged in user on init
   useEffect(() => {
@@ -361,7 +361,7 @@ function AppContent() {
     setFilterColumns(cols);
     if (sections) setDashboardSections(sections);
     setStep(Step.DASHBOARD);
-    setIsSavedView(false);
+    setCurrentDashboardId(null);
   };
 
   const handleReturnHomeRequest = () => {
@@ -376,16 +376,19 @@ function AppContent() {
     setDataModel(null);
     setChartConfigs([]);
     setDashboardSections([]);
+    setCurrentDashboardId(null);
   };
 
-  const handleSaveDashboard = async (name: string, currentCharts: ChartConfig[], currentSections?: DashboardSection[], updatedFilterColumns?: string[]) => {
+  const handleSaveDashboard = async (name: string, currentCharts: ChartConfig[], currentSections?: DashboardSection[], updatedFilterColumns?: string[], overwriteId?: string | null) => {
     if (!dataModel || !currentUser) return;
 
     // Use updated filter columns if provided (from Dashboard state), otherwise fall back to App state
     const finalFilterColumns = updatedFilterColumns || filterColumns;
 
-    const newDash: SavedDashboard = {
-      id: Date.now().toString(),
+    const targetId = overwriteId || currentDashboardId;
+
+    const dashData: SavedDashboard = {
+      id: targetId || Date.now().toString(),
       name,
       date: new Date().toLocaleDateString(),
       dataModel: dataModel,
@@ -400,10 +403,18 @@ function AppContent() {
     if (updatedFilterColumns) setFilterColumns(updatedFilterColumns);
 
     try {
-      await dashboardService.saveDashboard(currentUser.id, newDash);
+      if (targetId) {
+        // Update existing dashboard
+        await dashboardService.updateDashboard(targetId, dashData);
+        showToast(`Dashboard "${name}" updated successfully!`, 'success');
+      } else {
+        // Create new dashboard
+        await dashboardService.saveDashboard(currentUser.id, dashData);
+        showToast(`Dashboard "${name}" saved successfully!`, 'success');
+      }
+      setCurrentDashboardId(targetId || dashData.id);
       // Reload dashboards
       await loadUserDashboards(currentUser.id);
-      showToast(`Dashboard "${name}" saved successfully!`, 'success');
     } catch (error) {
       console.error("Failed to save dashboard", error);
       showToast("Failed to save dashboard", 'error');
@@ -415,8 +426,8 @@ function AppContent() {
     setChartConfigs(dash.chartConfigs);
     setDashboardSections(dash.sections || []);
     setFilterColumns(dash.filterColumns || []);
+    setCurrentDashboardId(dash.id);
     setStep(Step.DASHBOARD);
-    setIsSavedView(true);
   };
 
   const handleDeleteDashboard = async (id: string) => {
@@ -552,7 +563,8 @@ function AppContent() {
             onHome={handleReturnHomeRequest}
             onSave={handleSaveDashboard}
             onRefresh={handleRefresh}
-            isReadOnly={isSavedView}
+            dashboardId={currentDashboardId}
+            savedDashboards={savedDashboards}
           />
         )}
       </div>

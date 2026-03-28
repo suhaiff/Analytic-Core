@@ -1,13 +1,60 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ChartConfig, DataModel, AggregationType, AggregatedColumnDefinition } from '../types';
 
+// ── Gemini API Key Rotation ────────────────────────────────────────────────────
+// Supports multiple comma-separated keys in GEMINI_API_KEY env var.
+// Automatically rotates to the next key on 429 / RESOURCE_EXHAUSTED errors.
+const API_KEYS: string[] = (process.env.API_KEY || process.env.GEMINI_API_KEY || '')
+  .split(',')
+  .map(k => k.trim())
+  .filter(k => k.length > 0);
+
+let currentKeyIndex = 0;
+
 const getAI = () => {
-  const apiKey = process.env.API_KEY || '';
-  if (!apiKey) {
-    console.error("API Key missing");
+  if (API_KEYS.length === 0) {
+    console.error("No Gemini API keys configured");
+    return new GoogleGenAI({ apiKey: '' });
   }
+  const apiKey = API_KEYS[currentKeyIndex % API_KEYS.length];
   return new GoogleGenAI({ apiKey });
 };
+
+const rotateKey = () => {
+  if (API_KEYS.length <= 1) return;
+  const prev = currentKeyIndex % API_KEYS.length;
+  currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+  console.warn(`Gemini key rotated: key #${prev + 1} → key #${currentKeyIndex + 1} of ${API_KEYS.length}`);
+};
+
+const isQuotaError = (error: any): boolean => {
+  const msg = String(error?.message || error || '').toLowerCase();
+  return msg.includes('429') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('resource has been exhausted') ||
+    msg.includes('quota') ||
+    msg.includes('rate limit');
+};
+
+const MAX_RETRIES = Math.max(API_KEYS.length, 1);
+
+async function withKeyRotation<T>(fn: () => Promise<T>): Promise<T> {
+  let lastError: any;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (isQuotaError(error) && API_KEYS.length > 1) {
+        console.warn(`Gemini quota error on attempt ${attempt + 1}/${MAX_RETRIES}:`, (error as any)?.message || error);
+        rotateKey();
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
+}
 
 const SYSTEM_INSTRUCTION = `
 You are an expert data analyst and UI engineer. 
@@ -185,9 +232,6 @@ const normalizeChartSuggestion = (suggestion: any, model: DataModel, id: string,
 };
 
 export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<ChartConfig[]> => {
-  const ai = getAI();
-
-  // Prepare a context summary
   const context = `
     I have a dataset named "${model.name}".
     The columns are: ${model.columns.join(', ')}.
@@ -212,23 +256,25 @@ export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<Chart
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: context,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: 'application/json',
-        responseSchema: chartSchema
-      }
+    return await withKeyRotation(async () => {
+      const ai = getAI();
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: context,
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+          responseMimeType: 'application/json',
+          responseSchema: chartSchema
+        }
+      });
+
+      const jsonText = response.text || "{}";
+      const result = JSON.parse(jsonText);
+
+      return result.suggestions.map((s: any, index: number) =>
+        normalizeChartSuggestion(s, model, `suggested-${index}-${Date.now()}`, '#4f46e5')
+      );
     });
-
-    const jsonText = response.text || "{}";
-    const result = JSON.parse(jsonText);
-
-    return result.suggestions.map((s: any, index: number) =>
-      normalizeChartSuggestion(s, model, `suggested-${index}-${Date.now()}`, '#4f46e5')
-    );
-
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
     return [];
@@ -236,8 +282,6 @@ export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<Chart
 };
 
 export const generateChartFromPrompt = async (model: DataModel, prompt: string): Promise<ChartConfig | null> => {
-  const ai = getAI();
-
   const context = `
     Dataset Context:
     Columns: ${model.columns.join(', ')}.
@@ -309,21 +353,23 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
   };
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: context,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: 'application/json',
-        responseSchema: singleChartSchema
-      }
+    return await withKeyRotation(async () => {
+      const ai = getAI();
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: context,
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+          responseMimeType: 'application/json',
+          responseSchema: singleChartSchema
+        }
+      });
+
+      const jsonText = response.text || "{}";
+      const result = JSON.parse(jsonText);
+
+      return normalizeChartSuggestion(result, model, `custom-${Date.now()}`, '#10b981');
     });
-
-    const jsonText = response.text || "{}";
-    const result = JSON.parse(jsonText);
-
-    return normalizeChartSuggestion(result, model, `custom-${Date.now()}`, '#10b981');
-
   } catch (error) {
     console.error("Gemini Custom Generation Error:", error);
     return null;
@@ -338,8 +384,6 @@ export const auditSchema = async (
   headers: string[],
   sampleRows: any[]
 ): Promise<any> => {
-  const ai = getAI();
-
   const auditSchemaDefinition = {
     type: Type.OBJECT,
     properties: {
@@ -393,19 +437,22 @@ STRICT RULES:
   };
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash', // Optimized for speed and deterministic tasks
-      contents: JSON.stringify(inputContext),
-      config: {
-        systemInstruction: auditSystemInstruction,
-        temperature: 0.1, // Very low for determinism
-        responseMimeType: 'application/json',
-        responseSchema: auditSchemaDefinition
-      }
-    });
+    return await withKeyRotation(async () => {
+      const ai = getAI();
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash', // Optimized for speed and deterministic tasks
+        contents: JSON.stringify(inputContext),
+        config: {
+          systemInstruction: auditSystemInstruction,
+          temperature: 0.1, // Very low for determinism
+          responseMimeType: 'application/json',
+          responseSchema: auditSchemaDefinition
+        }
+      });
 
-    const jsonText = response.text || "{}";
-    return JSON.parse(jsonText);
+      const jsonText = response.text || "{}";
+      return JSON.parse(jsonText);
+    });
   } catch (error) {
     console.error("AI Schema Audit error:", error);
     throw error;

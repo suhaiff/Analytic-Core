@@ -4,12 +4,13 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, Brush, LabelList,
     ScatterChart, Scatter, ZAxis, ComposedChart
 } from 'recharts';
-import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType } from '../types';
+import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType, SavedDashboard } from '../types';
 import { aggregateData } from '../utils/aggregator';
 import {
     LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2,
     X, Home, Save, Edit, RefreshCw, Plus, ArrowRight, Filter, Trash2,
-    ChevronDown, Check, MousePointer2, Table as TableIcon, Grid3x3
+    ChevronDown, Check, MousePointer2, Table as TableIcon, Grid3x3, AlertTriangle,
+    Type, Bold, Italic, Minus as MinusIcon, Plus as PlusIcon
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -27,15 +28,16 @@ interface DashboardProps {
     sections?: DashboardSection[];
     filterColumns?: string[];
     onHome: () => void;
-    onSave: (name: string, charts: ChartConfig[], sections?: DashboardSection[], filterColumns?: string[]) => void;
+    onSave: (name: string, charts: ChartConfig[], sections?: DashboardSection[], filterColumns?: string[], overwriteId?: string | null) => void;
     onRefresh?: () => Promise<void>;
-    isReadOnly?: boolean;
+    dashboardId?: string | null;
+    savedDashboards?: SavedDashboard[];
 }
 
 // Vibrant dark mode palette
 const COLORS = ['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6', '#f97316', '#84cc16'];
 
-const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true, columnMetadata, isExporting = false }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean, columnMetadata?: any, isExporting?: boolean }) => {
+const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true, columnMetadata, columnCurrencies, isExporting = false, fontSettings }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean, columnMetadata?: any, columnCurrencies?: { [key: string]: string }, isExporting?: boolean, fontSettings?: { fontFamily: string, fontSize: number, isBold: boolean, isItalic: boolean } }) => {
     const colors = getThemeClasses(theme);
     if (!data || data.length === 0) return <div className={`flex items-center justify-center h-full ${colors.textMuted} text-sm`}>No Data Available</div>;
 
@@ -83,7 +85,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
 
     // Helper to format any value based on column name
     const formatByColumn = (value: any, key: string, compact = false) => {
-        return smartFormat(value, key, columnMetadata);
+        return smartFormat(value, key, columnMetadata, columnCurrencies);
     };
 
     // Custom formatter for labels (usually for dataKey)
@@ -128,6 +130,14 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
         return str;
     };
 
+    // --- Font Settings ---
+    const fsFontFamily = fontSettings?.fontFamily || 'inherit';
+    const fsFontWeight = fontSettings?.isBold ? 'bold' as const : ('normal' as const);
+    const fsFontStyle = fontSettings?.isItalic ? 'italic' as const : ('normal' as const);
+    const fsAxisSize = fontSettings ? Math.max(8, fontSettings.fontSize - 4) : (isExporting ? 9 : 10);
+    const fsLabelSize = fontSettings ? Math.max(8, fontSettings.fontSize - 4) : undefined;
+    const fsLegendSize = fontSettings ? Math.max(9, fontSettings.fontSize - 3) : undefined;
+
     // Custom Tooltip Content
     const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
@@ -151,11 +161,11 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                     padding: '8px 12px',
                     boxShadow: theme === 'dark' ? '0 10px 15px -3px rgba(0, 0, 0, 0.5)' : '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
                 }}>
-                    <p style={{ color: themeColors.chartTooltipText, fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>
+                    <p style={{ color: themeColors.chartTooltipText, fontSize: fontSettings ? `${Math.max(10, fontSettings.fontSize - 2)}px` : '12px', fontWeight: fontSettings?.isBold ? 'bold' : 'bold', marginBottom: '4px', fontFamily: fsFontFamily, fontStyle: fsFontStyle }}>
                         {displayLabel}
                     </p>
                     {payload.map((entry: any, index: number) => (
-                        <p key={index} style={{ color: entry.color, fontSize: '11px', margin: '2px 0' }}>
+                        <p key={index} style={{ color: entry.color, fontSize: fontSettings ? `${Math.max(9, fontSettings.fontSize - 3)}px` : '11px', margin: '2px 0', fontFamily: fsFontFamily, fontStyle: fsFontStyle }}>
                             {entry.name}: <strong>{formatByColumn(entry.value, entry.dataKey || config.dataKey)}</strong>
                         </p>
                     ))}
@@ -165,10 +175,11 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
         return null;
     };
 
+
     const AxisProps = {
         axisLine: false,
         tickLine: false,
-        tick: { fontSize: isExporting ? 9 : 10, fill: themeColors.chartAxisText },
+        tick: { fontSize: fsAxisSize, fill: themeColors.chartAxisText, fontFamily: fsFontFamily, fontWeight: fsFontWeight, fontStyle: fsFontStyle },
         minTickGap: isExporting ? 2 : 5,
         tickFormatter: (val: any) => {
             if (val === null || val === undefined || val === '') return '';
@@ -213,9 +224,12 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '6px',
-                                fontSize: '12px',
+                                fontSize: fsLegendSize ? `${fsLegendSize}px` : '12px',
                                 color: themeColors.chartLegendText,
-                                lineHeight: '1'
+                                lineHeight: '1',
+                                fontFamily: fsFontFamily,
+                                fontWeight: fsFontWeight,
+                                fontStyle: fsFontStyle
                             }}
                         >
                             {!isExporting && (
@@ -252,7 +266,10 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                     dy={12}
                     textAnchor={textAnchor}
                     fill={fill}
-                    fontSize={fontSize || (isExporting ? 8 : 10)}
+                    fontSize={fontSize || fsAxisSize}
+                    fontFamily={fsFontFamily}
+                    fontWeight={fsFontWeight}
+                    fontStyle={fsFontStyle}
                     transform={`rotate(${angle || 0})`}
                     onClick={(e) => {
                         if (isClickable && onItemClick) {
@@ -1413,7 +1430,7 @@ const FilterSidebar = React.memo<FilterSidebarProps>(({
 });
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
-export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, sections: explicitSections = [], filterColumns = [], onHome, onSave, onRefresh, isReadOnly = false }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, sections: explicitSections = [], filterColumns = [], onHome, onSave, onRefresh, dashboardId = null, savedDashboards }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
 
@@ -1424,6 +1441,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     const [isEditing, setIsEditing] = useState(false);
     // Ref to prevent the prop-sync useEffect from overwriting local state after a self-save
     const isSelfSaveRef = useRef(false);
+
+    // --- FONT CUSTOMIZATION STATE ---
+    const [showFontToolbar, setShowFontToolbar] = useState(false);
+    const [fontFamily, setFontFamily] = useState('Inter');
+    const [fontSize, setFontSize] = useState(14);
+    const [isBoldFont, setIsBoldFont] = useState(false);
+    const [isItalicFont, setIsItalicFont] = useState(false);
+    const fontSettings = useMemo(() => ({ fontFamily, fontSize, isBold: isBoldFont, isItalic: isItalicFont }), [fontFamily, fontSize, isBoldFont, isItalicFont]);
+    const FONT_OPTIONS = ['Inter', 'Times New Roman', 'Arial', 'Roboto', 'Georgia', 'Courier New'];
 
     // --- TIME INTELLIGENCE STATE ---
     const [chartDrillStates, setChartDrillStates] = useState<{ [chartId: string]: { level: 'year' | 'month' | 'day', year: number | null, month: number | null } }>({});
@@ -1436,6 +1462,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
     // UI State
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+    const [overwriteMatch, setOverwriteMatch] = useState<SavedDashboard | null>(null);
     const [dashboardName, setDashboardName] = useState(dataModel?.name || "Untitled Dashboard");
     const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -2194,12 +2221,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
             return;
         }
 
+        if (savedDashboards) {
+            const match = savedDashboards.find(d => d.name.trim().toLowerCase() === dashboardName.trim().toLowerCase());
+            if (match && match.id !== dashboardId) {
+                setOverwriteMatch(match);
+                return;
+            }
+        }
+
+        executeSave(dashboardId);
+    };
+
+    const executeSave = (targetId: string | null | undefined) => {
         // Mark this as a self-save so the prop-sync useEffect doesn't reset our local state
         isSelfSaveRef.current = true;
 
         // Save exactly what is in local state — ChartBuilder already assigned correct sectionIds
-        onSave(dashboardName, currentCharts, currentSections, currentFilterColumns);
+        onSave(dashboardName, currentCharts, currentSections, currentFilterColumns, targetId);
         setIsSaveModalOpen(false);
+        setOverwriteMatch(null);
     };
 
     const handleUpdateFromBuilder = (updatedCharts: ChartConfig[], updatedFilterCols: string[], updatedSections?: DashboardSection[]) => {
@@ -2227,32 +2267,59 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                 {isSaveModalOpen && (
                     <div className={`fixed inset-0 z-[60] ${colors.overlayBg} backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in`}>
                         <div className={`${colors.modalBg} border ${colors.borderPrimary} rounded-2xl p-8 max-w-md w-full shadow-2xl`}>
-                            <h3 className={`text-xl font-bold ${colors.textPrimary} mb-4`}>Save Dashboard</h3>
-                            <div className="mb-6">
-                                <label className={`block text-xs font-bold ${colors.textMuted} uppercase mb-2`}>Dashboard Name</label>
-                                <input
-                                    type="text"
-                                    value={dashboardName}
-                                    onChange={(e) => setDashboardName(e.target.value)}
-                                    className={`w-full ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none`}
-                                    placeholder="Enter name..."
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="flex justify-end gap-3">
-                                <button
-                                    onClick={() => setIsSaveModalOpen(false)}
-                                    className={`px-4 py-2 rounded-lg ${colors.textTertiary} hover:${colors.textPrimary} ${colors.bgTertiary} transition`}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleSaveConfirm}
-                                    className="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition shadow-lg shadow-indigo-900/20 flex items-center gap-2"
-                                >
-                                    <Save className="w-4 h-4" /> Save Dashboard
-                                </button>
-                            </div>
+                            {overwriteMatch ? (
+                                <>
+                                    <h3 className={`text-xl font-bold text-amber-500 mb-4 flex items-center gap-2`}>
+                                        <AlertTriangle className="w-6 h-6" /> Overwrite Dashboard?
+                                    </h3>
+                                    <p className={`${colors.textSecondary} mb-6`}>
+                                        A dashboard named <strong className={colors.textPrimary}>"{dashboardName}"</strong> already exists. Do you want to overwrite it or choose a different name?
+                                    </p>
+                                    <div className="flex justify-end gap-3">
+                                        <button
+                                            onClick={() => setOverwriteMatch(null)}
+                                            className={`px-4 py-2 rounded-lg ${colors.textTertiary} hover:${colors.textPrimary} ${colors.bgTertiary} transition`}
+                                        >
+                                            Change Name
+                                        </button>
+                                        <button
+                                            onClick={() => executeSave(overwriteMatch.id)}
+                                            className="px-6 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium transition shadow-lg shadow-amber-900/20"
+                                        >
+                                            Overwrite
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <h3 className={`text-xl font-bold ${colors.textPrimary} mb-4`}>{dashboardId ? 'Update Dashboard' : 'Save Dashboard'}</h3>
+                                    <div className="mb-6">
+                                        <label className={`block text-xs font-bold ${colors.textMuted} uppercase mb-2`}>Dashboard Name</label>
+                                        <input
+                                            type="text"
+                                            value={dashboardName}
+                                            onChange={(e) => setDashboardName(e.target.value)}
+                                            className={`w-full ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none`}
+                                            placeholder="Enter name..."
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div className="flex justify-end gap-3">
+                                        <button
+                                            onClick={() => { setIsSaveModalOpen(false); setOverwriteMatch(null); }}
+                                            className={`px-4 py-2 rounded-lg ${colors.textTertiary} hover:${colors.textPrimary} ${colors.bgTertiary} transition`}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleSaveConfirm}
+                                            className="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition shadow-lg shadow-indigo-900/20 flex items-center gap-2"
+                                        >
+                                            <Save className="w-4 h-4" /> {dashboardId ? 'Update' : 'Save'}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 )}
@@ -2358,7 +2425,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             isExpanded={true}
                                             theme={theme}
                                             columnMetadata={dataModel.columnMetadata}
+                                            columnCurrencies={dataModel.columnCurrencies}
                                             isAnimationActive={true}
+                                            fontSettings={fontSettings}
                                         />
                                     )}
                                 </div>
@@ -2414,6 +2483,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                     }}
                                     activeFilterValue={activeFilters[expandedChartConfig.xAxisKey]}
                                     columnMetadata={dataModel.columnMetadata}
+                                    columnCurrencies={dataModel.columnCurrencies}
+                                    fontSettings={fontSettings}
                                 />
                             </div>
                             <div className={`p-4 ${colors.bgSecondary} border-t ${colors.borderPrimary} text-center`}>
@@ -2453,28 +2524,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
                             <div className="flex items-center gap-2 sm:gap-3 no-export w-full md:w-auto justify-between md:justify-end overflow-x-auto pb-1 md:pb-0">
                                 <div className="flex items-center gap-2">
-                                    {!isReadOnly && (
-                                        <button
-                                            onClick={() => setIsEditing(true)}
-                                            className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} whitespace-nowrap active-press`}
-                                            title="Edit Charts"
-                                        >
-                                            <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                            <span className="hidden sm:inline">Edit / Add Charts</span>
-                                        </button>
-                                    )}
+                                    <button
+                                        onClick={() => setIsEditing(true)}
+                                        className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} whitespace-nowrap active-press`}
+                                        title="Edit Charts"
+                                    >
+                                        <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        <span className="hidden sm:inline">Edit / Add Charts</span>
+                                    </button>
                                     <button
                                         onClick={openSaveModal}
                                         className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} active-press`}
-                                        title="Save Dashboard"
+                                        title={dashboardId ? "Update Dashboard" : "Save Dashboard"}
                                     >
                                         <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                        <span className="hidden sm:inline">Save</span>
+                                        <span className="hidden sm:inline">{dashboardId ? 'Update' : 'Save'}</span>
                                     </button>
-                                    {/* <button className={`flex items-center gap-2 ${colors.textTertiary} hover:${colors.textPrimary} px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:${colors.bgTertiary} transition font-medium text-xs sm:text-sm border border-transparent hover:${colors.borderSecondary} active-press`}>
-                                    <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                    <span className="hidden sm:inline">Share</span>
-                                </button> */}
+                                    <button
+                                        onClick={() => setShowFontToolbar(prev => !prev)}
+                                        className={`flex items-center gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg transition font-medium text-xs sm:text-sm border active-press ${showFontToolbar ? 'bg-indigo-600 text-white border-indigo-500' : `${colors.textTertiary} hover:${colors.textPrimary} hover:${colors.bgTertiary} border-transparent hover:${colors.borderSecondary}`}`}
+                                        title="Font Settings"
+                                    >
+                                        <Type className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        <span className="hidden sm:inline">Font</span>
+                                    </button>
                                     <ThemeToggle className="scale-90 sm:scale-100" />
                                 </div>
 
@@ -2484,13 +2557,89 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                         disabled={isExporting}
                                         className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 disabled:cursor-wait text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg transition font-medium text-xs sm:text-sm shadow-lg shadow-indigo-900/20 whitespace-nowrap active-press"
                                     >
-                                        {isExporting ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                                        {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                                         {isExporting ? '...' : <span className="hidden xs:inline">Export PDF</span>}
                                     </button>
                                 </div>
                             </div>
                         </div>
                     </header>
+
+                    {/* --- Font Formatting Toolbar --- */}
+                    {showFontToolbar && (
+                        <div className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2.5 sticky top-[57px] sm:top-[65px] md:top-[73px] z-25 shadow-sm print:hidden animate-fade-in`}>
+                            <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-3 sm:gap-5">
+                                {/* Font Family */}
+                                <div className="flex items-center gap-2">
+                                    <label className={`text-[10px] font-bold uppercase tracking-wider ${colors.textMuted}`}>Font</label>
+                                    <select
+                                        value={fontFamily}
+                                        onChange={(e) => setFontFamily(e.target.value)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer`}
+                                        style={{ fontFamily }}
+                                    >
+                                        {FONT_OPTIONS.map(f => (
+                                            <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Separator */}
+                                <div className={`w-px h-6 ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-300'}`} />
+
+                                {/* Bold / Italic */}
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => setIsBoldFont(prev => !prev)}
+                                        className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-bold transition-all ${isBoldFont ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30' : `${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} hover:bg-indigo-500/10`}`}
+                                        title="Bold"
+                                    >
+                                        <Bold className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => setIsItalicFont(prev => !prev)}
+                                        className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm transition-all ${isItalicFont ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30' : `${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} hover:bg-indigo-500/10`}`}
+                                        title="Italic"
+                                    >
+                                        <Italic className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                {/* Separator */}
+                                <div className={`w-px h-6 ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-300'}`} />
+
+                                {/* Font Size */}
+                                <div className="flex items-center gap-1.5">
+                                    <label className={`text-[10px] font-bold uppercase tracking-wider ${colors.textMuted}`}>Size</label>
+                                    <div className={`flex items-center rounded-lg border ${colors.borderSecondary} overflow-hidden`}>
+                                        <button
+                                            onClick={() => setFontSize(prev => Math.max(10, prev - 1))}
+                                            className={`w-7 h-7 flex items-center justify-center ${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} hover:bg-indigo-500/10 transition-colors`}
+                                            title="Decrease Size"
+                                        >
+                                            <MinusIcon className="w-3 h-3" />
+                                        </button>
+                                        <span className={`w-8 text-center text-xs font-bold ${colors.textPrimary} ${colors.bgPrimary}`}>{fontSize}</span>
+                                        <button
+                                            onClick={() => setFontSize(prev => Math.min(24, prev + 1))}
+                                            className={`w-7 h-7 flex items-center justify-center ${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} hover:bg-indigo-500/10 transition-colors`}
+                                            title="Increase Size"
+                                        >
+                                            <PlusIcon className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Reset */}
+                                <button
+                                    onClick={() => { setFontFamily('Inter'); setFontSize(14); setIsBoldFont(false); setIsItalicFont(false); }}
+                                    className={`text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} hover:text-indigo-400 transition-colors px-2 py-1 rounded-lg hover:${colors.bgTertiary}`}
+                                >
+                                    Reset
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* --- Interactive Filter Bar --- */}
                     <div data-pdf-filter-bar className={`${colors.bgSecondary} border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-2 sticky top-[57px] sm:top-[65px] md:top-[73px] z-20 shadow-sm print:hidden`}>
@@ -2742,14 +2891,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             const baseData = kpi.ignoreGlobalFilters ? dataModel.data : filteredData;
                                             const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi);
                                             const value = data[0]?.value || 0;
-                                            const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata);
+                                            const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata, dataModel.columnCurrencies);
                                             return (
                                                 <div key={kpi.id} className={`${colors.bgSecondary} rounded-xl border ${colors.borderPrimary} p-6 shadow-xl relative overflow-hidden group print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} hover-lift elevation-lg`}>
                                                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition transform group-hover:scale-110 print:hidden">
                                                         <TrendingUp className="w-16 h-16 text-indigo-500" />
                                                     </div>
-                                                    <h3 className={`text-xs font-bold ${colors.textMuted} uppercase tracking-wider mb-1`}>{kpi.title}</h3>
-                                                    <div className={`text-3xl font-bold ${colors.textPrimary} mt-2`}>
+                                                    <h3 className={`text-xs font-bold ${colors.textMuted} uppercase tracking-wider mb-1`} style={{ fontFamily: fontSettings.fontFamily, fontWeight: fontSettings.isBold ? 'bold' : undefined, fontStyle: fontSettings.isItalic ? 'italic' : undefined, fontSize: `${Math.max(10, fontSettings.fontSize - 4)}px` }}>{kpi.title}</h3>
+                                                    <div className={`text-3xl font-bold ${colors.textPrimary} mt-2`} style={{ fontFamily: fontSettings.fontFamily, fontWeight: fontSettings.isBold ? '900' : 'bold', fontStyle: fontSettings.isItalic ? 'italic' : undefined, fontSize: `${fontSettings.fontSize + 16}px` }}>
                                                         {displayValue}
                                                     </div>
                                                     <div className={`mt-4 h-1 w-full ${theme === 'dark' ? 'bg-slate-800 print:bg-slate-700' : 'bg-slate-200 print:bg-slate-300'} rounded-full overflow-hidden`}>
@@ -2800,8 +2949,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             onMouseLeave={() => { hoveredChartRef.current = null; }}
                                             className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 shadow-lg h-[420px] print:h-[380px] flex flex-col hover:${colors.borderHover} transition-all print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} print:break-inside-avoid print:p-4 relative elevation-md group ${chartFilterMenuOpen === chart.id || topBottomMenuOpen === chart.id ? 'z-10' : 'overflow-hidden'}`}>
                                             <div className="mb-6 pr-20">
-                                                <h3 className={`font-bold text-lg ${colors.textSecondary} truncate`}>{chart.title}</h3>
-                                                <p className={`text-xs ${colors.textMuted} mt-1 truncate`}>{chart.description}</p>
+                                                <h3 className={`font-bold text-lg ${colors.textSecondary} truncate`} style={{ fontFamily: fontSettings.fontFamily, fontWeight: fontSettings.isBold ? 'bold' : undefined, fontStyle: fontSettings.isItalic ? 'italic' : undefined, fontSize: `${fontSettings.fontSize + 4}px` }}>{chart.title}</h3>
+                                                <p className={`text-xs ${colors.textMuted} mt-1 truncate`} style={{ fontFamily: fontSettings.fontFamily, fontStyle: fontSettings.isItalic ? 'italic' : undefined, fontSize: `${Math.max(10, fontSettings.fontSize - 2)}px` }}>{chart.description}</p>
                                                 {isDrilled && (
                                                     <div className="flex items-center gap-1.5 mt-2">
                                                         <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter">
@@ -3072,7 +3221,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                 </button>
                                             </div>
 
-                                            <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden">
+                                            <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden" style={{ fontFamily: fontSettings.fontFamily }}>
                                                 <RenderChart
                                                     config={chart}
                                                     data={aggregatedData}
@@ -3084,6 +3233,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     }}
                                                     activeFilterValue={chartFilters[chart.id]?.[chart.xAxisKey]}
                                                     columnMetadata={dataModel.columnMetadata}
+                                                    columnCurrencies={dataModel.columnCurrencies}
+                                                    fontSettings={fontSettings}
                                                 />
                                             </div>
                                         </div>
@@ -3134,9 +3285,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
                                 {!page.isFirstPageOfPDF && (
                                     <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, paddingBottom: '12px' }}>
-                                        <h2 style={{ fontSize: '18px', fontWeight: '700', color: theme === 'dark' ? '#f8fafc' : '#0f172a', margin: 0 }}>
-                                            {page.tabName} {page.isFirstPageOfTab ? '' : '(Continued)'}
-                                        </h2>
+                                        <h2 style={{ fontSize: '18px', fontWeight: '700', color: theme === 'dark' ? '#f8fafc' : '#0f172a', margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{page.tabName} {page.isFirstPageOfTab ? '' : '(Continued)'}</h2>
                                         <span style={{ fontSize: '11px', color: theme === 'dark' ? '#475569' : '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>
                                             {dataModel.name} • Page {pIdx + 1}
                                         </span>
@@ -3150,7 +3299,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             const baseData = kpi.ignoreGlobalFilters ? dataModel.data : filteredData;
                                             const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi);
                                             const value = data[0]?.value || 0;
-                                            const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata);
+                                            const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata, dataModel.columnCurrencies);
                                             return (
                                                 <div key={kpi.id} style={{ 
                                                     flex: '1 1 calc(25% - 15px)', 
@@ -3203,7 +3352,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     theme={theme}
                                                     isAnimationActive={false}
                                                     columnMetadata={dataModel.columnMetadata}
+                                                    columnCurrencies={dataModel.columnCurrencies}
                                                     isExporting={true}
+                                                    fontSettings={fontSettings}
                                                 />
                                             </div>
                                         </div>

@@ -317,10 +317,66 @@ export const isExcelSerialDate = (value: number): boolean => {
     return Number.isInteger(value) && value > 30000 && value < 100000;
 };
 
+// ── Currency Conversion Utilities ─────────────────────────────────────────────
+
+/** Exchange rates: 1 unit of currency = X INR (approximate) */
+export const CURRENCY_RATES_TO_INR: Record<string, number> = {
+    INR: 1,
+    USD: 83.5,
+    EUR: 91.0,
+    GBP: 105.5,
+    JPY: 0.56,
+    AED: 22.7,
+    SAR: 22.3,
+    CAD: 61.5,
+    AUD: 54.5,
+    SGD: 62.0,
+    CNY: 11.5,
+};
+
+export const CURRENCY_SYMBOLS: Record<string, string> = {
+    INR: '₹', USD: '$', EUR: '€', GBP: '£', JPY: '¥',
+    AED: 'د.إ', SAR: '﷼', CAD: 'C$', AUD: 'A$', SGD: 'S$', CNY: '¥',
+};
+
+export const CURRENCY_LABELS: Record<string, string> = {
+    INR: 'Indian Rupee', USD: 'US Dollar', EUR: 'Euro', GBP: 'British Pound',
+    JPY: 'Japanese Yen', AED: 'UAE Dirham', SAR: 'Saudi Riyal',
+    CAD: 'Canadian Dollar', AUD: 'Australian Dollar', SGD: 'Singapore Dollar', CNY: 'Chinese Yuan',
+};
+
+/** Convert a numeric value from one currency to another via INR as the base */
+export const convertCurrencyValue = (value: number, fromCurrency: string, toCurrency: string): number => {
+    if (fromCurrency === toCurrency) return value;
+    const fromRate = CURRENCY_RATES_TO_INR[fromCurrency] || 1;
+    const toRate = CURRENCY_RATES_TO_INR[toCurrency] || 1;
+    return (value * fromRate) / toRate;
+};
+
+/** Format a numeric value with the correct currency symbol and locale */
+export const formatCurrencyValue = (value: number, currencyCode: string = 'INR'): string => {
+    const hasDecimals = value % 1 !== 0 ? 2 : (currencyCode !== 'INR' && currencyCode !== 'JPY' ? 2 : 0);
+
+    try {
+        return new Intl.NumberFormat(currencyCode === 'INR' ? 'en-IN' : 'en-US', {
+            style: 'currency',
+            currency: currencyCode,
+            minimumFractionDigits: hasDecimals,
+            maximumFractionDigits: hasDecimals,
+        }).format(value);
+    } catch {
+        const symbol = CURRENCY_SYMBOLS[currencyCode] || currencyCode;
+        return `${symbol}${new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: hasDecimals,
+            maximumFractionDigits: hasDecimals,
+        }).format(value)}`;
+    }
+};
+
 /**
  * Formats a value based on its column name and optional DataModel metadata
  */
-export const smartFormat = (value: any, columnName: string, columnMetadata?: any): string => {
+export const smartFormat = (value: any, columnName: string, columnMetadata?: any, columnCurrencies?: { [key: string]: string }): string => {
     if (value === null || value === undefined || value === '') {
         return '-';
     }
@@ -342,7 +398,8 @@ export const smartFormat = (value: any, columnName: string, columnMetadata?: any
         if (isNumeric) {
             switch (type) {
                 case 'CURRENCY':
-                    return formatCurrency(numValue);
+                    const currencyCode = columnCurrencies?.[columnName] || 'INR';
+                    return formatCurrencyValue(numValue, currencyCode);
                 case 'INTEGER':
                     return formatNumber(numValue, 0);
                 case 'PERCENT':
@@ -374,7 +431,8 @@ export const smartFormat = (value: any, columnName: string, columnMetadata?: any
     // Fallback to Rule-based detection if no metadata or metadata is UNKNOWN
     // IMPORTANT: Check currency BEFORE date/time to prevent amounts from being converted to dates
     if (isNumeric && isCurrencyColumn(columnName)) {
-        return formatCurrency(numValue);
+        const fallbackCurrency = columnCurrencies?.[columnName] || 'INR';
+        return formatCurrencyValue(numValue, fallbackCurrency);
     }
 
     // For count columns, format with commas but no currency symbol

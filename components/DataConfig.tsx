@@ -7,7 +7,7 @@ import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
 import { fileService, FileContent } from '../services/fileService';
-import { smartFormat } from '../utils/formatters';
+import { smartFormat, convertCurrencyValue, CURRENCY_SYMBOLS, CURRENCY_LABELS, CURRENCY_RATES_TO_INR } from '../utils/formatters';
 import { performSchemaAudit } from '../services/schemaService';
 import { DataPreparation } from './DataPreparation';
 
@@ -66,6 +66,11 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
     const [isAuditing, setIsAuditing] = useState(false);
     const [showAggregationModal, setShowAggregationModal] = useState(false);
     const [columnAggregations, setColumnAggregations] = useState<Record<string, AggregationType>>({});
+
+    // Currency conversion state
+    const [columnCurrencies, setColumnCurrencies] = useState<{ [key: string]: string }>({});
+    const [currencyDropdownCol, setCurrencyDropdownCol] = useState<string | null>(null);
+    const currencyDropdownRef = useRef<HTMLDivElement>(null);
 
     // Refs
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -202,6 +207,35 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
         setSelectedColumns(newSet);
     };
 
+    // --- Currency conversion ---
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (currencyDropdownRef.current && !currencyDropdownRef.current.contains(e.target as Node)) {
+                setCurrencyDropdownCol(null);
+            }
+        };
+        if (currencyDropdownCol) document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [currencyDropdownCol]);
+
+    const handleCurrencyConvert = (col: string, toCurrency: string) => {
+        const fromCurrency = columnCurrencies[col] || 'INR';
+        if (fromCurrency === toCurrency) {
+            setCurrencyDropdownCol(null);
+            return;
+        }
+        const newData = mergedData.map(row => {
+            const val = row[col];
+            const num = typeof val === 'number' ? val : parseFloat(val);
+            if (isNaN(num)) return row;
+            const converted = convertCurrencyValue(num, fromCurrency, toCurrency);
+            return { ...row, [col]: Math.round(converted * 100) / 100 };
+        });
+        setMergedData(newData);
+        setColumnCurrencies(prev => ({ ...prev, [col]: toCurrency }));
+        setCurrencyDropdownCol(null);
+    };
+
     const aggregationOptions: { value: AggregationType; label: string }[] = [
         { value: AggregationType.NONE, label: 'None' },
         { value: AggregationType.SUM, label: 'Sum' },
@@ -334,6 +368,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             numericColumns: [...numericCols],
             categoricalColumns: [...categoricalCols],
             columnMetadata: finalMetadata,
+            columnCurrencies: Object.keys(columnCurrencies).length > 0 ? columnCurrencies : undefined,
             aggregatedColumns,
             fileId: uploadedFileId,
             sourceType: sourceType as 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database',
@@ -661,6 +696,51 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                     <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 pointer-events-none opacity-50" />
                                                 </div>
                                             )}
+
+                                            {/* ₹ Currency Conversion Button — only for CURRENCY columns */}
+                                            {meta && (meta.finalType || meta.detectedType) === 'CURRENCY' && (
+                                                <div className="relative" ref={currencyDropdownCol === col ? currencyDropdownRef : undefined}>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setCurrencyDropdownCol(prev => prev === col ? null : col); }}
+                                                        className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold transition-all border shadow-lg active:scale-95 ${
+                                                            columnCurrencies[col] && columnCurrencies[col] !== 'INR'
+                                                                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30 shadow-emerald-500/10'
+                                                                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 shadow-emerald-500/5'
+                                                        }`}
+                                                        title={`Currency: ${columnCurrencies[col] || 'INR'} — Click to convert`}
+                                                    >
+                                                        {CURRENCY_SYMBOLS[columnCurrencies[col] || 'INR'] || '₹'}
+                                                    </button>
+
+                                                    {currencyDropdownCol === col && (
+                                                        <div className={`absolute right-0 top-full mt-1.5 z-50 w-48 rounded-xl border ${colors.borderPrimary} ${colors.modalBg} shadow-2xl py-1 animate-fade-in max-h-64 overflow-y-auto`}>
+                                                            <div className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider ${colors.textMuted}`}>
+                                                                Convert to
+                                                            </div>
+                                                            {Object.keys(CURRENCY_RATES_TO_INR).map(code => {
+                                                                const currentCurrency = columnCurrencies[col] || 'INR';
+                                                                const isActive = currentCurrency === code;
+                                                                return (
+                                                                    <button
+                                                                        key={code}
+                                                                        onClick={(e) => { e.stopPropagation(); handleCurrencyConvert(col, code); }}
+                                                                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition text-left ${
+                                                                            isActive
+                                                                                ? 'bg-emerald-500/15 text-emerald-400 font-semibold'
+                                                                                : `${colors.textSecondary} hover:${theme === 'dark' ? 'bg-slate-700/60' : 'bg-slate-100'}`
+                                                                        }`}
+                                                                    >
+                                                                        <span className="w-5 text-center font-bold text-sm">{CURRENCY_SYMBOLS[code]}</span>
+                                                                        <span className="flex-1">{code}</span>
+                                                                        <span className={`text-[10px] ${colors.textMuted}`}>{CURRENCY_LABELS[code]}</span>
+                                                                        {isActive && <span className="text-emerald-400 text-xs">✓</span>}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
@@ -873,7 +953,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                         {mergedColumns.slice(0, 8).map((col, j) => {
                                                             const cellValue = row[col];
                                                             const displayValue = cellValue !== null && cellValue !== undefined
-                                                                ? smartFormat(cellValue, col, columnMetadata)
+                                                                ? smartFormat(cellValue, col, columnMetadata, columnCurrencies)
                                                                 : <span className="text-slate-600 italic">null</span>;
                                                             return (
                                                                 <td key={j} className="px-4 py-3 whitespace-nowrap overflow-hidden max-w-[150px] truncate">
@@ -905,6 +985,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                             mergedColumns={mergedColumns}
                             visibleColumns={selectedColumns}
                             columnMetadata={columnMetadata}
+                            columnCurrencies={columnCurrencies}
                             onDataChange={(newData, newColumns) => {
                                 setMergedData(newData);
                                 setMergedColumns(newColumns);

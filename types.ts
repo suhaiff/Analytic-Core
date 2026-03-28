@@ -85,6 +85,7 @@ export interface DataModel {
   numericColumns: string[];
   categoricalColumns: string[];
   columnMetadata?: { [columnName: string]: ColumnMetadata };
+  columnCurrencies?: { [columnName: string]: string };
   aggregatedColumns?: AggregatedColumnDefinition[];
   fileId?: number;
   sourceType?: 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database';
