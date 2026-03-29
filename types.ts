@@ -159,4 +159,7 @@ export interface User {
   email: string;
   role: UserRole;
   created_at?: string;
+  phone?: string;
+  company?: string;
+  job_title?: string;
 }

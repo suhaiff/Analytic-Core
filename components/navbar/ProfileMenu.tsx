@@ -73,9 +73,9 @@ export const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, onLogout }) => {
             {/* Dropdown Menu */}
             {isDropdownOpen && (
                 <div className={`absolute right-0 mt-3 w-72 origin-top-right z-[100] animate-fade-in-up`}>
-                    <div className={`auth-glass-card rounded-2xl overflow-hidden shadow-2xl border ${colors.borderPrimary} relative`}>
+                    <div className={`${theme === 'dark' ? 'bg-slate-900/95' : 'bg-white/95'} backdrop-blur-2xl rounded-[2rem] overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.12)] border ${colors.borderPrimary} relative`}>
                         {/* Internal Glossy Reflection */}
-                        <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-white/10 to-transparent pointer-events-none"></div>
+                        <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-white/10 to-transparent pointer-events-none"></div>
 
                         {/* Header/User Info */}
                         <div className="p-6 text-center relative">

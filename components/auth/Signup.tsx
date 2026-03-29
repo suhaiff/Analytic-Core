@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { authService } from '../../services/authService';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
-import { UserPlus, Mail, Lock, Unlock, User, AlertCircle, X, ArrowRight } from 'lucide-react';
+import { UserPlus, Mail, Lock, Unlock, User, AlertCircle, X, ArrowRight, Phone, Building, Briefcase } from 'lucide-react';
 
 interface SignupProps {
     onSignupSuccess: () => void;
@@ -17,6 +17,9 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onNavigateToLog
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [phone, setPhone] = useState('');
+    const [company, setCompany] = useState('');
+    const [jobTitle, setJobTitle] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -27,7 +30,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onNavigateToLog
         setError('');
         setLoading(true);
         try {
-            await authService.signup(name, email, password);
+            await authService.signup(name, email, password, phone, company, jobTitle);
             onSignupSuccess();
         } catch (err: any) {
             setError(err.message || 'Signup failed');
@@ -44,7 +47,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onNavigateToLog
             <div className={`absolute top-[-10%] left-[-10%] w-[50%] h-[50%] ${isDark ? 'bg-indigo-600/20' : 'bg-indigo-400/20'} blur-[140px] rounded-full animate-pulse-glow`}></div>
             <div className={`absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] ${isDark ? 'bg-violet-600/20' : 'bg-violet-400/20'} blur-[140px] rounded-full animate-pulse-glow delay-700`}></div>
 
-            <div className={`max-w-[400px] w-full auth-glass-card rounded-[32px] p-6 sm:p-8 relative z-10 animate-fade-in-up mx-4 overflow-hidden`}>
+            <div className={`max-w-[400px] w-full max-h-[90vh] overflow-y-auto overflow-x-hidden custom-scrollbar auth-glass-card rounded-[32px] p-6 sm:p-8 relative z-10 animate-fade-in-up mx-4`}>
                 {/* Glossy Reflection Overlay */}
                 <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/5 to-transparent pointer-events-none"></div>
 
@@ -144,6 +147,60 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onNavigateToLog
                                     <Lock className="w-5 h-5" />
                                 )}
                             </button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2.5">
+                        <label className={`block text-[11px] font-bold ${isDark ? 'text-slate-300' : 'text-slate-500'} uppercase tracking-[2px] ml-1 opacity-80`}>
+                            Phone Number
+                        </label>
+                        <div className={`relative input-glossy rounded-2xl group transition-all duration-300`}>
+                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-400 transition-colors duration-300">
+                                <Phone className="w-5 h-5" />
+                            </div>
+                            <input
+                                type="tel"
+                                value={phone}
+                                onChange={(e) => setPhone(e.target.value)}
+                                className={`w-full bg-transparent border-none py-5 pl-12 pr-4 ${colors.textPrimary} placeholder-slate-500/40 focus:ring-0 outline-none text-base font-semibold`}
+                                placeholder="+1 (555) 000-0000"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2.5">
+                        <label className={`block text-[11px] font-bold ${isDark ? 'text-slate-300' : 'text-slate-500'} uppercase tracking-[2px] ml-1 opacity-80`}>
+                            Company
+                        </label>
+                        <div className={`relative input-glossy rounded-2xl group transition-all duration-300`}>
+                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-400 transition-colors duration-300">
+                                <Building className="w-5 h-5" />
+                            </div>
+                            <input
+                                type="text"
+                                value={company}
+                                onChange={(e) => setCompany(e.target.value)}
+                                className={`w-full bg-transparent border-none py-5 pl-12 pr-4 ${colors.textPrimary} placeholder-slate-500/40 focus:ring-0 outline-none text-base font-semibold`}
+                                placeholder="InsightAI Corp"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2.5">
+                        <label className={`block text-[11px] font-bold ${isDark ? 'text-slate-300' : 'text-slate-500'} uppercase tracking-[2px] ml-1 opacity-80`}>
+                            Job Title
+                        </label>
+                        <div className={`relative input-glossy rounded-2xl group transition-all duration-300`}>
+                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-400 transition-colors duration-300">
+                                <Briefcase className="w-5 h-5" />
+                            </div>
+                            <input
+                                type="text"
+                                value={jobTitle}
+                                onChange={(e) => setJobTitle(e.target.value)}
+                                className={`w-full bg-transparent border-none py-5 pl-12 pr-4 ${colors.textPrimary} placeholder-slate-500/40 focus:ring-0 outline-none text-base font-semibold`}
+                                placeholder="Data Analyst"
+                            />
                         </div>
                     </div>
 

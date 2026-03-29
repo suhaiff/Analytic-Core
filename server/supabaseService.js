@@ -63,7 +63,7 @@ class SupabaseService {
         }
     }
 
-    async createUser(name, email, password, role = 'USER') {
+    async createUser(name, email, password, role = 'USER', phone = null, company = null, job_title = null) {
         try {
             const { data, error } = await this.supabase
                 .from('users')
@@ -73,6 +73,9 @@ class SupabaseService {
                         email,
                         password, // In production, use bcrypt to hash passwords!
                         role,
+                        phone,
+                        company,
+                        job_title,
                         created_at: new Date().toISOString()
                     }
                 ])
@@ -238,40 +241,6 @@ class SupabaseService {
             });
         } catch (error) {
             console.error('Error fetching all dashboards:', error.message);
-            throw error;
-        }
-    }
-
-    async updateDashboard(dashboardId, name, dataModel, chartConfigs, sections = null, filterColumns = null) {
-        try {
-            console.log('Updating dashboard:', { dashboardId, name });
-
-            const chartConfigsWrapper = {
-                charts: chartConfigs,
-                sections: sections || [],
-                filterColumns: filterColumns || []
-            };
-
-            const { data, error } = await this.supabase
-                .from('dashboards')
-                .update({
-                    name,
-                    data_model: dataModel,
-                    chart_configs: chartConfigsWrapper
-                })
-                .eq('id', dashboardId)
-                .select()
-                .single();
-
-            if (error) throw error;
-
-            console.log('Dashboard updated successfully:', data);
-            return {
-                id: data.id,
-                message: 'Dashboard updated'
-            };
-        } catch (error) {
-            console.error('Error updating dashboard:', error.message);
             throw error;
         }
     }

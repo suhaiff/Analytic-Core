@@ -11,8 +11,16 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     role VARCHAR(50) DEFAULT 'USER',
+    phone VARCHAR(50),
+    company VARCHAR(255),
+    job_title VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Note: Run these ALTER TABLE commands if the table already exists
+-- ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+-- ALTER TABLE users ADD COLUMN IF NOT EXISTS company VARCHAR(255);
+-- ALTER TABLE users ADD COLUMN IF NOT EXISTS job_title VARCHAR(255);
 
 -- ========================================
 -- Dashboards Table
