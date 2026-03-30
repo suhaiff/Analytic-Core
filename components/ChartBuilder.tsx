@@ -79,10 +79,12 @@ interface BucketChartCardProps {
     onMetricChange: (id: string, key: string) => void;
     onAggregationChange: (id: string, agg: AggregationType) => void;
     onYAxisChange: (id: string, key: string) => void;
+    onFontFamilyChange: (id: string, fontFamily: string) => void;
+    onFontSizeChange: (id: string, fontSize: number) => void;
 }
 
 const BucketChartCard: React.FC<BucketChartCardProps> = ({
-    chart, index, theme, colors, onRemove, onTypeChange, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart, sections, currentSectionId, onMoveToSection, allColumns, onXAxisChange, onMetricChange, onAggregationChange, onYAxisChange
+    chart, index, theme, colors, onRemove, onTypeChange, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart, sections, currentSectionId, onMoveToSection, allColumns, onXAxisChange, onMetricChange, onAggregationChange, onYAxisChange, onFontFamilyChange, onFontSizeChange
 }) => {
     const [showTypeMenu, setShowTypeMenu] = useState(false);
     const typeMenuRef = useRef<HTMLDivElement>(null);
@@ -100,6 +102,10 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
     const aggMenuRef = useRef<HTMLDivElement>(null);
     const [showYAxisMenu, setShowYAxisMenu] = useState(false);
     const yAxisMenuRef = useRef<HTMLDivElement>(null);
+    const [showFontFamilyMenu, setShowFontFamilyMenu] = useState(false);
+    const fontFamilyMenuRef = useRef<HTMLDivElement>(null);
+    const [showFontSizeMenu, setShowFontSizeMenu] = useState(false);
+    const fontSizeMenuRef = useRef<HTMLDivElement>(null);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [editedTitle, setEditedTitle] = useState(chart.title);
     const titleInputRef = useRef<HTMLInputElement>(null);
@@ -130,6 +136,12 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
             }
             if (yAxisMenuRef.current && !yAxisMenuRef.current.contains(e.target as Node)) {
                 setShowYAxisMenu(false);
+            }
+            if (fontFamilyMenuRef.current && !fontFamilyMenuRef.current.contains(e.target as Node)) {
+                setShowFontFamilyMenu(false);
+            }
+            if (fontSizeMenuRef.current && !fontSizeMenuRef.current.contains(e.target as Node)) {
+                setShowFontSizeMenu(false);
             }
         };
         document.addEventListener('mousedown', handler);
@@ -411,6 +423,79 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
                     )}
                 </div>
             )}
+
+            {/* Font Customization Controls */}
+            <div className={`flex items-center gap-2 mb-2 pb-2 border-b ${theme === 'dark' ? 'border-slate-800/50' : 'border-slate-200'}`}>
+                {/* Font Family Dropdown */}
+                <div className="relative flex-1" ref={fontFamilyMenuRef}>
+                    <button
+                        onClick={() => setShowFontFamilyMenu(v => !v)}
+                        title="Select font family"
+                        className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition border ${theme === 'dark'
+                            ? 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+                            : 'bg-slate-100 border-slate-300 text-slate-600 hover:border-slate-400'
+                            }`}
+                    >
+                        <Settings2 className="w-2.5 h-2.5 shrink-0" />
+                        <span className="truncate">
+                            {chart.fontFamily || 'Arial'}
+                        </span>
+                        <ChevronDown className={`w-2.5 h-2.5 ml-auto transition-transform ${showFontFamilyMenu ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showFontFamilyMenu && (
+                        <div className={`absolute left-0 bottom-full mb-1 w-40 max-h-64 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
+                            } border rounded-xl shadow-2xl z-50 p-1.5 animate-fade-in custom-scrollbar`}>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-1 ${colors.textMuted}`}>Font Family</p>
+                            {['Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana', 'Courier New', 'Trebuchet MS', 'Comic Sans MS', 'Impact', 'Palatino'].map(font => (
+                                <button
+                                    key={font}
+                                    onClick={() => { onFontFamilyChange(chart.id, font); setShowFontFamilyMenu(false); }}
+                                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all mb-0.5 ${(chart.fontFamily || 'Arial') === font ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                    style={{ fontFamily: font }}
+                                >
+                                    {font}
+                                    {(chart.fontFamily || 'Arial') === font && <Check className="w-3 h-3 ml-1 inline text-indigo-400" />}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Font Size Dropdown */}
+                <div className="relative flex-1" ref={fontSizeMenuRef}>
+                    <button
+                        onClick={() => setShowFontSizeMenu(v => !v)}
+                        title="Select font size"
+                        className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition border ${theme === 'dark'
+                            ? 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+                            : 'bg-slate-100 border-slate-300 text-slate-600 hover:border-slate-400'
+                            }`}
+                    >
+                        <span className="truncate">
+                            Size: {chart.fontSize || 12}px
+                        </span>
+                        <ChevronDown className={`w-2.5 h-2.5 ml-auto transition-transform ${showFontSizeMenu ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showFontSizeMenu && (
+                        <div className={`absolute right-0 bottom-full mb-1 w-32 max-h-64 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'
+                            } border rounded-xl shadow-2xl z-50 p-1.5 animate-fade-in custom-scrollbar`}>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-1 ${colors.textMuted}`}>Font Size</p>
+                            {[8, 10, 12, 14, 16, 18, 20, 24, 28, 32].map(size => (
+                                <button
+                                    key={size}
+                                    onClick={() => { onFontSizeChange(chart.id, size); setShowFontSizeMenu(false); }}
+                                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all mb-0.5 ${(chart.fontSize || 12) === size ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                >
+                                    {size}px
+                                    {(chart.fontSize || 12) === size && <Check className="w-3 h-3 ml-1 inline text-indigo-400" />}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
 
             <div className={`grid grid-cols-3 gap-1.5 sm:gap-2 py-2 sm:py-3 border-t ${theme === 'dark' ? 'border-slate-800/50' : 'border-slate-200'} mt-auto`}>
                 {/* X-Axis / Dimension 1 */}
@@ -724,6 +809,14 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     };
     const onYAxisChangeBucket = (id: string, yAxisKey: string) => {
         setBucket(prev => prev.map(c => c.id === id ? { ...c, yAxisKey } : c));
+    };
+
+    const onFontFamilyChangeBucket = (id: string, fontFamily: string) => {
+        setBucket(prev => prev.map(c => c.id === id ? { ...c, fontFamily } : c));
+    };
+
+    const onFontSizeChangeBucket = (id: string, fontSize: number) => {
+        setBucket(prev => prev.map(c => c.id === id ? { ...c, fontSize } : c));
     };
 
     const handleCustomChart = async () => {
@@ -1594,6 +1687,8 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                         onMetricChange={onMetricChangeBucket}
                                                         onAggregationChange={onAggregationChangeBucket}
                                                         onYAxisChange={onYAxisChangeBucket}
+                                                        onFontFamilyChange={onFontFamilyChangeBucket}
+                                                        onFontSizeChange={onFontSizeChangeBucket}
                                                     />
                                                 ))}
                                             </div>
@@ -1644,6 +1739,8 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                 onMetricChange={onMetricChangeBucket}
                                                 onAggregationChange={onAggregationChangeBucket}
                                                 onYAxisChange={onYAxisChangeBucket}
+                                                onFontFamilyChange={onFontFamilyChangeBucket}
+                                                onFontSizeChange={onFontSizeChangeBucket}
                                             />
                                         ))}
                                     </div>

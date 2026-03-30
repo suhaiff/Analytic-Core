@@ -65,6 +65,12 @@ interface CustomColumnConfig {
     operation: 'add' | 'subtract' | 'multiply' | 'divide' | 'concat';
     columnBMode: 'column' | 'manual';
     manualValue: string;
+    // Optional Column C
+    columnC?: string;
+    columnCMode?: 'column' | 'manual';
+    manualValueC?: string;
+    operationC?: 'add' | 'subtract' | 'multiply' | 'divide';
+    enableColumnC?: boolean;
 }
 
 const OPERATOR_LABELS: Record<ConditionalOperator, string> = {
@@ -169,6 +175,11 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
         operation: 'multiply',
         columnBMode: 'column',
         manualValue: '',
+        columnC: mergedColumns[0] || '',
+        columnCMode: 'column',
+        manualValueC: '',
+        operationC: 'add',
+        enableColumnC: false,
     });
 
     // --- Added Columns Tracking ---
@@ -529,6 +540,11 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
             operation: 'multiply',
             columnBMode: 'column',
             manualValue: '',
+            columnC: mergedColumns[0] || '',
+            columnCMode: 'column',
+            manualValueC: '',
+            operationC: 'add',
+            enableColumnC: false,
         });
         setShowCustomModal(true);
     };
@@ -555,15 +571,27 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
         const isManual = customCol.columnBMode === 'manual';
         if (!isManual && !customCol.columnB) return [];
         const bVal = isManual ? (Number(customCol.manualValue) || 0) : null;
+        
         return mergedData.slice(0, 5).map(row => {
             const b = isManual ? bVal : row[customCol.columnB];
+            let result = computeCustomValue(row[customCol.columnA], b, customCol.operation);
+            
+            // If Column C is enabled, apply the second operation
+            let c = null;
+            if (customCol.enableColumnC) {
+                const isManualC = customCol.columnCMode === 'manual';
+                c = isManualC ? (Number(customCol.manualValueC) || 0) : row[customCol.columnC || ''];
+                result = computeCustomValue(result, c, customCol.operationC || 'add');
+            }
+            
             return {
                 a: row[customCol.columnA],
                 b: b,
-                result: computeCustomValue(row[customCol.columnA], b, customCol.operation),
+                c: c,
+                result: result,
             };
         });
-    }, [customCol.columnA, customCol.columnB, customCol.columnBMode, customCol.manualValue, customCol.operation, mergedData]);
+    }, [customCol.columnA, customCol.columnB, customCol.columnBMode, customCol.manualValue, customCol.operation, customCol.enableColumnC, customCol.columnC, customCol.columnCMode, customCol.manualValueC, customCol.operationC, mergedData]);
 
     const applyCustomColumn = () => {
         const trimmedName = customCol.name.trim();
@@ -610,14 +638,25 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
         }
 
         const manualVal = isManual ? (Number(customCol.manualValue) || 0) : null;
-        const newData = mergedData.map(row => ({
-            ...row,
-            [trimmedName]: computeCustomValue(
+        const newData = mergedData.map(row => {
+            let result = computeCustomValue(
                 row[customCol.columnA],
                 isManual ? manualVal : row[customCol.columnB],
                 customCol.operation
-            ),
-        }));
+            );
+            
+            // Apply Column C operation if enabled
+            if (customCol.enableColumnC) {
+                const isManualC = customCol.columnCMode === 'manual';
+                const cVal = isManualC ? (Number(customCol.manualValueC) || 0) : row[customCol.columnC || ''];
+                result = computeCustomValue(result, cVal, customCol.operationC || 'add');
+            }
+            
+            return {
+                ...row,
+                [trimmedName]: result,
+            };
+        });
         const newColumns = [...mergedColumns, trimmedName];
         setAddedColumns(prev => [...prev, trimmedName]);
         onDataChange(newData, newColumns);
@@ -1150,7 +1189,7 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                         : (rIdx + 1)
                                     }
                                 </td>
-                                {mergedColumns.map((col, cIdx) => {
+                                {displayColumns.map((col, cIdx) => {
                                     const isEditing = editingCell?.row === rIdx && editingCell?.col === col;
                                     const cellValue = row[col];
                                     const displayValue = cellValue !== null && cellValue !== undefined
@@ -1551,6 +1590,106 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                 </div>
                             </div>
 
+                            {/* Add Column C Toggle */}
+                            {['add', 'subtract', 'multiply', 'divide'].includes(customCol.operation) && (
+                                <div className={`p-4 rounded-xl border ${colors.borderSecondary} ${theme === 'dark' ? 'bg-slate-800/40' : 'bg-slate-50'}`}>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <label className={`text-xs font-semibold ${colors.textMuted}`}>Add Column C (Optional)</label>
+                                        <button
+                                            onClick={() => setCustomCol(prev => ({ ...prev, enableColumnC: !prev.enableColumnC }))}
+                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 ${
+                                                customCol.enableColumnC
+                                                    ? 'bg-indigo-600'
+                                                    : theme === 'dark' ? 'bg-slate-700' : 'bg-slate-300'
+                                            }`}
+                                        >
+                                            <span
+                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ${
+                                                    customCol.enableColumnC ? 'translate-x-6' : 'translate-x-1'
+                                                }`}
+                                            />
+                                        </button>
+                                    </div>
+
+                                    {customCol.enableColumnC && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-center animate-fade-in">
+                                            {/* Operation C */}
+                                            <div className="flex justify-center flex-col items-center">
+                                                <label className={`block text-[10px] uppercase font-bold ${colors.textMuted} mb-1 text-center`}>Operation</label>
+                                                <div className="flex flex-wrap justify-center gap-1.5">
+                                                    {(['add', 'subtract', 'multiply', 'divide'] as const).map(op => (
+                                                        <button
+                                                            key={op}
+                                                            onClick={() => setCustomCol(prev => ({ ...prev, operationC: op }))}
+                                                            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg text-sm sm:text-base font-bold transition flex items-center justify-center ${customCol.operationC === op
+                                                                ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/30'
+                                                                : `${theme === 'dark' ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-white text-slate-500 hover:bg-slate-100'} border ${colors.borderPrimary}`
+                                                            }`}
+                                                            title={OPERATION_LABELS[op]}
+                                                        >
+                                                            {OPERATION_SYMBOLS[op]}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Column C / Manual Value */}
+                                            <div className="sm:col-span-2">
+                                                {/* Toggle: Column vs Manual */}
+                                                <div className="flex items-center gap-1 mb-1.5">
+                                                    <button
+                                                        onClick={() => setCustomCol(prev => ({ ...prev, columnCMode: 'column' }))}
+                                                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase transition ${customCol.columnCMode === 'column'
+                                                            ? 'bg-indigo-600 text-white shadow-md'
+                                                            : `${theme === 'dark' ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-white text-slate-500 hover:bg-slate-100'} border ${colors.borderPrimary}`
+                                                        }`}
+                                                    >
+                                                        Column
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setCustomCol(prev => ({ ...prev, columnCMode: 'manual' }))}
+                                                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase transition ${customCol.columnCMode === 'manual'
+                                                            ? 'bg-amber-600 text-white shadow-md'
+                                                            : `${theme === 'dark' ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-white text-slate-500 hover:bg-slate-100'} border ${colors.borderPrimary}`
+                                                        }`}
+                                                    >
+                                                        Manual Value
+                                                    </button>
+                                                </div>
+
+                                                {/* Column C dropdown or manual input */}
+                                                {customCol.columnCMode === 'column' ? (
+                                                    <div className="relative">
+                                                        <label className={`block text-[10px] uppercase font-bold ${colors.textMuted} mb-1`}>Column C</label>
+                                                        <select
+                                                            value={customCol.columnC}
+                                                            onChange={e => setCustomCol(prev => ({ ...prev, columnC: e.target.value }))}
+                                                            className={`w-full appearance-none border ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-900' : 'bg-white'} ${colors.textPrimary} rounded-lg px-3 py-2.5 pr-8 text-sm outline-none focus:border-indigo-500 transition cursor-pointer`}
+                                                        >
+                                                            {displayColumns.map(c => (
+                                                                <option key={c} value={c}>{c}</option>
+                                                            ))}
+                                                        </select>
+                                                        <ChevronDown className="absolute right-2.5 bottom-3 w-3.5 h-3.5 pointer-events-none opacity-50" />
+                                                    </div>
+                                                ) : (
+                                                    <div>
+                                                        <label className={`block text-[10px] uppercase font-bold ${colors.textMuted} mb-1`}>Value</label>
+                                                        <input
+                                                            type="number"
+                                                            value={customCol.manualValueC}
+                                                            onChange={e => setCustomCol(prev => ({ ...prev, manualValueC: e.target.value }))}
+                                                            placeholder="Enter a number"
+                                                            className={`w-full border ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-900' : 'bg-white'} ${colors.textPrimary} rounded-lg px-3 py-2.5 text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition`}
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Preview */}
                             <div>
                                 <h4 className={`text-xs font-bold ${colors.textMuted} uppercase tracking-wider mb-2 flex items-center gap-1.5`}>
@@ -1561,40 +1700,58 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                     <table className="w-full text-left text-xs">
                                         <thead>
                                             <tr className={`${theme === 'dark' ? 'bg-slate-800/60' : 'bg-slate-100'}`}>
-                                                <th className={`px-3 py-2 font-bold ${colors.textMuted} border-r ${colors.borderPrimary} w-[25%]`}>{customCol.columnA || 'Column A'}</th>
-                                                <th className={`px-3 py-2 font-bold text-center ${colors.textMuted} border-r ${colors.borderPrimary} w-12`}>{OPERATION_SYMBOLS[customCol.operation]}</th>
+                                                <th className={`px-3 py-2 font-bold ${colors.textMuted} border-r ${colors.borderPrimary} w-[20%]`}>{customCol.columnA || 'Column A'}</th>
+                                                <th className={`px-3 py-2 font-bold text-center ${colors.textMuted} border-r ${colors.borderPrimary} w-10`}>{OPERATION_SYMBOLS[customCol.operation]}</th>
                                                 {['add', 'subtract', 'multiply', 'divide', 'concat'].includes(customCol.operation) && (
-                                                    <th className={`px-3 py-2 font-bold ${colors.textMuted} border-r ${colors.borderPrimary} w-[25%]`}>
+                                                    <th className={`px-3 py-2 font-bold ${colors.textMuted} border-r ${colors.borderPrimary} w-[20%]`}>
                                                         {customCol.columnBMode === 'manual' && customCol.operation !== 'concat'
                                                             ? (customCol.manualValue || 'Value')
                                                             : (customCol.columnB || 'Column B')}
                                                     </th>
                                                 )}
+                                                {customCol.enableColumnC && (
+                                                    <>
+                                                        <th className={`px-3 py-2 font-bold text-center ${colors.textMuted} border-r ${colors.borderPrimary} w-10`}>{OPERATION_SYMBOLS[customCol.operationC || 'add']}</th>
+                                                        <th className={`px-3 py-2 font-bold ${colors.textMuted} border-r ${colors.borderPrimary} w-[20%]`}>
+                                                            {customCol.columnCMode === 'manual'
+                                                                ? (customCol.manualValueC || 'Value')
+                                                                : (customCol.columnC || 'Column C')}
+                                                        </th>
+                                                    </>
+                                                )}
                                                 <th className={`px-3 py-2 font-bold text-center ${colors.textMuted} border-r ${colors.borderPrimary} w-8`}>=</th>
-                                                <th className={`px-3 py-2 font-bold text-emerald-400 ${['add', 'subtract', 'multiply', 'divide', 'concat'].includes(customCol.operation) ? 'w-[30%]' : 'w-[50%]'}`}>{customCol.name || 'Result'}</th>
+                                                <th className={`px-3 py-2 font-bold text-emerald-400`}>{customCol.name || 'Result'}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {customPreview.map((row, i) => (
                                                 <tr key={i} className={`border-t ${colors.borderPrimary}`}>
-                                                    <td className={`px-3 py-1.5 ${colors.textSecondary} border-r ${colors.borderPrimary} truncate max-w-[120px]`}>
+                                                    <td className={`px-3 py-1.5 ${colors.textSecondary} border-r ${colors.borderPrimary} truncate max-w-[100px]`}>
                                                         {typeof row.a === 'object' ? JSON.stringify(row.a) : String(row.a ?? '')}
                                                     </td>
                                                     <td className={`px-3 py-1.5 text-center ${colors.textMuted} border-r ${colors.borderPrimary}`}>{OPERATION_SYMBOLS[customCol.operation]}</td>
                                                     {['add', 'subtract', 'multiply', 'divide', 'concat'].includes(customCol.operation) && (
-                                                        <td className={`px-3 py-1.5 ${colors.textSecondary} border-r ${colors.borderPrimary} truncate max-w-[120px]`}>
+                                                        <td className={`px-3 py-1.5 ${colors.textSecondary} border-r ${colors.borderPrimary} truncate max-w-[100px]`}>
                                                             {typeof row.b === 'object' ? JSON.stringify(row.b) : String(row.b ?? '')}
                                                         </td>
                                                     )}
+                                                    {customCol.enableColumnC && (
+                                                        <>
+                                                            <td className={`px-3 py-1.5 text-center ${colors.textMuted} border-r ${colors.borderPrimary}`}>{OPERATION_SYMBOLS[customCol.operationC || 'add']}</td>
+                                                            <td className={`px-3 py-1.5 ${colors.textSecondary} border-r ${colors.borderPrimary} truncate max-w-[100px]`}>
+                                                                {row.c !== null ? (typeof row.c === 'object' ? JSON.stringify(row.c) : String(row.c ?? '')) : ''}
+                                                            </td>
+                                                        </>
+                                                    )}
                                                     <td className={`px-3 py-1.5 text-center ${colors.textMuted} border-r ${colors.borderPrimary}`}>=</td>
-                                                    <td className="px-3 py-1.5 font-semibold text-emerald-400 truncate max-w-[150px]">
+                                                    <td className="px-3 py-1.5 font-semibold text-emerald-400 truncate max-w-[120px]">
                                                         {typeof row.result === 'number' ? (Number.isInteger(row.result) ? row.result : row.result.toFixed(2)) : String(row.result ?? '')}
                                                     </td>
                                                 </tr>
                                             ))}
                                             {customPreview.length === 0 && (
                                                 <tr>
-                                                    <td colSpan={['add', 'subtract', 'multiply', 'divide', 'concat'].includes(customCol.operation) ? 5 : 4} className={`px-3 py-4 text-center ${colors.textMuted} italic`}>Select columns to preview</td>
+                                                    <td colSpan={customCol.enableColumnC ? 7 : (['add', 'subtract', 'multiply', 'divide', 'concat'].includes(customCol.operation) ? 5 : 4)} className={`px-3 py-4 text-center ${colors.textMuted} italic`}>Select columns to preview</td>
                                                 </tr>
                                             )}
                                         </tbody>

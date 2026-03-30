@@ -69,8 +69,13 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
 
     // Currency conversion state
     const [columnCurrencies, setColumnCurrencies] = useState<{ [key: string]: string }>({});
-    const [currencyDropdownCol, setCurrencyDropdownCol] = useState<string | null>(null);
-    const currencyDropdownRef = useRef<HTMLDivElement>(null);
+    const [currencyConversionEnabled, setCurrencyConversionEnabled] = useState<{ [key: string]: boolean }>({});
+    const [currencyModal, setCurrencyModal] = useState<{
+        isOpen: boolean;
+        col: string;
+        fromCurrency: string;
+        toCurrency: string;
+    } | null>(null);
 
     // Refs
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -208,20 +213,9 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
     };
 
     // --- Currency conversion ---
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (currencyDropdownRef.current && !currencyDropdownRef.current.contains(e.target as Node)) {
-                setCurrencyDropdownCol(null);
-            }
-        };
-        if (currencyDropdownCol) document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [currencyDropdownCol]);
-
-    const handleCurrencyConvert = (col: string, toCurrency: string) => {
-        const fromCurrency = columnCurrencies[col] || 'INR';
+    const handleCurrencyConvert = (col: string, fromCurrency: string, toCurrency: string) => {
         if (fromCurrency === toCurrency) {
-            setCurrencyDropdownCol(null);
+            setCurrencyModal(null);
             return;
         }
         const newData = mergedData.map(row => {
@@ -233,7 +227,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
         });
         setMergedData(newData);
         setColumnCurrencies(prev => ({ ...prev, [col]: toCurrency }));
-        setCurrencyDropdownCol(null);
+        setCurrencyModal(null);
     };
 
     const aggregationOptions: { value: AggregationType; label: string }[] = [
@@ -657,11 +651,20 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                         )}
                                                     </div>
 
-                                                    <div className="flex justify-end shrink-0">
-                                                        {meta && (meta.finalType || meta.detectedType) === 'CURRENCY' && (
-                                                            <div className="relative" ref={currencyDropdownCol === col ? currencyDropdownRef : undefined}>
+                                                    <div className="flex items-center gap-2 justify-end shrink-0">
+                                                        {meta && (meta.finalType || meta.detectedType) === 'CURRENCY' && currencyConversionEnabled[col] && (
+                                                            <div className="relative">
                                                                 <button
-                                                                    onClick={(e) => { e.stopPropagation(); setCurrencyDropdownCol(prev => prev === col ? null : col); }}
+                                                                    onClick={(e) => { 
+                                                                        e.stopPropagation(); 
+                                                                        const defaultCurr = columnCurrencies[col] || 'INR';
+                                                                        setCurrencyModal({
+                                                                            isOpen: true,
+                                                                            col: col,
+                                                                            fromCurrency: defaultCurr,
+                                                                            toCurrency: defaultCurr === 'INR' ? 'USD' : 'INR'
+                                                                        });
+                                                                    }}
                                                                     className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all border shadow-sm active:scale-95 ${
                                                                         columnCurrencies[col] && columnCurrencies[col] !== 'INR'
                                                                             ? theme === 'dark' 
@@ -675,34 +678,6 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                                 >
                                                                     {CURRENCY_SYMBOLS[columnCurrencies[col] || 'INR'] || '₹'}
                                                                 </button>
-
-                                                                {currencyDropdownCol === col && (
-                                                                    <div className={`absolute right-0 top-full mt-1.5 z-50 w-48 rounded-xl border ${colors.borderPrimary} ${colors.modalBg} shadow-2xl py-1 animate-fade-in max-h-64 overflow-y-auto`}>
-                                                                        <div className={`px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider ${colors.textMuted}`}>
-                                                                            Convert to
-                                                                        </div>
-                                                                        {Object.keys(CURRENCY_RATES_TO_INR).map(code => {
-                                                                            const currentCurrency = columnCurrencies[col] || 'INR';
-                                                                            const isActive = currentCurrency === code;
-                                                                            return (
-                                                                                <button
-                                                                                    key={code}
-                                                                                    onClick={(e) => { e.stopPropagation(); handleCurrencyConvert(col, code); }}
-                                                                                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition text-left ${
-                                                                                        isActive
-                                                                                            ? 'bg-emerald-500/15 text-emerald-500 font-semibold'
-                                                                                            : `${colors.textSecondary} hover:${theme === 'dark' ? 'bg-slate-700/60' : 'bg-slate-100'}`
-                                                                                    }`}
-                                                                                >
-                                                                                    <span className="w-5 text-center font-bold text-sm">{CURRENCY_SYMBOLS[code]}</span>
-                                                                                    <span className="flex-1">{code}</span>
-                                                                                    <span className={`text-[10px] ${colors.textMuted}`}>{CURRENCY_LABELS[code]}</span>
-                                                                                    {isActive && <span className="text-emerald-500 text-xs text-bold">✓</span>}
-                                                                                </button>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                )}
                                                             </div>
                                                         )}
                                                     </div>
@@ -756,6 +731,35 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                                                         </div>
                                                     )}
                                                 </div>
+
+                                                {/* Currency Conversion Toggle - Only for CURRENCY type */}
+                                                {meta && (meta.finalType || meta.detectedType) === 'CURRENCY' && (
+                                                    <div className={`flex items-center justify-between gap-2 mt-2 pt-2 border-t ${theme === 'dark' ? 'border-slate-700/30' : 'border-slate-200'}`}>
+                                                        <span className={`text-[10px] font-bold ${colors.textMuted} uppercase tracking-wider`}>
+                                                            Change Currency
+                                                        </span>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setCurrencyConversionEnabled(prev => ({
+                                                                    ...prev,
+                                                                    [col]: !prev[col]
+                                                                }));
+                                                            }}
+                                                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 ${
+                                                                currencyConversionEnabled[col]
+                                                                    ? 'bg-emerald-500'
+                                                                    : theme === 'dark' ? 'bg-slate-700' : 'bg-slate-300'
+                                                            }`}
+                                                        >
+                                                            <span
+                                                                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform duration-200 ${
+                                                                    currencyConversionEnabled[col] ? 'translate-x-5' : 'translate-x-0.5'
+                                                                }`}
+                                                            />
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     );
@@ -1020,6 +1024,93 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                     )}
                 </main>
             </div>
+
+            {/* Currency Conversion Modal */}
+            {currencyModal?.isOpen && (
+                <div className={`fixed inset-0 z-[100] ${colors.overlayBg} backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in`}>
+                    <div className={`responsive-card ${colors.modalBg} border ${colors.borderPrimary} rounded-xl shadow-2xl w-full max-w-sm overflow-hidden`} onClick={(e) => e.stopPropagation()}>
+                        <div className={`flex justify-between items-center p-4 border-b ${colors.borderPrimary}`}>
+                            <h3 className={`font-bold ${colors.textPrimary} flex items-center gap-2`}>
+                                <span className="text-emerald-500 text-lg">💱</span>
+                                Currency Conversion
+                            </h3>
+                            <button
+                                onClick={() => setCurrencyModal(null)}
+                                className={`p-1.5 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} transition`}
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <div>
+                                <label className={`block text-xs font-bold ${colors.textMuted} uppercase tracking-wider mb-2`}>Column</label>
+                                <div className={`font-semibold ${colors.textPrimary}`}>{currencyModal.col}</div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="flex-1 space-y-2">
+                                    <label className={`block text-xs font-bold ${colors.textMuted} uppercase tracking-wider`}>From</label>
+                                    <select
+                                        value={currencyModal.fromCurrency}
+                                        onChange={(e) => setCurrencyModal(prev => prev ? {...prev, fromCurrency: e.target.value} : null)}
+                                        className={`w-full ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'} border ${colors.borderSecondary} rounded-lg p-2 text-sm ${colors.textPrimary} outline-none focus:border-emerald-500`}
+                                    >
+                                        {Object.keys(CURRENCY_RATES_TO_INR).map(code => (
+                                            <option key={code} value={code}>{code} - {CURRENCY_LABELS[code]}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex flex-col justify-center pt-6">
+                                    <ArrowRight className={`w-5 h-5 ${colors.textMuted}`} />
+                                </div>
+                                <div className="flex-1 space-y-2">
+                                    <label className={`block text-xs font-bold ${colors.textMuted} uppercase tracking-wider`}>To</label>
+                                    <select
+                                        value={currencyModal.toCurrency}
+                                        onChange={(e) => setCurrencyModal(prev => prev ? {...prev, toCurrency: e.target.value} : null)}
+                                        className={`w-full ${theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'} border ${colors.borderSecondary} rounded-lg p-2 text-sm ${colors.textPrimary} outline-none focus:border-emerald-500`}
+                                    >
+                                        {Object.keys(CURRENCY_RATES_TO_INR).map(code => (
+                                            <option key={code} value={code}>{code} - {CURRENCY_LABELS[code]}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Exchange Rate Info */}
+                            {currencyModal.fromCurrency !== currencyModal.toCurrency && (
+                                <div className={`p-3 rounded-lg ${theme === 'dark' ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-emerald-50 border border-emerald-200'} mt-2`}>
+                                    <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center justify-between">
+                                        <span>Exchange Rate:</span>
+                                        <span className="font-bold whitespace-nowrap">
+                                            1 {currencyModal.fromCurrency} = {
+                                                ((CURRENCY_RATES_TO_INR[currencyModal.fromCurrency] || 1) / (CURRENCY_RATES_TO_INR[currencyModal.toCurrency] || 1)).toLocaleString(undefined, { maximumFractionDigits: 4 })
+                                            } {currencyModal.toCurrency}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+                            
+                        </div>
+                        <div className={`p-4 border-t ${colors.borderPrimary} flex justify-end gap-2`}>
+                            <button
+                                onClick={() => setCurrencyModal(null)}
+                                className={`px-4 py-2 text-sm font-medium rounded-lg ${colors.textSecondary} hover:${colors.bgTertiary} transition`}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => {
+                                    handleCurrencyConvert(currencyModal.col, currencyModal.fromCurrency, currencyModal.toCurrency);
+                                }}
+                                disabled={currencyModal.fromCurrency === currencyModal.toCurrency}
+                                className={`px-4 py-2 text-sm font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                                Convert
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* File Viewer Modal */}
             {viewingFile && (

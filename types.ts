@@ -134,6 +134,8 @@ export interface ChartConfig {
     dateColumn: string; // The date column to use for the next-level breakdown
     nextLevel: 'month' | 'day'; // The time granularity of the breakdown
   };
+  fontFamily?: string; // Font type for this chart (default: Arial)
+  fontSize?: number; // Font size for this chart
 }
 
 export interface DashboardSection {

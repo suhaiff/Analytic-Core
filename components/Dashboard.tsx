@@ -2266,9 +2266,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                 {/* Save Dashboard Modal */}
                 {isSaveModalOpen && (
                     <div className={`fixed inset-0 z-[60] ${colors.overlayBg} backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in`}>
-                        <div className={`${colors.modalBg} border ${colors.borderPrimary} rounded-2xl p-8 max-w-md w-full shadow-2xl`}>
+                        <div className={`${colors.modalBg} border ${colors.borderPrimary} rounded-2xl p-8 max-w-md w-full shadow-2xl relative`}>
                             {overwriteMatch ? (
                                 <>
+                                    <button
+                                        onClick={() => setOverwriteMatch(null)}
+                                        className={`absolute top-4 right-4 p-1.5 rounded-lg ${colors.textMuted} hover:${colors.textPrimary} hover:${colors.bgTertiary} transition`}
+                                        title="Cancel"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
                                     <h3 className={`text-xl font-bold text-amber-500 mb-4 flex items-center gap-2`}>
                                         <AlertTriangle className="w-6 h-6" /> Overwrite Dashboard?
                                     </h3>
@@ -3221,7 +3228,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                 </button>
                                             </div>
 
-                                            <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden" style={{ fontFamily: fontSettings.fontFamily }}>
+                                            <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden" style={{ fontFamily: chart.fontFamily || fontSettings.fontFamily }}>
                                                 <RenderChart
                                                     config={chart}
                                                     data={aggregatedData}
@@ -3234,7 +3241,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     activeFilterValue={chartFilters[chart.id]?.[chart.xAxisKey]}
                                                     columnMetadata={dataModel.columnMetadata}
                                                     columnCurrencies={dataModel.columnCurrencies}
-                                                    fontSettings={fontSettings}
+                                                    fontSettings={{
+                                                        fontFamily: chart.fontFamily || fontSettings.fontFamily,
+                                                        fontSize: chart.fontSize || fontSettings.fontSize,
+                                                        isBold: fontSettings.isBold,
+                                                        isItalic: fontSettings.isItalic
+                                                    }}
                                                 />
                                             </div>
                                         </div>
@@ -3354,7 +3366,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     columnMetadata={dataModel.columnMetadata}
                                                     columnCurrencies={dataModel.columnCurrencies}
                                                     isExporting={true}
-                                                    fontSettings={fontSettings}
+                                                    fontSettings={{
+                                                        fontFamily: chart.fontFamily || fontSettings.fontFamily,
+                                                        fontSize: chart.fontSize || fontSettings.fontSize,
+                                                        isBold: fontSettings.isBold,
+                                                        isItalic: fontSettings.isItalic
+                                                    }}
                                                 />
                                             </div>
                                         </div>
