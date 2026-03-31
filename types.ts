@@ -164,4 +164,5 @@ export interface User {
   phone?: string;
   company?: string;
   job_title?: string;
+  domain?: string;
 }

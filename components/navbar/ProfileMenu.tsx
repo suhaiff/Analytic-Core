@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { LogOut, Settings, ChevronDown, User as UserIcon, Info, HelpCircle, X, ArrowRight, Sparkles } from 'lucide-react';
+import { LogOut, Settings, ChevronDown, User as UserIcon, Info, HelpCircle, X, ArrowRight, Sparkles, Shield, LayoutDashboard } from 'lucide-react';
 import { User as UserType } from '../../types';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
@@ -9,9 +9,11 @@ import { generatePDFGuide } from '../../utils/generatePDFGuide';
 interface ProfileMenuProps {
     user: UserType | null;
     onLogout: () => void;
+    onNavigateToAdmin?: () => void;
+    onNavigateToUserApp?: () => void;
 }
 
-export const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, onLogout }) => {
+export const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, onLogout, onNavigateToAdmin, onNavigateToUserApp }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -102,6 +104,30 @@ export const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, onLogout }) => {
 
                         {/* Menu Actions */}
                         <div className={`p-2 border-t ${colors.borderPrimary}`}>
+                            {user.role === 'ADMIN' && onNavigateToAdmin && (
+                                <button
+                                    onClick={() => { onNavigateToAdmin(); setIsDropdownOpen(false); }}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${colors.textSecondary} hover:${colors.textPrimary} hover:${colors.bgTertiary}`}
+                                >
+                                    <div className={`p-2 rounded-lg ${colors.bgPrimary} group-hover:bg-indigo-500/10 transition-colors`}>
+                                        <Shield className="w-4 h-4 text-indigo-400" />
+                                    </div>
+                                    <span className="font-semibold text-sm">Admin Portal</span>
+                                </button>
+                            )}
+
+                            {user.role === 'ADMIN' && onNavigateToUserApp && (
+                                <button
+                                    onClick={() => { onNavigateToUserApp(); setIsDropdownOpen(false); }}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${colors.textSecondary} hover:${colors.textPrimary} hover:${colors.bgTertiary}`}
+                                >
+                                    <div className={`p-2 rounded-lg ${colors.bgPrimary} group-hover:bg-indigo-500/10 transition-colors`}>
+                                        <LayoutDashboard className="w-4 h-4 text-indigo-400" />
+                                    </div>
+                                    <span className="font-semibold text-sm">User Dashboard</span>
+                                </button>
+                            )}
+
                             <button
                                 onClick={() => { setShowAbout(true); setIsDropdownOpen(false); }}
                                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${colors.textSecondary} hover:${colors.textPrimary} hover:${colors.bgTertiary}`}

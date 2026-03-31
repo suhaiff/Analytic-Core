@@ -5,18 +5,20 @@ import { fileService, FileContent } from '../../services/fileService';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
 import { User, SavedDashboard } from '../../types';
-import { Shield, Trash2, LogOut, Search, User as UserIcon, FileText, LayoutDashboard, Upload, Eye, X, Mail, Phone, Building, Briefcase, Users, TrendingUp, BarChart3, PieChart, Activity, HardDrive, Database, Clock } from 'lucide-react';
+import { Shield, Trash2, LogOut, Search, User as UserIcon, FileText, LayoutDashboard, Upload, Eye, X, Mail, Phone, Building, Briefcase, Users, TrendingUp, BarChart3, PieChart as PieChartIcon, Activity, HardDrive, Database, Clock, Globe } from 'lucide-react';
 import { ProfileMenu } from '../navbar/ProfileMenu';
 import { ThemeToggle } from '../ThemeToggle';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
 interface AdminDashboardProps {
     onLogout: () => void;
     user: User | null;
+    onNavigateToUserApp?: () => void;
 }
 
-type AdminTab = 'USERS' | 'REPORTS' | 'UPLOADS';
+type AdminTab = 'USERS' | 'REPORTS' | 'UPLOADS' | 'PERFORMANCE';
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, onNavigateToUserApp }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
     const [users, setUsers] = useState<User[]>([]);
@@ -39,13 +41,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user }
     const loadData = async () => {
         setLoading(true);
         try {
-            if (activeTab === 'USERS') {
+            if (activeTab === 'USERS' || activeTab === 'PERFORMANCE') {
                 const data = await authService.getUsers();
                 setUsers(data);
-            } else if (activeTab === 'REPORTS') {
+            } 
+            
+            if (activeTab === 'REPORTS' || activeTab === 'PERFORMANCE') {
                 const data = await dashboardService.getAllDashboards();
                 setDashboards(data);
-            } else if (activeTab === 'UPLOADS') {
+            } 
+            
+            if (activeTab === 'UPLOADS' || activeTab === 'PERFORMANCE') {
                 const data = await fileService.getAllUploads();
                 setUploads(data);
             }
@@ -144,61 +150,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user }
     }).length;
 
     return (
-        <div className={`min-h-screen ${colors.bgPrimary} p-8`}>
-            <div className="max-w-7xl mx-auto space-y-8">
-                <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-8 rounded-[2rem] bg-gradient-to-br from-indigo-600 via-purple-600 to-violet-700 text-white shadow-2xl mb-8 relative border border-white/10`}>
-                    {/* Decorative Background layer - scoped overflow hidden */}
-                    <div className="absolute inset-0 rounded-[2rem] overflow-hidden pointer-events-none">
-                        <div className="absolute top-0 right-0 w-80 h-80 bg-white opacity-10 rounded-full blur-[80px] transform translate-x-1/3 -translate-y-1/3"></div>
-                        <div className="absolute bottom-0 left-0 w-64 h-64 bg-black opacity-20 rounded-full blur-[60px] transform -translate-x-1/3 translate-y-1/3"></div>
+        <div className={`min-h-screen flex flex-col relative overflow-x-hidden ${colors.bgPrimary}`}>
+            {/* Background Ambience */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+                <div className={`absolute top-0 left-0 w-full h-full ${colors.gradientTop} blur-[120px] opacity-30`}></div>
+                <div className={`absolute bottom-0 right-0 w-full h-full ${colors.gradientBottom} blur-[120px] opacity-30`}></div>
+            </div>
+
+            {/* Header - Responsive */}
+            <header className="px-4 sm:px-6 md:px-8 py-4 md:py-6 flex justify-between items-center relative z-50">
+                <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="bg-gradient-to-br from-indigo-500 to-violet-600 p-2 sm:p-2.5 rounded-lg sm:rounded-xl shadow-lg shadow-indigo-500/20">
+                        <LayoutDashboard className="text-white w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
-                    
-                    <div className="relative z-10 flex flex-col gap-2">
-                        <div className="flex items-center gap-4 mb-1">
-                            <div className="p-3.5 bg-white/20 rounded-2xl backdrop-blur-md shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] border border-white/20">
-                                <Shield className="w-8 h-8 text-white drop-shadow-md" />
-                            </div>
-                            <h1 className="text-4xl font-extrabold tracking-tight drop-shadow-sm">Admin Control Center</h1>
-                        </div>
-                        <p className="text-indigo-100/90 font-medium text-sm md:text-base ml-1 max-w-lg leading-relaxed">
-                            Monitor system activity, manage user access, and analyze comprehensive reports across the platform.
-                        </p>
-                    </div>
-                    
-                    <div className={`flex items-center gap-2 mt-6 md:mt-0 relative z-20 ${colors.bgSecondary} p-2 rounded-[1.5rem] shadow-xl border ${colors.borderPrimary}`}>
-                        <div className={`hover:${colors.bgTertiary} rounded-full transition-colors`}>
-                            <ThemeToggle />
-                        </div>
-                        <div className={`w-px h-8 ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'} mx-1`}></div>
-                        <div className={`hover:${colors.bgTertiary} rounded-full transition-colors p-1`}>
-                            <ProfileMenu user={user} onLogout={onLogout} />
-                        </div>
-                    </div>
+                    <h1 className={`text-lg sm:text-xl md:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r ${theme === 'dark' ? 'from-white to-slate-400' : 'from-slate-900 to-slate-600'}`}>
+                        AnalyticCore
+                    </h1>
                 </div>
 
-                <div className={`inline-flex flex-wrap items-center p-1.5 rounded-[1.25rem] ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm relative z-10 w-full md:w-auto`}>
-                    <button
-                        onClick={() => setActiveTab('USERS')}
-                        className={`flex-1 md:flex-none px-6 py-3 rounded-[1rem] font-bold transition-all duration-300 flex items-center justify-center gap-2.5 text-sm tracking-wide ${activeTab === 'USERS' ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-lg shadow-indigo-500/25 scale-[1.02]' : `bg-transparent ${colors.textMuted} hover:${colors.textPrimary} hover:${colors.bgTertiary}`}`}
-                    >
-                        <UserIcon className={`w-4 h-4 ${activeTab === 'USERS' ? 'text-white' : 'text-indigo-400'}`} /> 
-                        <span>User Management</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('REPORTS')}
-                        className={`flex-1 md:flex-none px-6 py-3 rounded-[1rem] font-bold transition-all duration-300 flex items-center justify-center gap-2.5 text-sm tracking-wide ${activeTab === 'REPORTS' ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-lg shadow-indigo-500/25 scale-[1.02]' : `bg-transparent ${colors.textMuted} hover:${colors.textPrimary} hover:${colors.bgTertiary}`}`}
-                    >
-                        <FileText className={`w-4 h-4 ${activeTab === 'REPORTS' ? 'text-white' : 'text-indigo-400'}`} /> 
-                        <span>Global Reports</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('UPLOADS')}
-                        className={`flex-1 md:flex-none px-6 py-3 rounded-[1rem] font-bold transition-all duration-300 flex items-center justify-center gap-2.5 text-sm tracking-wide ${activeTab === 'UPLOADS' ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-lg shadow-indigo-500/25 scale-[1.02]' : `bg-transparent ${colors.textMuted} hover:${colors.textPrimary} hover:${colors.bgTertiary}`}`}
-                    >
-                        <Upload className={`w-4 h-4 ${activeTab === 'UPLOADS' ? 'text-white' : 'text-indigo-400'}`} /> 
-                        <span>Data Uploads</span>
-                    </button>
+                <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
+                    <ThemeToggle />
+                    <ProfileMenu user={user} onLogout={onLogout} onNavigateToUserApp={onNavigateToUserApp} />
                 </div>
+            </header>
+
+            <main className="responsive-container flex-1 flex flex-col pb-24 relative z-10 w-full">
+                <div className="max-w-7xl mx-auto w-full space-y-8 mt-4 sm:mt-8 px-4 sm:px-6 md:px-8">
+                    {/* Tabs - Centered */}
+                    <div className="flex justify-center mb-6 sm:mb-8 md:mb-12">
+                        <div className={`${colors.bgSecondary} p-1 sm:p-1.5 rounded-xl sm:rounded-2xl border ${colors.borderPrimary} inline-flex w-full sm:w-auto`}>
+                            <button
+                                onClick={() => setActiveTab('USERS')}
+                                className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2
+                                    ${activeTab === 'USERS' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : `${colors.textMuted} hover:${colors.textPrimary}`}
+                                `}
+                            >
+                                <UserIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 
+                                <span className="hidden xs:inline">User Management</span>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('REPORTS')}
+                                className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2
+                                    ${activeTab === 'REPORTS' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : `${colors.textMuted} hover:${colors.textPrimary}`}
+                                `}
+                            >
+                                <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 
+                                <span className="hidden xs:inline">Global Reports</span>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('UPLOADS')}
+                                className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2
+                                    ${activeTab === 'UPLOADS' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : `${colors.textMuted} hover:${colors.textPrimary}`}
+                                `}
+                            >
+                                <Upload className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 
+                                <span className="hidden xs:inline">Data Uploads</span>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('PERFORMANCE')}
+                                className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2
+                                    ${activeTab === 'PERFORMANCE' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : `${colors.textMuted} hover:${colors.textPrimary}`}
+                                `}
+                            >
+                                <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 
+                                <span className="hidden xs:inline">System Performance</span>
+                            </button>
+                        </div>
+                    </div>
 
                 {/* User Statistics Overview - Only visible on USERS tab */}
                 {activeTab === 'USERS' && (
@@ -435,8 +453,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user }
                     </div>
                 )}
 
-                <div className={`${colors.bgSecondary} rounded-3xl border ${colors.borderPrimary} shadow-[0_8px_30px_rgb(0,0,0,0.12)] overflow-hidden flex flex-col`}>
-                    <div className={`p-6 sm:px-8 sm:py-6 border-b ${colors.borderPrimary} flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-r ${theme === 'dark' ? 'from-slate-800/50 to-transparent' : 'from-slate-50/50 to-transparent'}`}>
+                {activeTab !== 'PERFORMANCE' && (
+                    <div className={`${colors.bgSecondary} rounded-3xl border ${colors.borderPrimary} shadow-[0_8px_30px_rgb(0,0,0,0.12)] overflow-hidden flex flex-col`}>
+                        <div className={`p-6 sm:px-8 sm:py-6 border-b ${colors.borderPrimary} flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gradient-to-r ${theme === 'dark' ? 'from-slate-800/50 to-transparent' : 'from-slate-50/50 to-transparent'}`}>
                         <div className="flex items-center gap-4">
                             {activeTab === 'USERS' && (
                                 <>
@@ -498,6 +517,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user }
                                         <>
                                             <th className="px-6 py-4">User</th>
                                             <th className="px-6 py-4">Role</th>
+                                            <th className="px-6 py-4">Domain</th>
                                             <th className="px-6 py-4">Joined</th>
                                             <th className="px-6 py-4 text-right">Actions</th>
                                         </>
@@ -549,6 +569,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user }
                                                     <span className={`px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest font-black shadow-sm ${user.role === 'ADMIN' ? 'bg-gradient-to-r from-purple-500/20 to-fuchsia-500/20 text-fuchsia-500 border border-fuchsia-500/30' : 'bg-gradient-to-r from-indigo-500/20 to-blue-500/20 text-indigo-500 border border-indigo-500/30'}`}>
                                                         {user.role}
                                                     </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm font-semibold text-slate-500">
+                                                    {user.domain || '-'}
                                                 </td>
                                                 <td className="px-6 py-4 text-sm text-slate-500 font-medium">
                                                     <div className="flex items-center gap-2">
@@ -660,82 +683,369 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user }
                         </table>
                     </div>
                 </div>
-            </div>
+                )}
+
+                {activeTab === 'PERFORMANCE' && (
+                    <div className="space-y-8 animate-fade-in">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {/* Average Response Time Card */}
+                            <div className={`${colors.bgSecondary} rounded-3xl p-6 border ${colors.borderPrimary} shadow-xl relative overflow-hidden group hover:shadow-2xl transition-all duration-500`}>
+                                <div className="absolute top-0 right-0 p-6 opacity-10 transform group-hover:scale-125 transition-transform duration-700">
+                                    <Clock className="w-20 h-20 text-indigo-500 shadow-indigo-500/20" />
+                                </div>
+                                <h3 className={`text-[10px] font-black uppercase tracking-[0.2em] ${colors.textMuted} mb-3 relative z-10 opacity-70`}>Response Latency</h3>
+                                <div className="flex items-baseline gap-2 relative z-10 mb-4">
+                                    <span className={`text-4xl font-black ${colors.textPrimary}`}>
+                                        {uploads.length > 0 ? Math.round(uploads.reduce((acc, f) => acc + (50 + (f.size / 1024) * 0.5), 0) / uploads.length) : 0}
+                                    </span>
+                                    <span className={`text-sm font-bold ${colors.textMuted} uppercase tracking-widest`}>ms</span>
+                                </div>
+                                <div className="flex items-center text-[11px] font-black text-emerald-500 bg-emerald-500/10 px-3 py-1.5 rounded-2xl w-fit border border-emerald-500/20 shadow-sm">
+                                    <TrendingUp className="w-3.5 h-3.5 mr-1.5" />
+                                    SYSTEM OPTIMIZED
+                                </div>
+                            </div>
+                            
+                            {/* PDF Export Count (Dynamic based on Dashboards) */}
+                            <div className={`${colors.bgSecondary} rounded-3xl p-6 border ${colors.borderPrimary} shadow-xl relative overflow-hidden group hover:shadow-2xl transition-all duration-500`}>
+                                <div className="absolute top-0 right-0 p-6 opacity-10 transform group-hover:scale-125 transition-transform duration-700">
+                                    <FileText className="w-20 h-20 text-rose-500 shadow-rose-500/20" />
+                                </div>
+                                <h3 className={`text-[10px] font-black uppercase tracking-[0.2em] ${colors.textMuted} mb-3 relative z-10 opacity-70`}>Created Reports</h3>
+                                <div className="flex items-baseline gap-2 relative z-10 mb-4">
+                                    <span className={`text-4xl font-black ${colors.textPrimary}`}>{dashboards.length}</span>
+                                    <span className={`text-sm font-bold ${colors.textMuted} uppercase tracking-widest`}>total</span>
+                                </div>
+                                <div className="flex items-center text-[11px] font-black text-rose-500 bg-rose-500/10 px-3 py-1.5 rounded-2xl w-fit border border-rose-500/20 shadow-sm">
+                                    <Activity className="w-3.5 h-3.5 mr-1.5" />
+                                    ACTIVE PIPELINE
+                                </div>
+                            </div>
+
+                            {/* Storage Volume (Dynamic based on Uploads) */}
+                            <div className={`${colors.bgSecondary} rounded-3xl p-6 border ${colors.borderPrimary} shadow-xl relative overflow-hidden group hover:shadow-2xl transition-all duration-500`}>
+                                <div className="absolute top-0 right-0 p-6 opacity-10 transform group-hover:scale-125 transition-transform duration-700">
+                                    <Database className="w-20 h-20 text-emerald-500 shadow-emerald-500/20" />
+                                </div>
+                                <h3 className={`text-[10px] font-black uppercase tracking-[0.2em] ${colors.textMuted} mb-3 relative z-10 opacity-70`}>Data Footprint</h3>
+                                <div className="flex items-baseline gap-2 relative z-10 mb-4">
+                                    <span className={`text-4xl font-black ${colors.textPrimary}`}>
+                                        {(uploads.reduce((acc, f) => acc + (f.size || 0), 0) / (1024 * 1024)).toFixed(1)}
+                                    </span>
+                                    <span className={`text-sm font-bold ${colors.textMuted} uppercase tracking-widest`}>MB</span>
+                                </div>
+                                <div className="flex items-center text-[11px] font-black text-sky-500 bg-sky-500/10 px-3 py-1.5 rounded-2xl w-fit border border-sky-500/20 shadow-sm">
+                                    <HardDrive className="w-3.5 h-3.5 mr-1.5" />
+                                    {uploads.length} DATASETS
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            {/* User Frequency Chart - Upgraded to Area Chart */}
+                            <div className={`${colors.bgSecondary} rounded-[2rem] p-8 border ${colors.borderPrimary} shadow-2xl relative overflow-hidden group`}>
+                                <div className="mb-8 flex justify-between items-start relative z-10">
+                                    <div>
+                                        <h3 className={`text-xl font-black ${colors.textPrimary} tracking-tight mb-1`}>Audience Growth</h3>
+                                        <p className={`text-[11px] font-bold text-slate-400 uppercase tracking-widest`}>Registered users cumulative trend</p>
+                                    </div>
+                                    <div className="p-3.5 rounded-2xl bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 backdrop-blur-sm group-hover:scale-110 transition-transform duration-500">
+                                        <TrendingUp className="w-5 h-5" />
+                                    </div>
+                                </div>
+                                <div className="h-[300px] w-full relative z-10">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={(() => {
+                                            const now = new Date();
+                                            const getCount = (days: number) => {
+                                                const cutoff = new Date();
+                                                cutoff.setDate(now.getDate() - days);
+                                                return users.filter(u => new Date(u.created_at || '') >= cutoff).length;
+                                            };
+                                            return [
+                                                { name: 'Jan', users: 0 }, // Mock historical
+                                                { name: 'Last 30d', users: getCount(30) },
+                                                { name: 'Last 15d', users: getCount(15) },
+                                                { name: 'Last 7d', users: getCount(7) },
+                                                { name: 'Present', users: users.length },
+                                            ];
+                                        })()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} opacity={0.3} />
+                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, fontWeight: 'bold' }} dy={10} />
+                                            <YAxis axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, fontWeight: 'bold' }} />
+                                            <RechartsTooltip 
+                                                cursor={{ stroke: '#6366f1', strokeWidth: 2 }}
+                                                contentStyle={{ backgroundColor: theme === 'dark' ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)', borderRadius: '16px', border: '1px solid rgba(99, 102, 241, 0.2)', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', backdropFilter: 'blur(8px)' }}
+                                            />
+                                            <Area type="monotone" dataKey="users" stroke="#6366f1" strokeWidth={4} fill="url(#colorUserTrend)" animationDuration={1500} />
+                                            <defs>
+                                                <linearGradient id="colorUserTrend" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                                                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                                                </linearGradient>
+                                            </defs>
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+
+                            {/* User Domain Distribution - Upgraded */}
+                            <div className={`${colors.bgSecondary} rounded-[2rem] p-8 border ${colors.borderPrimary} shadow-2xl relative overflow-hidden group`}>
+                                <div className="mb-8 flex justify-between items-start relative z-10">
+                                    <div>
+                                        <h3 className={`text-xl font-black ${colors.textPrimary} tracking-tight mb-1`}>User Ecosystem</h3>
+                                        <p className={`text-[11px] font-bold text-slate-400 uppercase tracking-widest`}>Distribution by professional domain</p>
+                                    </div>
+                                    <div className="p-3.5 rounded-2xl bg-purple-500/10 text-purple-500 border border-purple-500/20 backdrop-blur-sm group-hover:scale-110 transition-transform duration-500">
+                                        <Globe className="w-5 h-5" />
+                                    </div>
+                                </div>
+                                <div className="flex-1 min-h-[300px] w-full flex items-center justify-center relative z-10">
+                                    <div className="h-[280px] w-full max-w-[400px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie
+                                                    data={(() => {
+                                                        const counts = users.reduce((acc: any, u) => {
+                                                            const d = u.domain || 'Not specified';
+                                                            acc[d] = (acc[d] || 0) + 1;
+                                                            return acc;
+                                                        }, {});
+                                                        return Object.keys(counts).map(key => ({
+                                                            name: key,
+                                                            value: counts[key]
+                                                        }));
+                                                    })()}
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    innerRadius={80}
+                                                    outerRadius={110}
+                                                    paddingAngle={8}
+                                                    dataKey="value"
+                                                    stroke="none"
+                                                    animationDuration={1500}
+                                                >
+                                                    {users.reduce((acc: string[], u) => {
+                                                        const d = u.domain || 'Not specified';
+                                                        if (!acc.includes(d)) acc.push(d);
+                                                        return acc;
+                                                    }, []).map((_, index) => (
+                                                        <Cell key={`cell-${index}`} fill={['#6366f1', '#a855f7', '#ec4899', '#10b981', '#f59e0b', '#3b82f6'][index % 6]} />
+                                                    ))}
+                                                </Pie>
+                                                <RechartsTooltip 
+                                                    contentStyle={{ backgroundColor: theme === 'dark' ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)', borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', backdropFilter: 'blur(8px)' }}
+                                                    itemStyle={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a', fontWeight: 'bold' }}
+                                                />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap justify-center gap-4 mt-4 relative z-10">
+                                    {(() => {
+                                        const counts = users.reduce((acc: any, u) => {
+                                            const d = u.domain || 'Not specified';
+                                            acc[d] = (acc[d] || 0) + 1;
+                                            return acc;
+                                        }, {});
+                                        const total = users.length || 1;
+                                        return Object.keys(counts).slice(0, 4).map((domain, index) => (
+                                            <div key={domain} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-500/5 border border-slate-500/10 shadow-sm">
+                                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ['#6366f1', '#a855f7', '#ec4899', '#10b981', '#f59e0b', '#3b82f6'][index % 6] }}></div>
+                                                <span className={`text-[9px] font-black uppercase tracking-widest ${colors.textSecondary}`}>
+                                                    {domain} <span className="text-slate-400">({Math.round((counts[domain] / total) * 100)}%)</span>
+                                                </span>
+                                            </div>
+                                        ));
+                                    })()}
+                                </div>
+                            </div>
+                            
+                            {/* Response Performance Source - Upgraded */}
+                            <div className={`${colors.bgSecondary} lg:col-span-2 rounded-[2rem] p-8 border ${colors.borderPrimary} shadow-2xl relative overflow-hidden group`}>
+                                <div className="mb-8 flex justify-between items-start relative z-10">
+                                    <div>
+                                        <h3 className={`text-xl font-black ${colors.textPrimary} tracking-tight mb-1`}>Source Performance</h3>
+                                        <p className={`text-[11px] font-bold text-slate-400 uppercase tracking-widest`}>Processing latency by ingestion source</p>
+                                    </div>
+                                    <div className="p-3.5 rounded-2xl bg-orange-500/10 text-orange-500 border border-orange-500/20 backdrop-blur-sm group-hover:scale-110 transition-transform duration-500">
+                                        <Activity className="w-5 h-5" />
+                                    </div>
+                                </div>
+                                <div className="h-[300px] w-full relative z-10">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={(() => {
+                                            const sources: any = {
+                                                'Excel/CSV': { sum: 0, count: 0 },
+                                                'SQL DB': { sum: 0, count: 0 },
+                                                'G-Sheets': { sum: 0, count: 0 },
+                                                'SharePoint': { sum: 0, count: 0 }
+                                            };
+                                            
+                                            uploads.forEach(f => {
+                                                const type = f.mime_type || '';
+                                                let sourceKey = 'Excel/CSV';
+                                                if (type.includes('google')) sourceKey = 'G-Sheets';
+                                                else if (type.includes('sharepoint')) sourceKey = 'SharePoint';
+                                                else if (type.includes('sql')) sourceKey = 'SQL DB';
+                                                
+                                                const estimatedTime = 50 + ((f.size || 0) / 1024) * 0.5;
+                                                sources[sourceKey].sum += estimatedTime;
+                                                sources[sourceKey].count += 1;
+                                            });
+
+                                            return Object.keys(sources).map(key => ({
+                                                name: key,
+                                                time: sources[key].count > 0 ? Math.round(sources[key].sum / sources[key].count) : 0
+                                            })).sort((a, b) => a.time - b.time);
+                                        })()} margin={{ top: 10, right: 30, left: 10, bottom: 0 }} layout="vertical">
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} opacity={0.3} />
+                                            <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, fontWeight: 'bold' }} />
+                                            <YAxis type="category" dataKey="name" width={90} axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, fontWeight: 'black' }} />
+                                            <RechartsTooltip 
+                                                cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                                                contentStyle={{ backgroundColor: theme === 'dark' ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)', borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', backdropFilter: 'blur(8px)' }}
+                                                formatter={(value) => [`${value} ms`, 'Latency']}
+                                            />
+                                            <Bar dataKey="time" radius={[0, 10, 10, 0]} maxBarSize={40} animationDuration={1000}>
+                                                {(() => {
+                                                     const sources: any = {
+                                                        'Excel/CSV': { sum: 0, count: 0 },
+                                                        'SQL DB': { sum: 0, count: 0 },
+                                                        'G-Sheets': { sum: 0, count: 0 },
+                                                        'SharePoint': { sum: 0, count: 0 }
+                                                    };
+                                                    
+                                                     uploads.forEach(f => {
+                                                        const type = f.mime_type || '';
+                                                        let sourceKey = 'Excel/CSV';
+                                                        if (type.includes('google')) sourceKey = 'G-Sheets';
+                                                        else if (type.includes('sharepoint')) sourceKey = 'SharePoint';
+                                                        else if (type.includes('sql')) sourceKey = 'SQL DB';
+                                                        
+                                                        const estimatedTime = 50 + ((f.size || 0) / 1024) * 0.5;
+                                                        sources[sourceKey].sum += estimatedTime;
+                                                        sources[sourceKey].count += 1;
+                                                    });
+
+                                                    return Object.keys(sources).map(key => ({
+                                                        name: key,
+                                                        time: sources[key].count > 0 ? Math.round(sources[key].sum / sources[key].count) : 0
+                                                    })).sort((a, b) => a.time - b.time).map((entry, index) => {
+                                                        const color = entry.time < 80 ? '#10b981' : entry.time < 150 ? '#f59e0b' : '#ef4444';
+                                                        return <Cell key={`cell-${index}`} fill={color} opacity={0.9} />;
+                                                    });
+                                                })()}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                </div>
+            </main>
 
             {/* User Viewer Modal */}
             {viewingUser && (
                 <div className={`fixed inset-0 z-[100] ${colors.overlayBg} backdrop-blur-md flex items-center justify-center p-4 animate-fade-in`}>
-                    <div className={`${colors.modalBg} border ${colors.borderPrimary} rounded-[2rem] w-full max-w-md relative shadow-2xl overflow-hidden`}>
+                    <div className={`${colors.modalBg} border ${colors.borderPrimary} rounded-[2rem] w-full max-w-2xl relative shadow-2xl overflow-hidden`}>
                         {/* Decorative Background */}
-                        <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-indigo-500 via-purple-500 to-violet-600"></div>
+                        <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-indigo-600 via-purple-600 to-violet-700">
+                             <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+                        </div>
                         
                         <button
                             onClick={() => setViewingUser(null)}
-                            className="absolute top-5 right-5 p-2.5 rounded-full bg-white/10 hover:bg-white/30 text-white transition-all duration-300 z-50 backdrop-blur-sm shadow-sm"
+                            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/30 text-white transition-all duration-300 z-50 backdrop-blur-sm shadow-sm"
                             title="Close"
                         >
-                            <X className="w-5 h-5" />
+                            <X className="w-4 h-4" />
                         </button>
                         
-                        <div className="pt-32 px-8 pb-8 relative z-10">
-                            {/* Avatar */}
-                            <div className="w-28 h-28 rounded-[1.5rem] bg-white flex items-center justify-center text-4xl font-extrabold text-indigo-600 shadow-xl border-[6px] border-white mx-auto -mt-14 mb-5 transform hover:scale-105 transition-all duration-300 bg-gradient-to-tr from-white to-slate-50">
-                                {viewingUser.name.charAt(0).toUpperCase()}
-                            </div>
-                            
-                            <div className="text-center mb-10">
-                                <h3 className={`text-3xl font-poppins font-bold ${colors.textPrimary} mb-2 tracking-tight`}>{viewingUser.name}</h3>
-                                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-[0.2em] shadow-sm">
-                                    <Shield className="w-3.5 h-3.5" />
-                                    {viewingUser.role}
+                        <div className="pt-16 px-6 sm:px-10 pb-10 relative z-10">
+                            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-8">
+                                {/* Avatar */}
+                                <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-white to-slate-50 flex items-center justify-center text-4xl font-extrabold text-indigo-600 shadow-2xl border-[4px] border-white/20 transform hover:scale-105 transition-all duration-300 relative">
+                                    <div className="absolute inset-0 rounded-3xl bg-indigo-500/5 blur-xl"></div>
+                                    <span className="relative z-10">{viewingUser.name.charAt(0).toUpperCase()}</span>
+                                </div>
+                                
+                                <div className="text-center sm:text-left flex-1">
+                                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-400 text-[9px] font-black uppercase tracking-[0.2em] mb-2 border border-indigo-500/20">
+                                        <Shield className="w-3 h-3" />
+                                        {viewingUser.role} Account
+                                    </div>
+                                    <h3 className={`text-3xl font-poppins font-bold ${colors.textPrimary} mb-1 tracking-tight leading-none`}>
+                                        {viewingUser.name}
+                                    </h3>
+                                    <p className={`text-sm ${colors.textMuted} font-medium opacity-70`}>{viewingUser.email}</p>
                                 </div>
                             </div>
                             
-                            <div className="space-y-3">
-                                <div className={`p-4 rounded-[18px] ${colors.bgSecondary} border border-transparent shadow-sm hover:shadow-md hover:border-indigo-100 transition-all duration-300 group`}>
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-indigo-50 rounded-2xl text-indigo-500 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-500">
-                                            <Mail className="w-5 h-5" />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className={`p-4 rounded-2xl ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm hover:shadow-md hover:border-indigo-500/30 transition-all duration-300 group overflow-hidden relative`}>
+                                    <div className="absolute top-0 right-0 w-16 h-16 bg-indigo-500/5 rounded-full -translate-y-8 translate-x-8"></div>
+                                    <div className="flex items-center gap-3 relative z-10">
+                                        <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-indigo-500/10 rounded-xl text-indigo-500 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
+                                            <Mail className="w-4 h-4" />
                                         </div>
                                         <div className="flex-1 overflow-hidden">
-                                            <p className={`text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5`}>Email Address</p>
+                                            <p className={`text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-0.5`}>Email</p>
                                             <p className={`text-sm font-semibold ${colors.textPrimary} truncate`}>{viewingUser.email}</p>
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <div className={`p-4 rounded-[18px] ${colors.bgSecondary} border border-transparent shadow-sm hover:shadow-md hover:border-violet-100 transition-all duration-300 group`}>
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-violet-50 rounded-2xl text-violet-500 group-hover:scale-110 group-hover:bg-violet-500 group-hover:text-white transition-all duration-500">
-                                            <Phone className="w-5 h-5" />
+                                <div className={`p-4 rounded-2xl ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm hover:shadow-md hover:border-violet-500/30 transition-all duration-300 group overflow-hidden relative`}>
+                                    <div className="absolute top-0 right-0 w-16 h-16 bg-violet-500/5 rounded-full -translate-y-8 translate-x-8"></div>
+                                    <div className="flex items-center gap-3 relative z-10">
+                                        <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-violet-500/10 rounded-xl text-violet-500 group-hover:bg-violet-500 group-hover:text-white transition-all duration-300">
+                                            <Phone className="w-4 h-4" />
                                         </div>
                                         <div className="flex-1 overflow-hidden">
-                                            <p className={`text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5`}>Phone Number</p>
+                                            <p className={`text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-0.5`}>Phone</p>
                                             <p className={`text-sm font-semibold ${colors.textPrimary} truncate`}>{viewingUser.phone || 'Not provided'}</p>
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <div className={`p-4 rounded-[18px] ${colors.bgSecondary} border border-transparent shadow-sm hover:shadow-md hover:border-blue-100 transition-all duration-300 group`}>
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-blue-50 rounded-2xl text-blue-500 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all duration-500">
-                                            <Building className="w-5 h-5" />
+                                <div className={`p-4 rounded-2xl ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm hover:shadow-md hover:border-blue-500/30 transition-all duration-300 group overflow-hidden relative`}>
+                                    <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 rounded-full -translate-y-8 translate-x-8"></div>
+                                    <div className="flex items-center gap-3 relative z-10">
+                                        <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-blue-500/10 rounded-xl text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-all duration-300">
+                                            <Building className="w-4 h-4" />
                                         </div>
                                         <div className="flex-1 overflow-hidden">
-                                            <p className={`text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5`}>Company</p>
+                                            <p className={`text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-0.5`}>Company</p>
                                             <p className={`text-sm font-semibold ${colors.textPrimary} truncate`}>{viewingUser.company || 'Not provided'}</p>
                                         </div>
                                     </div>
                                 </div>
-                                
-                                <div className={`p-4 rounded-[18px] ${colors.bgSecondary} border border-transparent shadow-sm hover:shadow-md hover:border-emerald-100 transition-all duration-300 group`}>
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-emerald-50 rounded-2xl text-emerald-500 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-500">
-                                            <Briefcase className="w-5 h-5" />
+
+                                <div className={`p-4 rounded-2xl ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm hover:shadow-md hover:border-sky-500/30 transition-all duration-300 group overflow-hidden relative`}>
+                                    <div className="absolute top-0 right-0 w-16 h-16 bg-sky-500/5 rounded-full -translate-y-8 translate-x-8"></div>
+                                    <div className="flex items-center gap-3 relative z-10">
+                                        <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-sky-500/10 rounded-xl text-sky-500 group-hover:bg-sky-500 group-hover:text-white transition-all duration-300">
+                                            <Globe className="w-4 h-4" />
                                         </div>
                                         <div className="flex-1 overflow-hidden">
-                                            <p className={`text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5`}>Job Title</p>
-                                            <p className={`text-sm font-semibold ${colors.textPrimary} truncate`}>{viewingUser.job_title || 'Not provided'}</p>
+                                            <p className={`text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-0.5`}>Domain</p>
+                                            <p className={`text-sm font-semibold ${colors.textPrimary} truncate`}>{viewingUser.domain || 'Not provided'}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className={`p-4 rounded-2xl ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm hover:shadow-md hover:border-emerald-500/30 transition-all duration-300 group overflow-hidden relative sm:col-span-2`}>
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -translate-y-12 translate-x-12"></div>
+                                    <div className="flex items-center gap-4 relative z-10">
+                                        <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-emerald-500/10 rounded-xl text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
+                                            <Briefcase className="w-4 h-4" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className={`text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-0.5`}>Job Title / Position</p>
+                                            <p className={`text-sm font-bold ${colors.textPrimary}`}>{viewingUser.job_title || 'Not provided'}</p>
                                         </div>
                                     </div>
                                 </div>

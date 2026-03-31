@@ -20,11 +20,11 @@ export const authService = {
         return data;
     },
 
-    async signup(name: string, email: string, password: string, phone?: string, company?: string, job_title?: string): Promise<User> {
+    async signup(name: string, email: string, password: string, phone?: string, company?: string, job_title?: string, domain?: string): Promise<User> {
         const response = await fetch(`${API_URL}/signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email, password, phone, company, job_title })
+            body: JSON.stringify({ name, email, password, phone, company, job_title, domain })
         });
 
         const data = await response.json();

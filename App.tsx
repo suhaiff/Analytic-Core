@@ -513,7 +513,7 @@ function AppContent() {
         )}
 
         {step === Step.ADMIN && (
-          <AdminDashboard onLogout={handleLogout} user={currentUser} />
+          <AdminDashboard onLogout={handleLogout} user={currentUser} onNavigateToUserApp={() => setStep(Step.LANDING)} />
         )}
 
         {step === Step.LANDING && (
@@ -526,6 +526,7 @@ function AppContent() {
             onLoadDashboard={handleLoadDashboard}
             onDeleteDashboard={handleDeleteDashboard}
             onLogout={handleLogout}
+            onNavigateToAdmin={() => setStep(Step.ADMIN)}
             user={currentUser}
           />
         )}

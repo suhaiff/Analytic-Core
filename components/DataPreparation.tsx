@@ -1549,7 +1549,7 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                                             : `${theme === 'dark' ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-white text-slate-500 hover:bg-slate-100'} border ${colors.borderPrimary}`
                                                         }`}
                                                     >
-                                                        Manual Value
+                                                        Manual
                                                     </button>
                                                 </div>
                                             )}
@@ -1653,7 +1653,7 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                                             : `${theme === 'dark' ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-white text-slate-500 hover:bg-slate-100'} border ${colors.borderPrimary}`
                                                         }`}
                                                     >
-                                                        Manual Value
+                                                        Manual
                                                     </button>
                                                 </div>
 

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { authService } from '../../services/authService';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
-import { UserPlus, Mail, Lock, Unlock, User, AlertCircle, X, ArrowRight, Phone, Building, Briefcase } from 'lucide-react';
+import { UserPlus, Mail, Lock, Unlock, User, AlertCircle, X, ArrowRight, Phone, Building, Briefcase, Globe } from 'lucide-react';
 
 interface SignupProps {
     onSignupSuccess: () => void;
@@ -19,6 +19,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onNavigateToLog
     const [showPassword, setShowPassword] = useState(false);
     const [phone, setPhone] = useState('');
     const [company, setCompany] = useState('');
+    const [domain, setDomain] = useState('');
     const [jobTitle, setJobTitle] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -30,7 +31,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onNavigateToLog
         setError('');
         setLoading(true);
         try {
-            await authService.signup(name, email, password, phone, company, jobTitle);
+            await authService.signup(name, email, password, phone, company, jobTitle, domain);
             onSignupSuccess();
         } catch (err: any) {
             setError(err.message || 'Signup failed');
@@ -170,7 +171,7 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onNavigateToLog
 
                     <div className="space-y-2.5">
                         <label className={`block text-[11px] font-bold ${isDark ? 'text-slate-300' : 'text-slate-500'} uppercase tracking-[2px] ml-1 opacity-80`}>
-                            Company
+                            Business
                         </label>
                         <div className={`relative input-glossy rounded-2xl group transition-all duration-300`}>
                             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-400 transition-colors duration-300">
@@ -182,6 +183,24 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onNavigateToLog
                                 onChange={(e) => setCompany(e.target.value)}
                                 className={`w-full bg-transparent border-none py-5 pl-12 pr-4 ${colors.textPrimary} placeholder-slate-500/40 focus:ring-0 outline-none text-base font-semibold`}
                                 placeholder="InsightAI Corp"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2.5">
+                        <label className={`block text-[11px] font-bold ${isDark ? 'text-slate-300' : 'text-slate-500'} uppercase tracking-[2px] ml-1 opacity-80`}>
+                            Domain
+                        </label>
+                        <div className={`relative input-glossy rounded-2xl group transition-all duration-300`}>
+                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-400 transition-colors duration-300">
+                                <Globe className="w-5 h-5" />
+                            </div>
+                            <input
+                                type="text"
+                                value={domain}
+                                onChange={(e) => setDomain(e.target.value)}
+                                className={`w-full bg-transparent border-none py-5 pl-12 pr-4 ${colors.textPrimary} placeholder-slate-500/40 focus:ring-0 outline-none text-base font-semibold`}
+                                placeholder="Technology"
                             />
                         </div>
                     </div>

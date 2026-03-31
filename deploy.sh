@@ -26,10 +26,10 @@ rsync -avz --exclude 'node_modules' \
   ./ ${DROPLET_USER}@${DROPLET_IP}:${APP_DIR}
 
 echo "🔧 Deploying on droplet..."
-ssh ${DROPLET_USER}@${DROPLET_IP} << 'ENDSSH'
+ssh ${DROPLET_USER}@${DROPLET_IP} << ENDSSH
 cd /var/www/insightai-backend
 
-if [ "$DEPLOY_METHOD" = "docker" ]; then
+if [ "${DEPLOY_METHOD}" = "docker" ]; then
   echo "🐳 Using Docker deployment..."
   docker-compose down
   docker-compose build
@@ -39,7 +39,8 @@ else
   echo "⚙️  Using PM2 deployment..."
   cd server
   npm ci --only=production
-  pm2 restart ../ecosystem.config.cjs --update-env
+  cd ..
+  pm2 restart ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs
   pm2 save
   echo "✅ PM2 process restarted"
 fi

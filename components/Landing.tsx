@@ -16,10 +16,11 @@ interface LandingProps {
   onLoadDashboard: (dashboard: SavedDashboard) => void;
   onDeleteDashboard: (id: string) => void;
   onLogout: () => void;
+  onNavigateToAdmin?: () => void;
   user: User | null;
 }
 
-export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImport, onSharePointImport, onSqlDatabaseImport, savedDashboards, onLoadDashboard, onDeleteDashboard, onLogout, user }) => {
+export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImport, onSharePointImport, onSqlDatabaseImport, savedDashboards, onLoadDashboard, onDeleteDashboard, onLogout, onNavigateToAdmin, user }) => {
   const { theme } = useTheme();
   const colors = getThemeClasses(theme);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -507,7 +508,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
       </div>
 
       {/* Header - Responsive */}
-      <header className="px-4 sm:px-6 md:px-8 py-4 md:py-6 flex justify-between items-center relative z-10">
+      <header className="px-4 sm:px-6 md:px-8 py-4 md:py-6 flex justify-between items-center relative z-50">
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="bg-gradient-to-br from-indigo-500 to-violet-600 p-2 sm:p-2.5 rounded-lg sm:rounded-xl shadow-lg shadow-indigo-500/20">
             <LayoutDashboard className="text-white w-5 h-5 sm:w-6 sm:h-6" />
@@ -519,7 +520,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
 
         <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
           <ThemeToggle />
-          <ProfileMenu user={user} onLogout={onLogout} />
+          <ProfileMenu user={user} onLogout={onLogout} onNavigateToAdmin={onNavigateToAdmin} />
         </div>
       </header>
 
