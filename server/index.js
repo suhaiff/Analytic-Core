@@ -144,16 +144,47 @@ app.post('/api/dashboards', async (req, res) => {
     try {
         const { userId, dashboard } = req.body;
 
+        console.log('💾 Received save dashboard request:', {
+            userId,
+            dashboardName: dashboard?.name,
+            hasDataModel: !!dashboard?.dataModel,
+            chartConfigsCount: dashboard?.chartConfigs?.length,
+            sectionsCount: dashboard?.sections?.length,
+            filterColumnsCount: dashboard?.filterColumns?.length
+        });
+
         if (!dashboard) {
+            console.error('❌ Missing dashboard data in request body');
             return res.status(400).json({ error: 'Missing dashboard data' });
         }
 
+        if (!userId) {
+            console.error('❌ Missing userId in request body');
+            return res.status(400).json({ error: 'Missing userId' });
+        }
+
         const { name, dataModel, chartConfigs, sections, filterColumns } = dashboard;
+        
+        if (!name || !dataModel || !chartConfigs) {
+            console.error('❌ Missing required dashboard fields:', { hasName: !!name, hasDataModel: !!dataModel, hasChartConfigs: !!chartConfigs });
+            return res.status(400).json({ error: 'Missing required dashboard fields (name, dataModel, or chartConfigs)' });
+        }
+
+        console.log('✅ Validation passed, calling createDashboard...');
         const result = await supabaseService.createDashboard(userId, name, dataModel, chartConfigs, sections, filterColumns);
+        console.log('✅ Dashboard created successfully:', result);
         res.json(result);
     } catch (error) {
-        console.error('Save dashboard error:', error);
-        res.status(500).json({ error: error.message });
+        console.error('❌ Save dashboard error:', {
+            message: error.message,
+            stack: error.stack,
+            name: error.name,
+            code: error.code
+        });
+        res.status(500).json({ 
+            error: error.message || 'Unknown error occurred',
+            details: error.code || error.name
+        });
     }
 });
 

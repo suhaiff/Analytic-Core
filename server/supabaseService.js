@@ -113,11 +113,14 @@ class SupabaseService {
 
     async createDashboard(userId, name, dataModel, chartConfigs, sections = null, filterColumns = null) {
         try {
-            console.log('Creating dashboard with params:', {
+            console.log('📊 Creating dashboard:', {
                 userId,
                 name,
                 dataModelType: typeof dataModel,
+                dataModelSize: JSON.stringify(dataModel).length,
                 chartConfigsType: typeof chartConfigs,
+                chartConfigsCount: chartConfigs?.length,
+                chartConfigsSize: JSON.stringify(chartConfigs).length,
                 sectionsCount: sections ? sections.length : 0,
                 filterColumnsCount: filterColumns ? filterColumns.length : 0
             });
@@ -130,29 +133,49 @@ class SupabaseService {
                 filterColumns: filterColumns || []
             };
 
+            const payload = {
+                user_id: userId,
+                name,
+                data_model: dataModel,
+                chart_configs: chartConfigsWrapper,
+                created_at: new Date().toISOString()
+            };
+
+            const payloadSize = JSON.stringify(payload).length;
+            console.log(`📦 Payload size: ${(payloadSize / 1024).toFixed(2)} KB`);
+
+            if (payloadSize > 5 * 1024 * 1024) { // 5MB limit
+                console.error('❌ Payload too large:', payloadSize);
+                throw new Error(`Dashboard data too large (${(payloadSize / 1024 / 1024).toFixed(2)} MB). Please reduce the amount of data.`);
+            }
+
             const { data, error } = await this.supabase
                 .from('dashboards')
-                .insert([
-                    {
-                        user_id: userId,
-                        name,
-                        data_model: dataModel,
-                        chart_configs: chartConfigsWrapper,
-                        created_at: new Date().toISOString()
-                    }
-                ])
+                .insert([payload])
                 .select()
                 .single();
 
-            if (error) throw error;
+            if (error) {
+                console.error('❌ Supabase error:', {
+                    message: error.message,
+                    details: error.details,
+                    hint: error.hint,
+                    code: error.code
+                });
+                throw new Error(`Database error: ${error.message}${error.hint ? ` (${error.hint})` : ''}`);
+            }
 
-            console.log('Dashboard created successfully:', data);
+            console.log('✅ Dashboard created successfully:', { id: data.id, name: data.name });
             return {
                 id: data.id,
                 message: 'Dashboard saved'
             };
         } catch (error) {
-            console.error('Error creating dashboard:', error.message);
+            console.error('❌ Error creating dashboard:', {
+                message: error.message,
+                stack: error.stack,
+                name: error.name
+            });
             throw error;
         }
     }
