@@ -80,6 +80,15 @@ const upload = multer({ storage: storage });
 
 console.log('Starting server with Supabase integration...');
 
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        version: '1.0.3-dashboard-overwrite-fix',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString()
+    });
+});
+
 // Auth Endpoints
 app.post('/api/login', async (req, res) => {
     try {
