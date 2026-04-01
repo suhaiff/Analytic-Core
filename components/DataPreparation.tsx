@@ -1,9 +1,10 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Plus, X, Trash2, Wand2, Calculator, ChevronDown, Eye, Pencil, Check, MoreHorizontal, Search, Scissors, Type, Copy, Calendar, ArrowDownAZ, Undo2 } from 'lucide-react';
+import { Plus, X, Trash2, Wand2, Calculator, ChevronDown, Eye, Pencil, Check, MoreHorizontal, Search, Scissors, Type, Copy, Calendar, ArrowDownAZ, Undo2, Sparkles, Send, Loader2 } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ColumnMetadata } from '../types';
 import { smartFormat } from '../utils/formatters';
+import { parseDataPreparationPrompt, DataPrepOperation, DataPrepAIResponse } from '../services/geminiService';
 
 type ColumnMenuAction = 'find_replace' | 'remove' | 'split' | 'format' | 'trim' | 'duplicate' | 'datetime' | 'filter';
 
@@ -233,6 +234,12 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
     // --- Header Editing State ---
     const [editingHeader, setEditingHeader] = useState<string | null>(null);
     const [headerEditValue, setHeaderEditValue] = useState('');
+
+    // --- AI Prompt State ---
+    const [aiPrompt, setAiPrompt] = useState('');
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiResponse, setAiResponse] = useState<DataPrepAIResponse | null>(null);
+    const [showAiPanel, setShowAiPanel] = useState(false);
 
     // --- Close menu on outside click ---
     useEffect(() => {
@@ -870,6 +877,327 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
         setActionHistory([]);
     }, []);
 
+    // ─── AI Data Preparation ────────────────────────────────────────────────
+
+    const detectNumericColumns = useCallback(() => {
+        return mergedColumns.filter(col => {
+            const vals = mergedData.slice(0, 30).map(r => r[col]).filter(v => v !== null && v !== undefined && v !== '');
+            const cleanVals = vals.map(v => String(v).replace(/[$€£₹,]/g, '').trim());
+            const numCount = cleanVals.filter(v => !isNaN(Number(v)) && v !== '').length;
+            return numCount >= vals.length * 0.7;
+        });
+    }, [mergedData, mergedColumns]);
+
+    const detectCategoricalColumns = useCallback(() => {
+        const numericCols = new Set(detectNumericColumns());
+        return mergedColumns.filter(col => !numericCols.has(col));
+    }, [mergedColumns, detectNumericColumns]);
+
+    const handleAiSubmit = useCallback(async () => {
+        if (!aiPrompt.trim() || aiLoading) return;
+        
+        setAiLoading(true);
+        setAiResponse(null);
+        
+        try {
+            const numericCols = detectNumericColumns();
+            const categoricalCols = detectCategoricalColumns();
+            
+            const response = await parseDataPreparationPrompt(
+                mergedColumns,
+                numericCols,
+                categoricalCols,
+                mergedData,
+                aiPrompt
+            );
+            
+            setAiResponse(response);
+        } catch (error) {
+            console.error('AI Data Prep Error:', error);
+            setAiResponse({
+                operations: [],
+                explanation: `Error: ${(error as Error).message}`
+            });
+        } finally {
+            setAiLoading(false);
+        }
+    }, [aiPrompt, aiLoading, mergedColumns, mergedData, detectNumericColumns, detectCategoricalColumns]);
+
+    const executeAiOperation = useCallback((op: DataPrepOperation) => {
+        // Save snapshot before any operation
+        setActionHistory(prev => [...prev, { 
+            id: String(Date.now()), 
+            label: `AI: ${op.operationType}`, 
+            icon: 'ai', 
+            data: [...mergedData], 
+            columns: [...mergedColumns], 
+            addedCols: [...addedColumns] 
+        }]);
+
+        let newData = [...mergedData];
+        let newColumns = [...mergedColumns];
+
+        switch (op.operationType) {
+            case 'calculated_column': {
+                const calc = op.calculatedColumn;
+                if (!calc) break;
+                
+                let colName = calc.name;
+                let i = 2;
+                while (newColumns.includes(colName)) { colName = `${calc.name} (${i})`; i++; }
+                
+                newData = newData.map(row => {
+                    const cleanA = String(row[calc.columnA] ?? '').replace(/[$€£₹,]/g, '').trim();
+                    const numA = Number(cleanA) || 0;
+                    
+                    let numB: number;
+                    if (calc.useManualValue && calc.manualValue !== undefined) {
+                        numB = calc.manualValue;
+                    } else {
+                        const cleanB = String(row[calc.columnB || ''] ?? '').replace(/[$€£₹,]/g, '').trim();
+                        numB = Number(cleanB) || 0;
+                    }
+                    
+                    let result: any;
+                    switch (calc.operation) {
+                        case 'add': result = numA + numB; break;
+                        case 'subtract': result = numA - numB; break;
+                        case 'multiply': result = numA * numB; break;
+                        case 'divide': result = numB !== 0 ? numA / numB : 0; break;
+                        case 'concat': result = String(row[calc.columnA] ?? '') + String(calc.useManualValue ? calc.manualValue : row[calc.columnB || ''] ?? ''); break;
+                        default: result = 0;
+                    }
+                    return { ...row, [colName]: result };
+                });
+                newColumns = [...newColumns, colName];
+                setAddedColumns(prev => [...prev, colName]);
+                break;
+            }
+            
+            case 'conditional_column': {
+                const cond = op.conditionalColumn;
+                if (!cond) break;
+                
+                let colName = cond.name;
+                let i = 2;
+                while (newColumns.includes(colName)) { colName = `${cond.name} (${i})`; i++; }
+                
+                newData = newData.map(row => {
+                    let result: string | number = cond.elseOutputType === 'number' ? Number(cond.elseOutput) || 0 : cond.elseOutput;
+                    
+                    for (const clause of cond.clauses) {
+                        const cellValue = row[clause.column];
+                        const isNumeric = clause.valueType === 'number';
+                        const cellNum = Number(String(cellValue).replace(/[$€£₹,]/g, ''));
+                        const valNum = Number(clause.value);
+                        
+                        let matches = false;
+                        switch (clause.operator) {
+                            case 'equals': matches = isNumeric ? cellNum === valNum : String(cellValue) === clause.value; break;
+                            case 'not_equals': matches = isNumeric ? cellNum !== valNum : String(cellValue) !== clause.value; break;
+                            case 'greater_than': matches = cellNum > valNum; break;
+                            case 'less_than': matches = cellNum < valNum; break;
+                            case 'greater_than_or_equal': matches = cellNum >= valNum; break;
+                            case 'less_than_or_equal': matches = cellNum <= valNum; break;
+                            case 'contains': matches = String(cellValue).toLowerCase().includes(clause.value.toLowerCase()); break;
+                            case 'begins_with': matches = String(cellValue).toLowerCase().startsWith(clause.value.toLowerCase()); break;
+                            case 'ends_with': matches = String(cellValue).toLowerCase().endsWith(clause.value.toLowerCase()); break;
+                        }
+                        
+                        if (matches) {
+                            result = clause.outputType === 'number' ? Number(clause.output) || 0 : clause.output;
+                            break;
+                        }
+                    }
+                    return { ...row, [colName]: result };
+                });
+                newColumns = [...newColumns, colName];
+                setAddedColumns(prev => [...prev, colName]);
+                break;
+            }
+            
+            case 'filter': {
+                const filter = op.filter;
+                if (!filter) break;
+                
+                if (filter.filterType === 'text' && filter.textValues) {
+                    const textSet = new Set(filter.textValues.map(v => v.toLowerCase()));
+                    setActiveFilters(prev => {
+                        const rest = prev.filter(f => f.column !== filter.column);
+                        return [...rest, {
+                            column: filter.column,
+                            type: 'text',
+                            checkedValues: new Set(mergedData.map(r => String(r[filter.column] ?? '')).filter(v => textSet.has(v.toLowerCase())))
+                        }];
+                    });
+                } else if (filter.filterType === 'number' && filter.numberOp) {
+                    setActiveFilters(prev => {
+                        const rest = prev.filter(f => f.column !== filter.column);
+                        return [...rest, {
+                            column: filter.column,
+                            type: 'number',
+                            numberOp: filter.numberOp,
+                            numberVal: String(filter.numberVal ?? ''),
+                            numberVal2: String(filter.numberVal2 ?? '')
+                        }];
+                    });
+                }
+                return; // Don't update data directly for filters
+            }
+            
+            case 'sort': {
+                const sort = op.sort;
+                if (!sort) break;
+                setSortConfig({ col: sort.column, dir: sort.direction });
+                return; // Don't update data directly for sort
+            }
+            
+            case 'format': {
+                const fmt = op.format;
+                if (!fmt) break;
+                
+                const transform = (v: any): any => {
+                    if (typeof v !== 'string') return v;
+                    switch (fmt.formatType) {
+                        case 'upper': return v.toUpperCase();
+                        case 'lower': return v.toLowerCase();
+                        case 'title': return v.replace(/\b\w/g, c => c.toUpperCase());
+                        case 'capitalize': return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+                        default: return v;
+                    }
+                };
+                newData = newData.map(r => ({ ...r, [fmt.column]: transform(r[fmt.column]) }));
+                break;
+            }
+            
+            case 'find_replace': {
+                const fr = op.findReplace;
+                if (!fr) break;
+                
+                newData = newData.map(r => {
+                    const val = r[fr.column];
+                    if (typeof val === 'string') return { ...r, [fr.column]: val.split(fr.find).join(fr.replace) };
+                    if (val !== null && val !== undefined && String(val) === fr.find) return { ...r, [fr.column]: fr.replace };
+                    return r;
+                });
+                break;
+            }
+            
+            case 'split': {
+                const split = op.split;
+                if (!split) break;
+                
+                const maxParts = newData.reduce((max, r) => {
+                    const val = String(r[split.column] ?? '');
+                    return Math.max(max, val.split(split.delimiter).length);
+                }, 0);
+                
+                const newColNames = Array.from({ length: maxParts }, (_, i) => `${split.column}.${i + 1}`);
+                const usedNames = newColNames.map(n => { let name = n; let j = 2; while (newColumns.includes(name)) { name = `${n} (${j})`; j++; } return name; });
+                
+                newData = newData.map(r => {
+                    const parts = String(r[split.column] ?? '').split(split.delimiter);
+                    const extra: any = {};
+                    usedNames.forEach((name, i) => { extra[name] = parts[i] !== undefined ? parts[i].trim() : ''; });
+                    return { ...r, ...extra };
+                });
+                newColumns = [...newColumns, ...usedNames];
+                setAddedColumns(prev => [...prev, ...usedNames]);
+                break;
+            }
+            
+            case 'duplicate': {
+                const dup = op.duplicate;
+                if (!dup) break;
+                
+                let newName = dup.newName || `Copy of ${dup.column}`;
+                let i = 2;
+                while (newColumns.includes(newName)) { newName = `${dup.newName || `Copy of ${dup.column}`} (${i})`; i++; }
+                
+                newData = newData.map(r => ({ ...r, [newName]: r[dup.column] }));
+                newColumns = [...newColumns, newName];
+                setAddedColumns(prev => [...prev, newName]);
+                break;
+            }
+            
+            case 'datetime_extract': {
+                const dt = op.datetimeExtract;
+                if (!dt) break;
+                
+                const extractLabel = dt.extract.charAt(0).toUpperCase() + dt.extract.slice(1).replace('_', ' ');
+                let newName = `${dt.column} - ${extractLabel}`;
+                let i = 2;
+                while (newColumns.includes(newName)) { newName = `${dt.column} - ${extractLabel} (${i})`; i++; }
+                
+                const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+                
+                newData = newData.map(r => {
+                    const d = new Date(r[dt.column]);
+                    let extracted: any = '';
+                    if (!isNaN(d.getTime())) {
+                        switch (dt.extract) {
+                            case 'year': extracted = d.getFullYear(); break;
+                            case 'quarter': extracted = `Q${Math.ceil((d.getMonth() + 1) / 3)}`; break;
+                            case 'month': extracted = d.getMonth() + 1; break;
+                            case 'month_name': extracted = MONTH_NAMES[d.getMonth()]; break;
+                            case 'day': extracted = d.getDate(); break;
+                            case 'day_name': extracted = DAY_NAMES[d.getDay()]; break;
+                            case 'hour': extracted = d.getHours(); break;
+                        }
+                    }
+                    return { ...r, [newName]: extracted };
+                });
+                newColumns = [...newColumns, newName];
+                setAddedColumns(prev => [...prev, newName]);
+                break;
+            }
+            
+            case 'trim': {
+                const trim = op.trim;
+                if (!trim) break;
+                newData = newData.map(r => ({ ...r, [trim.column]: typeof r[trim.column] === 'string' ? r[trim.column].trim() : r[trim.column] }));
+                break;
+            }
+            
+            case 'rename': {
+                const rename = op.rename;
+                if (!rename || newColumns.includes(rename.newName)) break;
+                
+                newData = newData.map(row => {
+                    const newRow = { ...row };
+                    newRow[rename.newName] = newRow[rename.column];
+                    delete newRow[rename.column];
+                    return newRow;
+                });
+                newColumns = newColumns.map(c => c === rename.column ? rename.newName : c);
+                if (addedColumns.includes(rename.column)) {
+                    setAddedColumns(prev => prev.map(c => c === rename.column ? rename.newName : c));
+                }
+                break;
+            }
+            
+            case 'remove': {
+                const remove = op.remove;
+                if (!remove) break;
+                newColumns = newColumns.filter(c => c !== remove.column);
+                newData = newData.map(r => { const rr = { ...r }; delete rr[remove.column]; return rr; });
+                setAddedColumns(prev => prev.filter(c => c !== remove.column));
+                break;
+            }
+        }
+        
+        onDataChange(newData, newColumns);
+    }, [mergedData, mergedColumns, addedColumns, onDataChange]);
+
+    const executeAllAiOperations = useCallback(() => {
+        if (!aiResponse?.operations.length) return;
+        aiResponse.operations.forEach(op => executeAiOperation(op));
+        setAiResponse(null);
+        setAiPrompt('');
+        setShowAiPanel(false);
+    }, [aiResponse, executeAiOperation]);
+
     // ─── Render ─────────────────────────────────────────────────────────────
 
     return (
@@ -886,6 +1214,13 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
 
                 <div className="flex items-center gap-2 flex-shrink-0">
                     <button
+                        onClick={() => setShowAiPanel(prev => !prev)}
+                        className={`px-2.5 sm:px-3 py-1.5 sm:py-2 ${showAiPanel ? 'bg-pink-500' : 'bg-gradient-to-r from-pink-600 to-purple-600'} hover:from-pink-500 hover:to-purple-500 text-white rounded-lg text-[10px] sm:text-xs font-medium transition flex items-center gap-1 sm:gap-1.5 shadow-lg shadow-pink-900/20 hover:shadow-pink-500/20 active:scale-[0.97] whitespace-nowrap`}
+                    >
+                        <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                        <span>AI Assist</span>
+                    </button>
+                    <button
                         onClick={openConditionalModal}
                         className="px-2.5 sm:px-3 py-1.5 sm:py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-[10px] sm:text-xs font-medium transition flex items-center gap-1 sm:gap-1.5 shadow-lg shadow-violet-900/20 hover:shadow-violet-500/20 active:scale-[0.97] whitespace-nowrap"
                     >
@@ -900,6 +1235,115 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                         <span>Calculated Columns</span>
                     </button>
                 </div>
+
+                {/* AI Assist Panel */}
+                {showAiPanel && (
+                    <div className={`w-full mt-2 p-3 rounded-xl border ${theme === 'dark' ? 'bg-gradient-to-r from-pink-900/20 to-purple-900/20 border-pink-500/30' : 'bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                            <Sparkles className="w-4 h-4 text-pink-400" />
+                            <span className={`text-xs font-bold ${theme === 'dark' ? 'text-pink-300' : 'text-pink-600'}`}>AI Data Assistant</span>
+                            <span className={`text-[10px] ${colors.textMuted}`}>Describe what you want to do with natural language</span>
+                            <button onClick={() => { setShowAiPanel(false); setAiResponse(null); setAiPrompt(''); }} className={`ml-auto p-1 rounded hover:${colors.bgTertiary} transition`}>
+                                <X className="w-3.5 h-3.5 text-slate-400" />
+                            </button>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={aiPrompt}
+                                onChange={(e) => setAiPrompt(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleAiSubmit(); }}
+                                placeholder='Try: "multiply Sales by Quantity and name it Revenue" or "uppercase Region column" or "extract year from OrderDate"'
+                                className={`flex-1 px-3 py-2 rounded-lg text-xs ${theme === 'dark' ? 'bg-slate-800/80 border-slate-600 text-white placeholder-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'} border focus:outline-none focus:ring-2 focus:ring-pink-500/50`}
+                                disabled={aiLoading}
+                            />
+                            <button
+                                onClick={handleAiSubmit}
+                                disabled={aiLoading || !aiPrompt.trim()}
+                                className={`px-4 py-2 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${aiLoading || !aiPrompt.trim() ? 'bg-slate-600 text-slate-400 cursor-not-allowed' : 'bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white shadow-lg'}`}
+                            >
+                                {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                {aiLoading ? 'Analyzing...' : 'Go'}
+                            </button>
+                        </div>
+
+                        {/* AI Response */}
+                        {aiResponse && (
+                            <div className={`mt-3 p-3 rounded-lg ${theme === 'dark' ? 'bg-slate-800/60' : 'bg-white'} border ${colors.borderPrimary}`}>
+                                <div className={`text-xs ${colors.textSecondary} mb-2`}>{aiResponse.explanation}</div>
+                                
+                                {aiResponse.operations.length > 0 ? (
+                                    <>
+                                        <div className="flex flex-wrap gap-1.5 mb-3">
+                                            {aiResponse.operations.map((op, idx) => (
+                                                <span key={idx} className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-semibold ${theme === 'dark' ? 'bg-pink-500/15 text-pink-300 border border-pink-500/30' : 'bg-pink-100 text-pink-700 border border-pink-300'}`}>
+                                                    {op.operationType === 'calculated_column' && <Calculator className="w-3 h-3" />}
+                                                    {op.operationType === 'conditional_column' && <Wand2 className="w-3 h-3" />}
+                                                    {op.operationType === 'filter' && <Search className="w-3 h-3" />}
+                                                    {op.operationType === 'sort' && <ArrowDownAZ className="w-3 h-3" />}
+                                                    {op.operationType === 'format' && <Type className="w-3 h-3" />}
+                                                    {op.operationType === 'find_replace' && <Search className="w-3 h-3" />}
+                                                    {op.operationType === 'split' && <Scissors className="w-3 h-3" />}
+                                                    {op.operationType === 'duplicate' && <Copy className="w-3 h-3" />}
+                                                    {op.operationType === 'datetime_extract' && <Calendar className="w-3 h-3" />}
+                                                    {op.operationType === 'trim' && <Type className="w-3 h-3" />}
+                                                    {op.operationType === 'rename' && <Pencil className="w-3 h-3" />}
+                                                    {op.operationType === 'remove' && <Trash2 className="w-3 h-3" />}
+                                                    {op.operationType.replace('_', ' ')}
+                                                    {op.calculatedColumn && `: ${op.calculatedColumn.name}`}
+                                                    {op.conditionalColumn && `: ${op.conditionalColumn.name}`}
+                                                    {op.format && `: ${op.format.column} → ${op.format.formatType}`}
+                                                    {op.findReplace && `: ${op.findReplace.column}`}
+                                                    {op.sort && `: ${op.sort.column} ${op.sort.direction}`}
+                                                    {op.datetimeExtract && `: ${op.datetimeExtract.extract} from ${op.datetimeExtract.column}`}
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={executeAllAiOperations}
+                                                className="px-4 py-1.5 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white rounded-lg text-xs font-medium transition shadow-lg flex items-center gap-1.5"
+                                            >
+                                                <Check className="w-3.5 h-3.5" /> Apply All
+                                            </button>
+                                            <button
+                                                onClick={() => setAiResponse(null)}
+                                                className={`px-4 py-1.5 ${colors.textMuted} hover:${colors.bgTertiary} rounded-lg text-xs transition`}
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className={`text-xs ${colors.textMuted} italic`}>No operations detected. Try rephrasing your request.</div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Example prompts */}
+                        {!aiResponse && !aiLoading && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                <span className={`text-[10px] ${colors.textMuted}`}>Examples:</span>
+                                {[
+                                    'multiply Sales by Quantity',
+                                    'if Sales > 1000 then "High" else "Low"',
+                                    'uppercase Region',
+                                    'extract year from OrderDate',
+                                    'sort by Sales descending'
+                                ].map((ex, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => setAiPrompt(ex)}
+                                        className={`text-[10px] px-2 py-0.5 rounded-full ${theme === 'dark' ? 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50 hover:text-slate-300' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'} transition`}
+                                    >
+                                        {ex}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Added columns badges */}
                 {addedColumns.length > 0 && (
@@ -940,6 +1384,7 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                                 {action.icon === 'format' && <Type className="w-2.5 h-2.5" />}
                                 {action.icon === 'trim' && <Scissors className="w-2.5 h-2.5" />}
                                 {action.icon === 'pencil' && <Pencil className="w-2.5 h-2.5" />}
+                                {action.icon === 'ai' && <Sparkles className="w-2.5 h-2.5 text-pink-400" />}
                                 {action.label}
                             </span>
                         ))}

@@ -458,3 +458,365 @@ STRICT RULES:
     throw error;
   }
 };
+
+// ─── Data Preparation AI Types ────────────────────────────────────────────────
+
+export interface DataPrepOperation {
+  operationType: 
+    | 'calculated_column'
+    | 'conditional_column'
+    | 'filter'
+    | 'sort'
+    | 'format'
+    | 'find_replace'
+    | 'split'
+    | 'duplicate'
+    | 'datetime_extract'
+    | 'trim'
+    | 'rename'
+    | 'remove';
+  
+  // For calculated columns
+  calculatedColumn?: {
+    name: string;
+    columnA: string;
+    columnB?: string;
+    operation: 'add' | 'subtract' | 'multiply' | 'divide' | 'concat';
+    manualValue?: number;
+    useManualValue?: boolean;
+  };
+  
+  // For conditional columns
+  conditionalColumn?: {
+    name: string;
+    clauses: Array<{
+      column: string;
+      operator: 'equals' | 'not_equals' | 'greater_than' | 'less_than' | 'greater_than_or_equal' | 'less_than_or_equal' | 'contains' | 'begins_with' | 'ends_with';
+      value: string;
+      valueType: 'text' | 'number';
+      output: string;
+      outputType: 'text' | 'number';
+    }>;
+    elseOutput: string;
+    elseOutputType: 'text' | 'number';
+  };
+  
+  // For filter
+  filter?: {
+    column: string;
+    filterType: 'text' | 'number' | 'date';
+    textValues?: string[];
+    numberOp?: 'equals' | 'not_equals' | 'greater_than' | 'less_than' | 'greater_than_or_equal' | 'less_than_or_equal' | 'between';
+    numberVal?: number;
+    numberVal2?: number;
+  };
+  
+  // For sort
+  sort?: {
+    column: string;
+    direction: 'asc' | 'desc';
+  };
+  
+  // For format
+  format?: {
+    column: string;
+    formatType: 'upper' | 'lower' | 'title' | 'capitalize';
+  };
+  
+  // For find & replace
+  findReplace?: {
+    column: string;
+    find: string;
+    replace: string;
+  };
+  
+  // For split
+  split?: {
+    column: string;
+    delimiter: string;
+  };
+  
+  // For duplicate
+  duplicate?: {
+    column: string;
+    newName?: string;
+  };
+  
+  // For datetime extract
+  datetimeExtract?: {
+    column: string;
+    extract: 'year' | 'quarter' | 'month' | 'month_name' | 'day' | 'day_name' | 'hour';
+  };
+  
+  // For trim
+  trim?: {
+    column: string;
+  };
+  
+  // For rename
+  rename?: {
+    column: string;
+    newName: string;
+  };
+  
+  // For remove
+  remove?: {
+    column: string;
+  };
+}
+
+export interface DataPrepAIResponse {
+  operations: DataPrepOperation[];
+  explanation: string;
+}
+
+const DATA_PREP_SYSTEM_INSTRUCTION = `
+You are an expert data preparation assistant. Your job is to parse natural language requests about data transformations and return structured operations.
+
+Available Operations:
+1. calculated_column: Create a new column by performing arithmetic (add, subtract, multiply, divide) or text concatenation between columns or with manual values
+2. conditional_column: Create a new column based on if-then-else logic
+3. filter: Filter rows based on column values (text matching, number comparisons)
+4. sort: Sort data by a column in ascending or descending order
+5. format: Format text columns (UPPER, lower, Title, Capitalize)
+6. find_replace: Find and replace values in a column
+7. split: Split a column by a delimiter into multiple columns
+8. duplicate: Create a copy of a column
+9. datetime_extract: Extract parts from date columns (year, quarter, month, month_name, day, day_name, hour)
+10. trim: Remove whitespace from text columns
+11. rename: Rename a column
+12. remove: Remove/delete a column
+
+Rules:
+- Match column names case-insensitively but output the exact column name from the available columns
+- For calculated columns, identify which columns to use and what operation (multiply, add, subtract, divide)
+- For conditional columns, parse the if-then-else logic carefully
+- For filters, determine if it's text-based (contains, equals) or number-based (greater than, less than)
+- Be intelligent about interpreting user intent
+
+Examples:
+- "multiply sales by profit" → calculated_column with columnA=Sales, columnB=Profit, operation=multiply
+- "create column profit_margin by dividing profit by sales and multiply by 100" → calculated_column operations
+- "if sales > 1000 then High else Low" → conditional_column
+- "uppercase the region column" → format with formatType=upper
+- "filter region by North" → filter with text values
+- "sort by order date descending" → sort with direction=desc
+- "extract year from order date" → datetime_extract with extract=year
+- "replace North with Sample in region" → find_replace
+`;
+
+const dataPrepSchema = {
+  type: Type.OBJECT,
+  properties: {
+    operations: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          operationType: {
+            type: Type.STRING,
+            enum: ['calculated_column', 'conditional_column', 'filter', 'sort', 'format', 'find_replace', 'split', 'duplicate', 'datetime_extract', 'trim', 'rename', 'remove']
+          },
+          calculatedColumn: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              columnA: { type: Type.STRING },
+              columnB: { type: Type.STRING },
+              operation: { type: Type.STRING, enum: ['add', 'subtract', 'multiply', 'divide', 'concat'] },
+              manualValue: { type: Type.NUMBER },
+              useManualValue: { type: Type.BOOLEAN }
+            }
+          },
+          conditionalColumn: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              clauses: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    column: { type: Type.STRING },
+                    operator: { type: Type.STRING, enum: ['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal', 'contains', 'begins_with', 'ends_with'] },
+                    value: { type: Type.STRING },
+                    valueType: { type: Type.STRING, enum: ['text', 'number'] },
+                    output: { type: Type.STRING },
+                    outputType: { type: Type.STRING, enum: ['text', 'number'] }
+                  }
+                }
+              },
+              elseOutput: { type: Type.STRING },
+              elseOutputType: { type: Type.STRING, enum: ['text', 'number'] }
+            }
+          },
+          filter: {
+            type: Type.OBJECT,
+            properties: {
+              column: { type: Type.STRING },
+              filterType: { type: Type.STRING, enum: ['text', 'number', 'date'] },
+              textValues: { type: Type.ARRAY, items: { type: Type.STRING } },
+              numberOp: { type: Type.STRING, enum: ['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal', 'between'] },
+              numberVal: { type: Type.NUMBER },
+              numberVal2: { type: Type.NUMBER }
+            }
+          },
+          sort: {
+            type: Type.OBJECT,
+            properties: {
+              column: { type: Type.STRING },
+              direction: { type: Type.STRING, enum: ['asc', 'desc'] }
+            }
+          },
+          format: {
+            type: Type.OBJECT,
+            properties: {
+              column: { type: Type.STRING },
+              formatType: { type: Type.STRING, enum: ['upper', 'lower', 'title', 'capitalize'] }
+            }
+          },
+          findReplace: {
+            type: Type.OBJECT,
+            properties: {
+              column: { type: Type.STRING },
+              find: { type: Type.STRING },
+              replace: { type: Type.STRING }
+            }
+          },
+          split: {
+            type: Type.OBJECT,
+            properties: {
+              column: { type: Type.STRING },
+              delimiter: { type: Type.STRING }
+            }
+          },
+          duplicate: {
+            type: Type.OBJECT,
+            properties: {
+              column: { type: Type.STRING },
+              newName: { type: Type.STRING }
+            }
+          },
+          datetimeExtract: {
+            type: Type.OBJECT,
+            properties: {
+              column: { type: Type.STRING },
+              extract: { type: Type.STRING, enum: ['year', 'quarter', 'month', 'month_name', 'day', 'day_name', 'hour'] }
+            }
+          },
+          trim: {
+            type: Type.OBJECT,
+            properties: {
+              column: { type: Type.STRING }
+            }
+          },
+          rename: {
+            type: Type.OBJECT,
+            properties: {
+              column: { type: Type.STRING },
+              newName: { type: Type.STRING }
+            }
+          },
+          remove: {
+            type: Type.OBJECT,
+            properties: {
+              column: { type: Type.STRING }
+            }
+          }
+        },
+        required: ['operationType']
+      }
+    },
+    explanation: { type: Type.STRING, description: 'Brief explanation of what operations will be performed' }
+  },
+  required: ['operations', 'explanation']
+};
+
+/**
+ * Parse a natural language data preparation prompt and return structured operations
+ */
+export const parseDataPreparationPrompt = async (
+  columns: string[],
+  numericColumns: string[],
+  categoricalColumns: string[],
+  sampleData: any[],
+  prompt: string
+): Promise<DataPrepAIResponse> => {
+  const context = `
+Available Columns: ${columns.join(', ')}
+Numeric Columns: ${numericColumns.join(', ')}
+Categorical/Text Columns: ${categoricalColumns.join(', ')}
+
+Sample Data (first 3 rows):
+${JSON.stringify(sampleData.slice(0, 3), null, 2)}
+
+User Request: "${prompt}"
+
+Parse this request and return the appropriate data preparation operations.
+Match column names to the available columns (case-insensitive matching, but return exact column name).
+If multiple operations are needed, return them in order of execution.
+  `;
+
+  try {
+    return await withKeyRotation(async () => {
+      const ai = getAI();
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: context,
+        config: {
+          systemInstruction: DATA_PREP_SYSTEM_INSTRUCTION,
+          responseMimeType: 'application/json',
+          responseSchema: dataPrepSchema
+        }
+      });
+
+      const jsonText = response.text || '{"operations": [], "explanation": "Could not parse request"}';
+      const result = JSON.parse(jsonText);
+      
+      // Normalize column names to match actual columns (case-insensitive)
+      result.operations = result.operations.map((op: DataPrepOperation) => normalizeOperationColumns(op, columns));
+      
+      return result as DataPrepAIResponse;
+    });
+  } catch (error) {
+    console.error("Data Preparation AI Error:", error);
+    return {
+      operations: [],
+      explanation: `Error parsing request: ${(error as Error).message}`
+    };
+  }
+};
+
+// Helper to normalize column names in operations
+const normalizeOperationColumns = (op: DataPrepOperation, columns: string[]): DataPrepOperation => {
+  const findColumn = (name: string | undefined): string => {
+    if (!name) return '';
+    const lower = name.toLowerCase();
+    return columns.find(c => c.toLowerCase() === lower) || name;
+  };
+
+  if (op.calculatedColumn) {
+    op.calculatedColumn.columnA = findColumn(op.calculatedColumn.columnA);
+    if (op.calculatedColumn.columnB) {
+      op.calculatedColumn.columnB = findColumn(op.calculatedColumn.columnB);
+    }
+  }
+  if (op.conditionalColumn) {
+    op.conditionalColumn.clauses = op.conditionalColumn.clauses.map(c => ({
+      ...c,
+      column: findColumn(c.column)
+    }));
+  }
+  if (op.filter) op.filter.column = findColumn(op.filter.column);
+  if (op.sort) op.sort.column = findColumn(op.sort.column);
+  if (op.format) op.format.column = findColumn(op.format.column);
+  if (op.findReplace) op.findReplace.column = findColumn(op.findReplace.column);
+  if (op.split) op.split.column = findColumn(op.split.column);
+  if (op.duplicate) op.duplicate.column = findColumn(op.duplicate.column);
+  if (op.datetimeExtract) op.datetimeExtract.column = findColumn(op.datetimeExtract.column);
+  if (op.trim) op.trim.column = findColumn(op.trim.column);
+  if (op.rename) op.rename.column = findColumn(op.rename.column);
+  if (op.remove) op.remove.column = findColumn(op.remove.column);
+
+  return op;
+};

@@ -415,9 +415,10 @@ function AppContent() {
       setCurrentDashboardId(targetId || dashData.id);
       // Reload dashboards
       await loadUserDashboards(currentUser.id);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to save dashboard", error);
-      showToast("Failed to save dashboard", 'error');
+      const errorMessage = error?.message || 'Unknown error occurred';
+      showToast(`Failed to save dashboard: ${errorMessage}`, 'error');
     }
   };
 

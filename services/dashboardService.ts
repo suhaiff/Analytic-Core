@@ -11,38 +11,87 @@ export const dashboardService = {
     },
 
     async saveDashboard(userId: number, dashboard: SavedDashboard): Promise<void> {
-        const response = await fetch(`${API_URL}/dashboards`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userId,
-                dashboard: {
-                    name: dashboard.name,
-                    dataModel: dashboard.dataModel,
-                    chartConfigs: dashboard.chartConfigs,
-                    sections: dashboard.sections,
-                    filterColumns: dashboard.filterColumns
-                }
-            })
-        });
-        if (!response.ok) throw new Error('Failed to save dashboard');
+        console.log('💾 Saving new dashboard:', { userId, name: dashboard.name, API_URL });
+        
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
+            
+            const response = await fetch(`${API_URL}/dashboards`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId,
+                    dashboard: {
+                        name: dashboard.name,
+                        dataModel: dashboard.dataModel,
+                        chartConfigs: dashboard.chartConfigs,
+                        sections: dashboard.sections,
+                        filterColumns: dashboard.filterColumns
+                    }
+                }),
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Save failed:', { status: response.status, statusText: response.statusText, errorText });
+                throw new Error(`Failed to save dashboard: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+            
+            console.log('✅ Dashboard saved successfully');
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                console.error('❌ Save request timeout');
+                throw new Error('Request timeout - please check your connection and try again');
+            }
+            console.error('❌ Save dashboard error:', error);
+            throw error;
+        }
     },
 
     async updateDashboard(id: string, dashboard: SavedDashboard): Promise<void> {
-        const response = await fetch(`${API_URL}/dashboards/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                dashboard: {
-                    name: dashboard.name,
-                    dataModel: dashboard.dataModel,
-                    chartConfigs: dashboard.chartConfigs,
-                    sections: dashboard.sections,
-                    filterColumns: dashboard.filterColumns
-                }
-            })
-        });
-        if (!response.ok) throw new Error('Failed to update dashboard');
+        console.log('🔄 Updating dashboard:', { id, name: dashboard.name, API_URL });
+        
+        try {
+            // Add timeout to prevent hanging requests
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            
+            const response = await fetch(`${API_URL}/dashboards/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    dashboard: {
+                        name: dashboard.name,
+                        dataModel: dashboard.dataModel,
+                        chartConfigs: dashboard.chartConfigs,
+                        sections: dashboard.sections,
+                        filterColumns: dashboard.filterColumns
+                    }
+                }),
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Update failed:', { status: response.status, statusText: response.statusText, errorText });
+                throw new Error(`Failed to update dashboard: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+            
+            console.log('✅ Dashboard updated successfully');
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                console.error('❌ Update request timeout');
+                throw new Error('Request timeout - please check your connection and try again');
+            }
+            console.error('❌ Update dashboard error:', error);
+            throw error;
+        }
     },
 
     async deleteDashboard(id: string): Promise<void> {
