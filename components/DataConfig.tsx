@@ -190,7 +190,22 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                     mergedColumns,
                     sampleRows
                 );
-                setColumnMetadata(result);
+                setColumnMetadata(prev => {
+                    const merged = { ...result };
+                    Object.keys(prev).forEach(col => {
+                        if (prev[col]?.source === 'USER' && merged[col]) {
+                            merged[col] = {
+                                ...merged[col],
+                                finalType: prev[col].finalType,
+                                source: 'USER',
+                                requiresConfirmation: false
+                            };
+                        } else if (prev[col]?.source === 'USER') {
+                            merged[col] = prev[col];
+                        }
+                    });
+                    return merged;
+                });
             } catch (error) {
                 console.error("Audit effect error:", error);
             } finally {
