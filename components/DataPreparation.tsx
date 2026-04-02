@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Plus, X, Trash2, Wand2, Calculator, ChevronDown, Eye, Pencil, Check, MoreHorizontal, Search, Scissors, Type, Copy, Calendar, ArrowDownAZ, Undo2, Sparkles, Send, Loader2 } from 'lucide-react';
+import { Plus, X, Trash2, Wand2, Calculator, ChevronDown, ChevronLeft, ChevronRight, Eye, Pencil, Check, MoreHorizontal, Search, Scissors, Type, Copy, Calendar, ArrowDownAZ, Undo2, Sparkles, Send, Loader2, History } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ColumnMetadata } from '../types';
@@ -240,6 +240,7 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
     const [aiLoading, setAiLoading] = useState(false);
     const [aiResponse, setAiResponse] = useState<DataPrepAIResponse | null>(null);
     const [showAiPanel, setShowAiPanel] = useState(false);
+    const [actionSidebarOpen, setActionSidebarOpen] = useState(true);
 
     // --- Close menu on outside click ---
     useEffect(() => {
@@ -1345,88 +1346,7 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                     </div>
                 )}
 
-                {/* Added columns badges */}
-                {addedColumns.length > 0 && (
-                    <div className="w-full flex flex-wrap items-center gap-1.5 mt-1.5 pt-2 border-t border-dashed border-slate-700/50">
-                        <span className={`text-[10px] ${colors.textMuted} uppercase tracking-wider font-bold`}>Added:</span>
-                        {addedColumns.map(col => (
-                            <span
-                                key={col}
-                                className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold ${theme === 'dark'
-                                    ? 'bg-violet-500/15 text-violet-300 border border-violet-500/30'
-                                    : 'bg-violet-100 text-violet-700 border border-violet-300'
-                                    }`}
-                            >
-                                {col}
-                                <button
-                                    onClick={() => removeAddedColumn(col)}
-                                    className="ml-0.5 hover:text-red-400 transition"
-                                    title={`Remove "${col}"`}
-                                >
-                                    <X className="w-2.5 h-2.5" />
-                                </button>
-                            </span>
-                        ))}
-                    </div>
-                )}
 
-                {/* Tracked actions bar (Find & Replace, Remove Column, Format, Trim) */}
-                {actionHistory.length > 0 && (
-                    <div className="w-full flex flex-wrap items-center gap-2 mt-1.5 pt-2 border-t border-dashed border-orange-500/30">
-                        <Undo2 className="w-3 h-3 text-orange-400" />
-                        <span className={`text-[10px] text-orange-400 font-bold uppercase tracking-wider`}>
-                            {actionHistory.length} action{actionHistory.length > 1 ? 's' : ''}
-                        </span>
-                        {actionHistory.map(action => (
-                            <span key={action.id} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-300 border border-orange-500/30 font-semibold">
-                                {action.icon === 'find_replace' && <Search className="w-2.5 h-2.5" />}
-                                {action.icon === 'remove' && <Trash2 className="w-2.5 h-2.5" />}
-                                {action.icon === 'format' && <Type className="w-2.5 h-2.5" />}
-                                {action.icon === 'trim' && <Scissors className="w-2.5 h-2.5" />}
-                                {action.icon === 'pencil' && <Pencil className="w-2.5 h-2.5" />}
-                                {action.icon === 'ai' && <Sparkles className="w-2.5 h-2.5 text-pink-400" />}
-                                {action.label}
-                            </span>
-                        ))}
-                        <div className="ml-auto flex items-center gap-2">
-                            <button
-                                onClick={undoLastAction}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-orange-600/80 hover:bg-orange-500 text-white border border-orange-500/50 transition shadow-lg shadow-orange-900/20 active:scale-[0.97]"
-                            >
-                                <Undo2 className="w-3 h-3" /> Undo Last
-                            </button>
-                            <button
-                                onClick={clearActionHistory}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-slate-600/30 hover:bg-slate-600/50 text-slate-300 border border-slate-500/30 transition active:scale-[0.97]"
-                            >
-                                <X className="w-3 h-3" /> Dismiss
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Active filters bar */}
-                {(activeFilters.length > 0 || sortConfig) && (
-                    <div className="w-full flex flex-wrap items-center gap-2 mt-1.5 pt-2 border-t border-dashed border-blue-500/30">
-                        <Search className="w-3 h-3 text-blue-400" />
-                        <span className={`text-[10px] text-blue-400 font-bold uppercase tracking-wider`}>
-                            {displayData.length.toLocaleString()} of {mergedData.length.toLocaleString()} rows shown
-                        </span>
-                        {activeFilters.map(f => (
-                            <span key={f.column} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30 font-semibold">
-                                {f.column}
-                                <button onClick={() => clearFilter(f.column)} className="ml-0.5 hover:text-red-400 transition"><X className="w-2.5 h-2.5" /></button>
-                            </span>
-                        ))}
-                        {sortConfig && (
-                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-300 border border-green-500/30 font-semibold">
-                                {sortConfig.dir === 'asc' ? '▲' : '▼'} {sortConfig.col}
-                                <button onClick={() => setSortConfig(null)} className="ml-0.5 hover:text-red-400 transition"><X className="w-2.5 h-2.5" /></button>
-                            </span>
-                        )}
-                        <button onClick={() => { setActiveFilters([]); setSortConfig(null); }} className="ml-auto text-[10px] text-red-400 hover:text-red-300 font-medium transition">Clear All</button>
-                    </div>
-                )}
                 {/* Deleted rows action bar */}
                 {deletedRowIndices.size > 0 && (
                     <div className="w-full flex flex-wrap items-center gap-2 mt-1.5 pt-2 border-t border-dashed border-red-500/30">
@@ -1475,6 +1395,8 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                 )}
             </div>
 
+            {/* Content area: Data Grid + Action History Sidebar */}
+            <div className="flex-1 flex overflow-hidden">
             {/* Editable Data Grid */}
             <div className="flex-1 overflow-auto custom-scrollbar">
                 <table className="w-full text-left border-collapse min-w-max">
@@ -1690,6 +1612,214 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                     </div>
                 )}
             </div>
+
+            {/* ─── Right Sidebar (Collapsible): Added Columns + Filters + Action History ── */}
+            {(actionHistory.length > 0 || addedColumns.length > 0 || activeFilters.length > 0 || sortConfig) && (
+                <aside
+                    className={`relative flex-shrink-0 border-l ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-900/80' : 'bg-white/90'} backdrop-blur-sm transition-all duration-300 ease-in-out flex flex-col ${actionSidebarOpen ? 'w-64' : 'w-10'}`}
+                >
+                    {/* Collapse/Expand Toggle */}
+                    <button
+                        onClick={() => setActionSidebarOpen(prev => !prev)}
+                        className={`absolute -left-3 top-4 z-10 w-6 h-6 rounded-full border ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white hover:bg-slate-100'} shadow-md flex items-center justify-center transition active:scale-90`}
+                        title={actionSidebarOpen ? 'Collapse panel' : 'Expand panel'}
+                    >
+                        {actionSidebarOpen ? <ChevronRight className="w-3.5 h-3.5 text-orange-400" /> : <ChevronLeft className="w-3.5 h-3.5 text-orange-400" />}
+                    </button>
+
+                    {/* Collapsed state: just show icons + counts */}
+                    {!actionSidebarOpen && (
+                        <div className="flex flex-col items-center pt-12 gap-3">
+                            {addedColumns.length > 0 && (
+                                <div className="flex flex-col items-center gap-1" title={`${addedColumns.length} added column${addedColumns.length > 1 ? 's' : ''}`}>
+                                    <Plus className="w-3.5 h-3.5 text-violet-400" />
+                                    <span className="text-[8px] text-violet-400 font-bold">{addedColumns.length}</span>
+                                </div>
+                            )}
+                            {(activeFilters.length > 0 || sortConfig) && (
+                                <div className="flex flex-col items-center gap-1" title={`${activeFilters.length} filter${activeFilters.length !== 1 ? 's' : ''}${sortConfig ? ' + sort' : ''}`}>
+                                    <Search className="w-3.5 h-3.5 text-blue-400" />
+                                    <span className="text-[8px] text-blue-400 font-bold">{activeFilters.length + (sortConfig ? 1 : 0)}</span>
+                                </div>
+                            )}
+                            {actionHistory.length > 0 && (
+                                <div className="flex flex-col items-center gap-1" title={`${actionHistory.length} action${actionHistory.length > 1 ? 's' : ''}`}>
+                                    <History className="w-3.5 h-3.5 text-orange-400" />
+                                    <span className="text-[8px] text-orange-400 font-bold">{actionHistory.length}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Expanded state */}
+                    {actionSidebarOpen && (
+                        <div className="flex flex-col h-full overflow-hidden">
+                            <div className="flex-1 overflow-y-auto custom-scrollbar">
+
+                                {/* ── Added Columns Section ── */}
+                                {addedColumns.length > 0 && (
+                                    <div className={`p-2.5 border-b ${colors.borderPrimary}`}>
+                                        <div className="flex items-center gap-1.5 mb-2">
+                                            <Plus className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}>
+                                                Added ({addedColumns.length})
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1">
+                                            {addedColumns.map(col => (
+                                                <div
+                                                    key={col}
+                                                    className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${theme === 'dark'
+                                                        ? 'bg-violet-500/5 border-violet-500/20 hover:bg-violet-500/10'
+                                                        : 'bg-violet-50 border-violet-200 hover:bg-violet-100'
+                                                    }`}
+                                                >
+                                                    <Wand2 className="w-3 h-3 text-violet-400 flex-shrink-0" />
+                                                    <span className={`text-[10px] font-semibold truncate flex-1 ${theme === 'dark' ? 'text-violet-300' : 'text-violet-700'}`} title={col}>
+                                                        {col}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => removeAddedColumn(col)}
+                                                        className={`flex-shrink-0 opacity-0 group-hover:opacity-100 p-0.5 rounded transition ${theme === 'dark' ? 'hover:bg-violet-500/20 text-violet-400' : 'hover:bg-violet-200 text-violet-600'}`}
+                                                        title={`Remove "${col}"`}
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ── Active Filters & Sort Section ── */}
+                                {(activeFilters.length > 0 || sortConfig) && (
+                                    <div className={`p-2.5 border-b ${colors.borderPrimary}`}>
+                                        <div className="flex items-center gap-1.5 mb-2">
+                                            <Search className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>
+                                                {displayData.length.toLocaleString()} of {mergedData.length.toLocaleString()} rows
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1">
+                                            {activeFilters.map(f => (
+                                                <div
+                                                    key={f.column}
+                                                    className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${theme === 'dark'
+                                                        ? 'bg-blue-500/5 border-blue-500/20 hover:bg-blue-500/10'
+                                                        : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
+                                                    }`}
+                                                >
+                                                    <Search className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                                                    <span className={`text-[10px] font-semibold truncate flex-1 ${theme === 'dark' ? 'text-blue-300' : 'text-blue-700'}`} title={f.column}>
+                                                        {f.column}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => clearFilter(f.column)}
+                                                        className={`flex-shrink-0 opacity-0 group-hover:opacity-100 p-0.5 rounded transition ${theme === 'dark' ? 'hover:bg-blue-500/20 text-blue-400' : 'hover:bg-blue-200 text-blue-600'}`}
+                                                        title="Remove filter"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {sortConfig && (
+                                                <div
+                                                    className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${theme === 'dark'
+                                                        ? 'bg-green-500/5 border-green-500/20 hover:bg-green-500/10'
+                                                        : 'bg-green-50 border-green-200 hover:bg-green-100'
+                                                    }`}
+                                                >
+                                                    <span className={`text-[10px] font-bold ${sortConfig.dir === 'asc' ? 'text-green-400' : 'text-orange-400'}`}>{sortConfig.dir === 'asc' ? '▲' : '▼'}</span>
+                                                    <span className={`text-[10px] font-semibold truncate flex-1 ${theme === 'dark' ? 'text-green-300' : 'text-green-700'}`} title={sortConfig.col}>
+                                                        {sortConfig.col}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => setSortConfig(null)}
+                                                        className={`flex-shrink-0 opacity-0 group-hover:opacity-100 p-0.5 rounded transition ${theme === 'dark' ? 'hover:bg-green-500/20 text-green-400' : 'hover:bg-green-200 text-green-600'}`}
+                                                        title="Remove sort"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={() => { setActiveFilters([]); setSortConfig(null); }}
+                                                className={`w-full text-[9px] font-semibold py-1 rounded transition ${theme === 'dark' ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'}`}
+                                            >
+                                                Clear All Filters
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ── Action History Section ── */}
+                                {actionHistory.length > 0 && (
+                                    <div className="p-2.5">
+                                        <div className="flex items-center gap-1.5 mb-2">
+                                            <History className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />
+                                            <span className="text-[10px] text-orange-400 font-bold uppercase tracking-wider flex-1">
+                                                {actionHistory.length} Action{actionHistory.length > 1 ? 's' : ''}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1">
+                                            {actionHistory.map((action, idx) => (
+                                                <div
+                                                    key={action.id}
+                                                    className={`group flex items-start gap-2 p-2 rounded-lg border transition-all ${theme === 'dark'
+                                                        ? 'bg-orange-500/5 border-orange-500/20 hover:bg-orange-500/10 hover:border-orange-500/30'
+                                                        : 'bg-orange-50 border-orange-200 hover:bg-orange-100'
+                                                    }`}
+                                                >
+                                                    <div className="flex-shrink-0 mt-0.5">
+                                                        {action.icon === 'find_replace' && <Search className="w-3 h-3 text-orange-400" />}
+                                                        {action.icon === 'remove' && <Trash2 className="w-3 h-3 text-orange-400" />}
+                                                        {action.icon === 'format' && <Type className="w-3 h-3 text-orange-400" />}
+                                                        {action.icon === 'trim' && <Scissors className="w-3 h-3 text-orange-400" />}
+                                                        {action.icon === 'pencil' && <Pencil className="w-3 h-3 text-orange-400" />}
+                                                        {action.icon === 'ai' && <Sparkles className="w-3 h-3 text-pink-400" />}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <span className={`text-[10px] font-semibold leading-tight block truncate ${theme === 'dark' ? 'text-orange-300' : 'text-orange-700'}`} title={action.label}>
+                                                            {action.label}
+                                                        </span>
+                                                        <span className={`text-[9px] ${colors.textMuted}`}>Step {idx + 1}</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => undoAction(action.id)}
+                                                        className={`flex-shrink-0 opacity-0 group-hover:opacity-100 p-1 rounded transition ${theme === 'dark' ? 'hover:bg-orange-500/20 text-orange-400' : 'hover:bg-orange-200 text-orange-600'}`}
+                                                        title={`Undo this and all later actions`}
+                                                    >
+                                                        <Undo2 className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Footer Actions - only show if there are actions to undo */}
+                            {actionHistory.length > 0 && (
+                                <div className={`p-2 border-t ${colors.borderPrimary} space-y-1.5`}>
+                                    <button
+                                        onClick={undoLastAction}
+                                        className="w-full inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-orange-600/80 hover:bg-orange-500 text-white border border-orange-500/50 transition shadow-lg shadow-orange-900/20 active:scale-[0.97]"
+                                    >
+                                        <Undo2 className="w-3 h-3" /> Undo Last
+                                    </button>
+                                    <button
+                                        onClick={clearActionHistory}
+                                        className={`w-full inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition active:scale-[0.97] ${theme === 'dark' ? 'bg-slate-600/30 hover:bg-slate-600/50 text-slate-300 border border-slate-500/30' : 'bg-slate-200 hover:bg-slate-300 text-slate-600 border border-slate-300'}`}
+                                    >
+                                        <X className="w-3 h-3" /> Dismiss All
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </aside>
+            )}
+            </div>{/* End Content area flex wrapper */}
 
             {/* ─── Conditional Column Modal ─────────────────────────────────────── */}
             {showConditionalModal && (
