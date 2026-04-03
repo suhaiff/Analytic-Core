@@ -646,6 +646,107 @@ class SupabaseService {
             throw error;
         }
     }
+    // ==================== API Error Logs ====================
+
+    async createApiErrorLog(errorData) {
+        try {
+            const { error } = await this.supabase
+                .from('api_error_logs')
+                .insert([{
+                    error_type: errorData.error_type,
+                    error_message: errorData.error_message,
+                    source: errorData.source,
+                    key_index: errorData.key_index || null,
+                    user_id: errorData.user_id || null,
+                    user_email: errorData.user_email || null,
+                    resolved: false,
+                    created_at: new Date().toISOString()
+                }]);
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Error creating API error log:', error.message);
+            // Don't throw - error logging should never break the application
+            return false;
+        }
+    }
+
+    async getApiErrorLogs() {
+        try {
+            const { data, error } = await this.supabase
+                .from('api_error_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(100);
+
+            if (error) throw error;
+            return data || [];
+        } catch (error) {
+            console.error('Error fetching API error logs:', error.message);
+            return [];
+        }
+    }
+
+    async getUnresolvedApiErrorCount() {
+        try {
+            const { count, error } = await this.supabase
+                .from('api_error_logs')
+                .select('*', { count: 'exact', head: true })
+                .eq('resolved', false);
+
+            if (error) throw error;
+            return count || 0;
+        } catch (error) {
+            console.error('Error fetching unresolved error count:', error.message);
+            return 0;
+        }
+    }
+
+    async resolveApiError(id) {
+        try {
+            const { error } = await this.supabase
+                .from('api_error_logs')
+                .update({ resolved: true })
+                .eq('id', id);
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Error resolving API error:', error.message);
+            throw error;
+        }
+    }
+
+    async resolveAllApiErrors() {
+        try {
+            const { error } = await this.supabase
+                .from('api_error_logs')
+                .update({ resolved: true })
+                .eq('resolved', false);
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Error resolving all API errors:', error.message);
+            throw error;
+        }
+    }
+
+    async clearResolvedApiErrors() {
+        try {
+            const { error } = await this.supabase
+                .from('api_error_logs')
+                .delete()
+                .eq('resolved', true);
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Error clearing resolved API errors:', error.message);
+            throw error;
+        }
+    }
 }
 
 module.exports = new SupabaseService();

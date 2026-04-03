@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { authService } from '../../services/authService';
 import { dashboardService } from '../../services/dashboardService';
 import { fileService, FileContent } from '../../services/fileService';
+import { apiErrorService, ApiErrorLog } from '../../services/apiErrorService';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
 import { User, SavedDashboard } from '../../types';
-import { Shield, Trash2, LogOut, Search, User as UserIcon, FileText, LayoutDashboard, Upload, Eye, X, Mail, Phone, Building, Briefcase, Users, TrendingUp, BarChart3, PieChart as PieChartIcon, Activity, HardDrive, Database, Clock, Globe } from 'lucide-react';
+import { Shield, Trash2, LogOut, Search, User as UserIcon, FileText, LayoutDashboard, Upload, Eye, X, Mail, Phone, Building, Briefcase, Users, TrendingUp, BarChart3, PieChart as PieChartIcon, Activity, HardDrive, Database, Clock, Globe, Bell, AlertTriangle, CheckCircle2, XCircle, Zap, Wifi, KeyRound, ChevronRight, Check } from 'lucide-react';
 import { ProfileMenu } from '../navbar/ProfileMenu';
 import { ThemeToggle } from '../ThemeToggle';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
@@ -32,11 +33,138 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
     const [viewingFile, setViewingFile] = useState<FileContent | null>(null);
     const [viewingUser, setViewingUser] = useState<User | null>(null);
     const [loadingFile, setLoadingFile] = useState(false);
+
+    // Notification State
+    const [notificationOpen, setNotificationOpen] = useState(false);
+    const [apiErrors, setApiErrors] = useState<ApiErrorLog[]>([]);
+    const [unresolvedCount, setUnresolvedCount] = useState(0);
+    const [loadingNotifications, setLoadingNotifications] = useState(false);
+    const notificationRef = useRef<HTMLDivElement>(null);
+    const bellRef = useRef<HTMLButtonElement>(null);
     const [activeSheet, setActiveSheet] = useState(0);
 
     useEffect(() => {
         loadData();
     }, [activeTab]);
+
+    // Poll for unresolved API error count every 30s
+    const fetchUnresolvedCount = useCallback(async () => {
+        try {
+            const count = await apiErrorService.getUnresolvedCount();
+            setUnresolvedCount(count);
+        } catch { /* silent */ }
+    }, []);
+
+    useEffect(() => {
+        fetchUnresolvedCount();
+        const interval = setInterval(fetchUnresolvedCount, 30000);
+        return () => clearInterval(interval);
+    }, [fetchUnresolvedCount]);
+
+    // Close notification panel when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                notificationOpen &&
+                notificationRef.current &&
+                !notificationRef.current.contains(event.target as Node) &&
+                bellRef.current &&
+                !bellRef.current.contains(event.target as Node)
+            ) {
+                setNotificationOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [notificationOpen]);
+
+    const loadNotifications = async () => {
+        setLoadingNotifications(true);
+        try {
+            const errors = await apiErrorService.getErrors();
+            setApiErrors(errors);
+            const count = errors.filter(e => !e.resolved).length;
+            setUnresolvedCount(count);
+        } catch (error) {
+            console.error('Failed to load notifications', error);
+        } finally {
+            setLoadingNotifications(false);
+        }
+    };
+
+    const toggleNotificationPanel = () => {
+        const newState = !notificationOpen;
+        setNotificationOpen(newState);
+        if (newState) {
+            loadNotifications();
+        }
+    };
+
+    const handleResolveError = async (id: number) => {
+        try {
+            await apiErrorService.resolveError(id);
+            setApiErrors(prev => prev.map(e => e.id === id ? { ...e, resolved: true } : e));
+            setUnresolvedCount(prev => Math.max(0, prev - 1));
+        } catch { /* silent */ }
+    };
+
+    const handleResolveAll = async () => {
+        try {
+            await apiErrorService.resolveAll();
+            setApiErrors(prev => prev.map(e => ({ ...e, resolved: true })));
+            setUnresolvedCount(0);
+        } catch { /* silent */ }
+    };
+
+    const handleClearResolved = async () => {
+        try {
+            await apiErrorService.clearResolved();
+            setApiErrors(prev => prev.filter(e => !e.resolved));
+        } catch { /* silent */ }
+    };
+
+    const getErrorIcon = (errorType: string) => {
+        switch (errorType) {
+            case 'INVALID_API_KEY': return <KeyRound className="w-4 h-4" />;
+            case 'QUOTA_EXHAUSTED': return <Zap className="w-4 h-4" />;
+            case 'NETWORK_ERROR': return <Wifi className="w-4 h-4" />;
+            case 'TIMEOUT': return <Clock className="w-4 h-4" />;
+            default: return <AlertTriangle className="w-4 h-4" />;
+        }
+    };
+
+    const getErrorColor = (errorType: string) => {
+        switch (errorType) {
+            case 'INVALID_API_KEY': return { bg: 'from-red-500/20 to-rose-500/20', text: 'text-red-500', border: 'border-red-500/30', badge: 'bg-red-500/10 text-red-400' };
+            case 'QUOTA_EXHAUSTED': return { bg: 'from-amber-500/20 to-orange-500/20', text: 'text-amber-500', border: 'border-amber-500/30', badge: 'bg-amber-500/10 text-amber-400' };
+            case 'NETWORK_ERROR': return { bg: 'from-blue-500/20 to-cyan-500/20', text: 'text-blue-500', border: 'border-blue-500/30', badge: 'bg-blue-500/10 text-blue-400' };
+            case 'TIMEOUT': return { bg: 'from-purple-500/20 to-violet-500/20', text: 'text-purple-500', border: 'border-purple-500/30', badge: 'bg-purple-500/10 text-purple-400' };
+            default: return { bg: 'from-slate-500/20 to-gray-500/20', text: 'text-slate-500', border: 'border-slate-500/30', badge: 'bg-slate-500/10 text-slate-400' };
+        }
+    };
+
+    const getErrorLabel = (errorType: string) => {
+        switch (errorType) {
+            case 'INVALID_API_KEY': return 'Invalid API Key';
+            case 'QUOTA_EXHAUSTED': return 'Quota Exhausted';
+            case 'NETWORK_ERROR': return 'Network Error';
+            case 'TIMEOUT': return 'Request Timeout';
+            default: return 'API Error';
+        }
+    };
+
+    const getTimeAgo = (dateStr: string) => {
+        const now = new Date();
+        const date = new Date(dateStr);
+        const diffMs = now.getTime() - date.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `${diffHours}h ago`;
+        const diffDays = Math.floor(diffHours / 24);
+        return `${diffDays}d ago`;
+    };
 
     const loadData = async () => {
         setLoading(true);
@@ -169,6 +297,166 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                 </div>
 
                 <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
+                    {/* Notification Bell */}
+                    <div className="relative">
+                        <button
+                            ref={bellRef}
+                            onClick={toggleNotificationPanel}
+                            className={`relative p-2.5 rounded-xl border transition-all duration-300 ${notificationOpen
+                                ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-500 shadow-lg shadow-indigo-500/10'
+                                : `${colors.borderSecondary} ${colors.textMuted} hover:text-indigo-500 hover:border-indigo-500/30 hover:bg-indigo-500/5`
+                            }`}
+                            title="API Notifications"
+                            id="admin-notification-bell"
+                        >
+                            <Bell className={`w-5 h-5 ${unresolvedCount > 0 ? 'animate-[wiggle_1s_ease-in-out_3]' : ''}`} />
+                            {unresolvedCount > 0 && (
+                                <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 flex items-center justify-center px-1 rounded-full bg-gradient-to-r from-red-500 to-rose-500 text-white text-[10px] font-black shadow-lg shadow-red-500/30 animate-pulse">
+                                    {unresolvedCount > 99 ? '99+' : unresolvedCount}
+                                </span>
+                            )}
+                        </button>
+
+                        {/* Notification Panel */}
+                        {notificationOpen && (
+                            <div
+                                ref={notificationRef}
+                                className={`absolute right-0 top-full mt-3 w-[420px] max-h-[520px] rounded-2xl border shadow-2xl overflow-hidden z-[200] ${colors.bgSecondary} ${colors.borderPrimary}`}
+                                style={{
+                                    animation: 'slideDown 0.25s ease-out',
+                                    backdropFilter: 'blur(20px)',
+                                }}
+                            >
+                                {/* Panel Header */}
+                                <div className={`px-5 py-4 border-b ${colors.borderPrimary} bg-gradient-to-r ${theme === 'dark' ? 'from-slate-800/80 to-slate-900/80' : 'from-slate-50/80 to-white/80'}`}>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 rounded-xl bg-gradient-to-br from-red-500/20 to-orange-500/20 border border-red-500/20">
+                                                <AlertTriangle className="w-4 h-4 text-red-500" />
+                                            </div>
+                                            <div>
+                                                <h3 className={`text-sm font-black tracking-tight ${colors.textPrimary}`}>API Notifications</h3>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                                    {unresolvedCount > 0 ? `${unresolvedCount} unresolved` : 'All clear'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            {unresolvedCount > 0 && (
+                                                <button
+                                                    onClick={handleResolveAll}
+                                                    className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all duration-300"
+                                                    title="Resolve All"
+                                                >
+                                                    Resolve All
+                                                </button>
+                                            )}
+                                            {apiErrors.some(e => e.resolved) && (
+                                                <button
+                                                    onClick={handleClearResolved}
+                                                    className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-slate-500/10 text-slate-400 border border-slate-500/20 hover:bg-slate-500/20 transition-all duration-300"
+                                                    title="Clear Resolved"
+                                                >
+                                                    Clear
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Panel Body */}
+                                <div className="overflow-y-auto max-h-[400px] scrollbar-thin">
+                                    {loadingNotifications ? (
+                                        <div className="flex items-center justify-center py-12">
+                                            <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                                        </div>
+                                    ) : apiErrors.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center py-12 px-6">
+                                            <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center mb-4 border border-emerald-500/20">
+                                                <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                                            </div>
+                                            <p className={`text-sm font-bold ${colors.textPrimary} mb-1`}>No API Errors</p>
+                                            <p className="text-[11px] text-slate-400 text-center font-medium">All API keys are functioning normally. You'll be notified if any issues arise.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y divide-slate-500/10">
+                                            {apiErrors.map((err) => {
+                                                const errColor = getErrorColor(err.error_type);
+                                                return (
+                                                    <div
+                                                        key={err.id}
+                                                        className={`px-5 py-3.5 flex items-start gap-3 transition-all duration-300 group ${err.resolved
+                                                            ? 'opacity-50 hover:opacity-75'
+                                                            : `hover:${theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-50/50'}`
+                                                        }`}
+                                                    >
+                                                        {/* Error Icon */}
+                                                        <div className={`flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br ${errColor.bg} border ${errColor.border} flex items-center justify-center ${errColor.text} mt-0.5`}>
+                                                            {err.resolved ? <Check className="w-4 h-4 text-emerald-500" /> : getErrorIcon(err.error_type)}
+                                                        </div>
+
+                                                        {/* Error Details */}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${errColor.badge} border ${errColor.border}`}>
+                                                                    {getErrorLabel(err.error_type)}
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400 font-medium">
+                                                                    {err.created_at ? getTimeAgo(err.created_at) : ''}
+                                                                </span>
+                                                            </div>
+                                                            <p className={`text-xs font-semibold ${colors.textSecondary} leading-relaxed line-clamp-2 mb-1`}>
+                                                                {err.error_message}
+                                                            </p>
+                                                            <div className="flex items-center gap-3 text-[10px] text-slate-400 font-medium">
+                                                                <span className="flex items-center gap-1">
+                                                                    <Zap className="w-3 h-3" />
+                                                                    {err.source?.replace(/([A-Z])/g, ' $1').trim() || 'Unknown'}
+                                                                </span>
+                                                                {err.user_email && (
+                                                                    <span className="flex items-center gap-1">
+                                                                        <UserIcon className="w-3 h-3" />
+                                                                        {err.user_email}
+                                                                    </span>
+                                                                )}
+                                                                {err.key_index !== null && err.key_index !== undefined && (
+                                                                    <span className="flex items-center gap-1">
+                                                                        <KeyRound className="w-3 h-3" />
+                                                                        Key #{(err.key_index || 0) + 1}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Resolve Button */}
+                                                        {!err.resolved && (
+                                                            <button
+                                                                onClick={() => err.id && handleResolveError(err.id)}
+                                                                className="flex-shrink-0 p-1.5 rounded-lg border border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10 hover:border-emerald-500/40 transition-all duration-300 opacity-0 group-hover:opacity-100"
+                                                                title="Mark as resolved"
+                                                            >
+                                                                <CheckCircle2 className="w-4 h-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Panel Footer */}
+                                {apiErrors.length > 0 && (
+                                    <div className={`px-5 py-3 border-t ${colors.borderPrimary} bg-gradient-to-r ${theme === 'dark' ? 'from-slate-800/60 to-transparent' : 'from-slate-50/60 to-transparent'}`}>
+                                        <p className="text-[10px] text-slate-400 font-bold text-center uppercase tracking-widest">
+                                            Showing latest {apiErrors.length} error{apiErrors.length !== 1 ? 's' : ''}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     <ThemeToggle />
                     <ProfileMenu user={user} onLogout={onLogout} onNavigateToUserApp={onNavigateToUserApp} />
                 </div>

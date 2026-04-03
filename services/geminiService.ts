@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ChartConfig, DataModel, AggregationType, AggregatedColumnDefinition } from '../types';
+import { apiErrorService } from './apiErrorService';
 
 // ── Gemini API Key Rotation ────────────────────────────────────────────────────
 // Supports multiple comma-separated keys in GEMINI_API_KEY env var.
@@ -34,6 +35,49 @@ const isQuotaError = (error: any): boolean => {
     msg.includes('resource has been exhausted') ||
     msg.includes('quota') ||
     msg.includes('rate limit');
+};
+
+const isApiKeyError = (error: any): boolean => {
+  const msg = String(error?.message || error || '').toLowerCase();
+  return msg.includes('api key') ||
+    msg.includes('api_key_invalid') ||
+    msg.includes('invalid api key') ||
+    msg.includes('permission_denied') ||
+    msg.includes('forbidden') ||
+    msg.includes('401') ||
+    msg.includes('403') ||
+    msg.includes('authentication');
+};
+
+const classifyApiError = (error: any): string => {
+  if (isQuotaError(error)) return 'QUOTA_EXHAUSTED';
+  if (isApiKeyError(error)) return 'INVALID_API_KEY';
+  const msg = String(error?.message || error || '').toLowerCase();
+  if (msg.includes('network') || msg.includes('fetch') || msg.includes('econnrefused')) return 'NETWORK_ERROR';
+  if (msg.includes('timeout') || msg.includes('deadline')) return 'TIMEOUT';
+  return 'UNKNOWN_API_ERROR';
+};
+
+const reportApiError = (error: any, source: string) => {
+  try {
+    const currentUser = (() => {
+      try {
+        const userStr = localStorage.getItem('insightAI_currentUser');
+        return userStr ? JSON.parse(userStr) : null;
+      } catch { return null; }
+    })();
+
+    apiErrorService.reportError({
+      error_type: classifyApiError(error),
+      error_message: String(error?.message || error || 'Unknown error').slice(0, 500),
+      source,
+      key_index: currentKeyIndex % Math.max(API_KEYS.length, 1),
+      user_id: currentUser?.id,
+      user_email: currentUser?.email
+    });
+  } catch {
+    // Never let error reporting break the app
+  }
 };
 
 const MAX_RETRIES = Math.max(API_KEYS.length, 1);
@@ -277,6 +321,7 @@ export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<Chart
     });
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
+    reportApiError(error, 'analyzeDataAndSuggestKPIs');
     return [];
   }
 };
@@ -372,6 +417,7 @@ export const generateChartFromPrompt = async (model: DataModel, prompt: string):
     });
   } catch (error) {
     console.error("Gemini Custom Generation Error:", error);
+    reportApiError(error, 'generateChartFromPrompt');
     return null;
   }
 };
@@ -455,6 +501,7 @@ STRICT RULES:
     });
   } catch (error) {
     console.error("AI Schema Audit error:", error);
+    reportApiError(error, 'auditSchema');
     throw error;
   }
 };
@@ -780,6 +827,7 @@ If multiple operations are needed, return them in order of execution.
     });
   } catch (error) {
     console.error("Data Preparation AI Error:", error);
+    reportApiError(error, 'parseDataPreparationPrompt');
     return {
       operations: [],
       explanation: `Error parsing request: ${(error as Error).message}`

@@ -9,3 +9,14 @@ uploads/*
 server/uploads/*
 *.log
 .DS_Store
+dist/
+**/*.zip
+**/*.tar.gz
+**/*.tgz
+**/*.xlsx
+**/*.csv
+node_modules/
+.git/
+server/node_modules/
+server/.git/
+**/uploads/*
