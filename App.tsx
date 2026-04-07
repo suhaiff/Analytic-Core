@@ -3,6 +3,7 @@ import { Landing } from './components/Landing';
 import { DataConfig } from './components/DataConfig';
 import { ChartBuilder } from './components/ChartBuilder';
 import { Dashboard } from './components/Dashboard';
+import { DataProfiling } from './components/DataProfiling';
 import { Login } from './components/auth/Login';
 import { Signup } from './components/auth/Signup';
 import { Welcome } from './components/Welcome';
@@ -24,6 +25,7 @@ enum Step {
   SIGNUP = 'SIGNUP',
   ADMIN = 'ADMIN',
   LANDING = 0,
+  DATA_PROFILING = 'DATA_PROFILING',
   CONFIG = 1,
   BUILDER = 2,
   DASHBOARD = 3
@@ -159,7 +161,7 @@ function AppContent() {
         }
       }
 
-      setStep(Step.CONFIG);
+      setStep(Step.DATA_PROFILING);
     } catch (error) {
       console.error("File processing failed", error);
       showToast("Failed to process file. Please ensure it is a valid CSV or Excel file.", 'error');
@@ -187,7 +189,7 @@ function AppContent() {
       setSourceType('google_sheet');
       setUploadedFileId(sheets[0]?.fileId);
       setStep(Step.LANDING);
-      setTimeout(() => setStep(Step.CONFIG), 10);
+      setTimeout(() => setStep(Step.DATA_PROFILING), 10);
       setIsProcessing(false);
       showToast(`${sheets.length} sheets imported successfully`, 'success');
     }, 1500);
@@ -214,7 +216,7 @@ function AppContent() {
       // but DataConfig will manage multiple tables.
       setUploadedFileId(tables[0]?.fileId);
       setStep(Step.LANDING);
-      setTimeout(() => setStep(Step.CONFIG), 10);
+      setTimeout(() => setStep(Step.DATA_PROFILING), 10);
       setIsProcessing(false);
       showToast(`${tables.length} tables imported successfully`, 'success');
     }, 1500);
@@ -238,7 +240,7 @@ function AppContent() {
     setFileName(`SP: ${siteName} - ${listName}`);
     setSourceType('sharepoint');
     setUploadedFileId(fileId);
-    setStep(Step.CONFIG);
+    setStep(Step.DATA_PROFILING);
   };
 
   const handleRefresh = async () => {
@@ -354,6 +356,11 @@ function AppContent() {
   const handleConfigFinalize = (model: DataModel) => {
     setDataModel(model);
     setStep(Step.BUILDER);
+  };
+
+  const handleProfilingProceed = (updatedTables: DataTable[]) => {
+    setInitialTables(updatedTables);
+    setStep(Step.CONFIG);
   };
 
   const handleGenerateReport = (charts: ChartConfig[], cols: string[], sections?: DashboardSection[]) => {
@@ -532,6 +539,17 @@ function AppContent() {
           />
         )}
 
+
+        {step === Step.DATA_PROFILING && initialTables.length > 0 && (
+          <DataProfiling
+            initialTables={initialTables}
+            fileName={fileName}
+            uploadedFileId={uploadedFileId}
+            sourceType={sourceType}
+            onProceed={handleProfilingProceed}
+            onHome={handleReturnHomeRequest}
+          />
+        )}
 
         {step === Step.CONFIG && initialTables.length > 0 && (
           <DataConfig

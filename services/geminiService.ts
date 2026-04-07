@@ -868,3 +868,165 @@ const normalizeOperationColumns = (op: DataPrepOperation, columns: string[]): Da
 
   return op;
 };
+
+// ─── Data Profiling AI ────────────────────────────────────────────────────────
+
+export interface ColumnProfile {
+  name: string;
+  inferredType: string;
+  isPrimaryKey: boolean;
+  isForeignKey: boolean;
+  nullCount: number;
+  nullPercent: number;
+  uniqueCount: number;
+  uniquePercent: number;
+  sampleValues: string[];
+  description: string;
+}
+
+export interface TableProfile {
+  tableName: string;
+  totalRows: number;
+  totalColumns: number;
+  columns: ColumnProfile[];
+  tableDescription: string;
+}
+
+export interface JoinSuggestion {
+  leftTable: string;
+  rightTable: string;
+  leftColumn: string;
+  rightColumn: string;
+  joinType: string;
+  confidence: number;
+  reasoning: string;
+}
+
+export interface DataProfilingResult {
+  tables: TableProfile[];
+  joinSuggestions: JoinSuggestion[];
+  overallSummary: string;
+}
+
+const DATA_PROFILING_SYSTEM_INSTRUCTION = `
+You are an expert data profiling engine. Analyze the provided table metadata and sample data to produce a comprehensive data profile.
+
+For each table and each column, determine:
+1. The inferred data type (TEXT, INTEGER, DECIMAL, CURRENCY, PERCENT, DATE, BOOLEAN, ID, EMAIL, PHONE, URL, UNKNOWN)
+2. Whether the column looks like a PRIMARY KEY (unique, non-null, sequential or ID-like)
+3. Whether the column looks like a FOREIGN KEY (references another table's primary key based on naming conventions and value overlap)
+4. Estimated null count and percentage based on sample data
+5. Estimated unique value count and percentage based on sample data
+6. Up to 5 representative sample values
+7. A short human-readable description of what the column likely represents
+
+For each table provide a short description of its likely purpose.
+
+When multiple tables are provided, suggest the best join columns between table pairs. Analyze column names and sample values for overlap. Consider naming conventions like "id", "user_id", "order_id" etc.
+
+STRICT RULES:
+- Output ONLY valid JSON. No markdown, no commentary.
+- Use the exact column names from the input.
+- Confidence for join suggestions should be 0.0 to 1.0.
+- Be conservative with primary/foreign key identification — only flag if evidence is strong.
+`;
+
+const dataProfilingSchema = {
+  type: Type.OBJECT,
+  properties: {
+    tables: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          tableName: { type: Type.STRING },
+          totalRows: { type: Type.INTEGER },
+          totalColumns: { type: Type.INTEGER },
+          tableDescription: { type: Type.STRING },
+          columns: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                inferredType: { type: Type.STRING, enum: ['TEXT', 'INTEGER', 'DECIMAL', 'CURRENCY', 'PERCENT', 'DATE', 'BOOLEAN', 'ID', 'EMAIL', 'PHONE', 'URL', 'UNKNOWN'] },
+                isPrimaryKey: { type: Type.BOOLEAN },
+                isForeignKey: { type: Type.BOOLEAN },
+                nullCount: { type: Type.INTEGER },
+                nullPercent: { type: Type.NUMBER },
+                uniqueCount: { type: Type.INTEGER },
+                uniquePercent: { type: Type.NUMBER },
+                sampleValues: { type: Type.ARRAY, items: { type: Type.STRING } },
+                description: { type: Type.STRING }
+              },
+              required: ['name', 'inferredType', 'isPrimaryKey', 'isForeignKey', 'nullCount', 'nullPercent', 'uniqueCount', 'uniquePercent', 'sampleValues', 'description']
+            }
+          }
+        },
+        required: ['tableName', 'totalRows', 'totalColumns', 'tableDescription', 'columns']
+      }
+    },
+    joinSuggestions: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          leftTable: { type: Type.STRING },
+          rightTable: { type: Type.STRING },
+          leftColumn: { type: Type.STRING },
+          rightColumn: { type: Type.STRING },
+          joinType: { type: Type.STRING, enum: ['INNER', 'LEFT', 'RIGHT', 'FULL'] },
+          confidence: { type: Type.NUMBER },
+          reasoning: { type: Type.STRING }
+        },
+        required: ['leftTable', 'rightTable', 'leftColumn', 'rightColumn', 'joinType', 'confidence', 'reasoning']
+      }
+    },
+    overallSummary: { type: Type.STRING }
+  },
+  required: ['tables', 'joinSuggestions', 'overallSummary']
+};
+
+export interface TableInput {
+  name: string;
+  headers: string[];
+  sampleRows: any[][];
+  totalRows: number;
+}
+
+/**
+ * Profile data tables using Gemini AI — column types, PK/FK, nulls, join suggestions
+ */
+export const profileDataWithGemini = async (tables: TableInput[]): Promise<DataProfilingResult> => {
+  const context = JSON.stringify({
+    tables: tables.map(t => ({
+      tableName: t.name,
+      totalRows: t.totalRows,
+      headers: t.headers,
+      sampleRows: t.sampleRows.slice(0, 10)
+    }))
+  });
+
+  try {
+    return await withKeyRotation(async () => {
+      const ai = getAI();
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: context,
+        config: {
+          systemInstruction: DATA_PROFILING_SYSTEM_INSTRUCTION,
+          temperature: 0.1,
+          responseMimeType: 'application/json',
+          responseSchema: dataProfilingSchema
+        }
+      });
+
+      const jsonText = response.text || '{"tables":[],"joinSuggestions":[],"overallSummary":""}';
+      return JSON.parse(jsonText) as DataProfilingResult;
+    });
+  } catch (error) {
+    console.error("Data Profiling AI Error:", error);
+    reportApiError(error, 'profileDataWithGemini');
+    throw error;
+  }
+};
