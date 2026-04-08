@@ -15,11 +15,12 @@ interface AdminDashboardProps {
     onLogout: () => void;
     user: User | null;
     onNavigateToUserApp?: () => void;
+    onViewDashboard?: (dash: SavedDashboard) => void;
 }
 
 type AdminTab = 'USERS' | 'REPORTS' | 'UPLOADS' | 'PERFORMANCE';
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, onNavigateToUserApp }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, onNavigateToUserApp, onViewDashboard }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
     const [users, setUsers] = useState<User[]>([]);
@@ -913,13 +914,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <button
-                                                        onClick={() => handleDeleteDashboard(dash.id)}
-                                                        className={`inline-flex items-center justify-center p-2 rounded-xl border transition-all duration-300 ${colors.borderSecondary} ${colors.textSecondary} hover:text-rose-500 hover:border-rose-500/30 hover:bg-rose-500/10 shadow-sm`}
-                                                        title="Delete Report"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button
+                                                            onClick={() => onViewDashboard?.(dash)}
+                                                            className={`p-2 rounded-xl border transition-all duration-300 ${colors.borderSecondary} ${colors.textSecondary} hover:text-indigo-500 hover:border-indigo-500/30 hover:bg-indigo-500/10 shadow-sm`}
+                                                            title="View Report"
+                                                        >
+                                                            <Eye className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteDashboard(dash.id)}
+                                                            className={`inline-flex items-center justify-center p-2 rounded-xl border transition-all duration-300 ${colors.borderSecondary} ${colors.textSecondary} hover:text-rose-500 hover:border-rose-500/30 hover:bg-rose-500/10 shadow-sm`}
+                                                            title="Delete Report"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}

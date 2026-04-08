@@ -8,7 +8,7 @@ import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType, S
 import { aggregateData } from '../utils/aggregator';
 import {
     LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2,
-    X, Home, Save, Edit, RefreshCw, Plus, ArrowRight, Filter, Trash2,
+    X, Home, Save, Edit, RefreshCw, Plus, ArrowRight, ArrowLeft, Filter, Trash2,
     ChevronDown, Check, MousePointer2, Table as TableIcon, Grid3x3, AlertTriangle,
     Type, Bold, Italic, Minus as MinusIcon, Plus as PlusIcon
 } from 'lucide-react';
@@ -28,6 +28,7 @@ interface DashboardProps {
     sections?: DashboardSection[];
     filterColumns?: string[];
     onHome: () => void;
+    homeTitle?: string;
     onSave: (name: string, charts: ChartConfig[], sections?: DashboardSection[], filterColumns?: string[], overwriteId?: string | null) => void;
     onRefresh?: () => Promise<void>;
     dashboardId?: string | null;
@@ -1430,7 +1431,7 @@ const FilterSidebar = React.memo<FilterSidebarProps>(({
 });
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
-export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, sections: explicitSections = [], filterColumns = [], onHome, onSave, onRefresh, dashboardId = null, savedDashboards }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, sections: explicitSections = [], filterColumns = [], onHome, homeTitle, onSave, onRefresh, dashboardId = null, savedDashboards }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
 
@@ -2506,8 +2507,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                     <header className={`${theme === 'dark' ? 'bg-slate-900/80' : 'bg-white/80'} glass-effect border-b ${colors.borderPrimary} px-4 sm:px-6 lg:px-8 py-3 sm:py-4 sticky top-0 z-30 shadow-lg print:hidden`}>
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center max-w-7xl mx-auto w-full gap-3 md:gap-0">
                             <div className="flex items-center gap-3 w-full md:w-auto">
-                                <button onClick={onHome} className={`p-1.5 sm:p-2 -ml-1.5 sm:-ml-2 rounded-full hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition no-export shrink-0 active-press`} title="Return Home">
-                                    <Home className="w-4 h-4 sm:w-5 sm:h-5" />
+                                <button onClick={onHome} className={`p-1.5 sm:p-2 -ml-1.5 sm:-ml-2 rounded-full hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition no-export shrink-0 active-press flex items-center gap-2`} title={homeTitle || "Return Home"}>
+                                    {homeTitle?.includes("Admin") ? <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" /> : <Home className="w-4 h-4 sm:w-5 sm:h-5" />}
+                                    {homeTitle && <span className="hidden sm:inline text-xs font-bold uppercase tracking-tight">{homeTitle}</span>}
                                 </button>
                                 <div className="min-w-0 flex-1">
                                     <h1 data-pdf-title className={`text-base sm:text-xl font-bold ${colors.textPrimary} flex items-center gap-2 flex-wrap`}>

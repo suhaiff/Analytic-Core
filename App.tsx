@@ -58,6 +58,7 @@ function AppContent() {
   const [toast, setToast] = useState<ToastState>({ show: false, message: '', type: 'success' });
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [returnToAdmin, setReturnToAdmin] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
 
   // Saved Dashboards State
@@ -377,7 +378,8 @@ function AppContent() {
 
   const confirmReturnHome = () => {
     setShowExitConfirm(false);
-    setStep(Step.LANDING);
+    setStep(returnToAdmin ? Step.ADMIN : Step.LANDING);
+    setReturnToAdmin(false);
     setInitialTables([]);
     setFileName('');
     setDataModel(null);
@@ -430,6 +432,11 @@ function AppContent() {
   };
 
   const handleLoadDashboard = (dash: SavedDashboard) => {
+    if (step === Step.ADMIN) {
+      setReturnToAdmin(true);
+    } else {
+      setReturnToAdmin(false);
+    }
     setDataModel(dash.dataModel);
     setChartConfigs(dash.chartConfigs);
     setDashboardSections(dash.sections || []);
@@ -521,7 +528,12 @@ function AppContent() {
         )}
 
         {step === Step.ADMIN && (
-          <AdminDashboard onLogout={handleLogout} user={currentUser} onNavigateToUserApp={() => setStep(Step.LANDING)} />
+          <AdminDashboard 
+            onLogout={handleLogout} 
+            user={currentUser} 
+            onNavigateToUserApp={() => setStep(Step.LANDING)} 
+            onViewDashboard={handleLoadDashboard}
+          />
         )}
 
         {step === Step.LANDING && (
@@ -585,6 +597,7 @@ function AppContent() {
             onRefresh={handleRefresh}
             dashboardId={currentDashboardId}
             savedDashboards={savedDashboards}
+            homeTitle={returnToAdmin ? "Admin Portal" : "Home"}
           />
         )}
       </div>
