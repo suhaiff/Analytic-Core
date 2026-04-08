@@ -219,6 +219,7 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
     const [expandedTable, setExpandedTable] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'table' | 'card'>('card'); // User wants card view by default often, but left it originally as card? Wait, it was table in line 220. I will leave it as whatever it is and just add pageMap.
     const [pageMap, setPageMap] = useState<Record<string, number>>({});
+    const [isExportingPDF, setIsExportingPDF] = useState(false);
     const cardViewRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -379,26 +380,30 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
     };
 
     const exportPDF = async () => {
+        if (isExportingPDF) return;
+        setIsExportingPDF(true);
         const prevMode = viewMode;
         if (prevMode !== 'card') setViewMode('card');
         await new Promise(r => requestAnimationFrame(() => setTimeout(r, 800)));
         const el = cardViewRef.current;
-        if (!el) { if (prevMode !== 'card') setViewMode(prevMode); return; }
+        if (!el) { if (prevMode !== 'card') setViewMode(prevMode); setIsExportingPDF(false); return; }
         try {
             const pdf = new jsPDF('p', 'mm', 'a4');
             const pw = pdf.internal.pageSize.getWidth();
             const ph = pdf.internal.pageSize.getHeight();
+            const canvasOpts = {
+                scale: 1.5, useCORS: true, logging: false,
+                backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff'
+            };
+            const imgQuality = 0.75;
             
             const sections = el.querySelectorAll('.pdf-export-section');
             if (sections.length > 0) {
                 let currentY = 10;
                 for (let i = 0; i < sections.length; i++) {
                     const section = sections[i] as HTMLElement;
-                    const canvas = await html2canvas(section, {
-                        scale: 2, useCORS: true, logging: false,
-                        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff'
-                    });
-                    const imgData = canvas.toDataURL('image/png');
+                    const canvas = await html2canvas(section, canvasOpts);
+                    const imgData = canvas.toDataURL('image/jpeg', imgQuality);
                     const iw = pw - 20;
                     const ih = (canvas.height * iw) / canvas.width;
                     
@@ -407,25 +412,22 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                         currentY = 10;
                     }
                     
-                    pdf.addImage(imgData, 'PNG', 10, currentY, iw, ih);
+                    pdf.addImage(imgData, 'JPEG', 10, currentY, iw, ih, undefined, 'FAST');
                     currentY += ih + 5;
                 }
             } else {
-                const canvas = await html2canvas(el, {
-                    scale: 2, useCORS: true, logging: false,
-                    backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff'
-                });
-                const imgData = canvas.toDataURL('image/png');
+                const canvas = await html2canvas(el, canvasOpts);
+                const imgData = canvas.toDataURL('image/jpeg', imgQuality);
                 const iw = pw - 20;
                 const ih = (canvas.height * iw) / canvas.width;
                 let left = ih;
                 let pos = 10;
-                pdf.addImage(imgData, 'PNG', 10, pos, iw, ih);
+                pdf.addImage(imgData, 'JPEG', 10, pos, iw, ih, undefined, 'FAST');
                 left -= (ph - 20);
                 while (left > 0) {
                     pdf.addPage();
                     pos = 10 - (ih - left);
-                    pdf.addImage(imgData, 'PNG', 10, pos, iw, ih);
+                    pdf.addImage(imgData, 'JPEG', 10, pos, iw, ih, undefined, 'FAST');
                     left -= (ph - 20);
                 }
             }
@@ -434,6 +436,7 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
             console.error('PDF export failed:', err);
         }
         if (prevMode !== 'card') setViewMode(prevMode);
+        setIsExportingPDF(false);
     };
 
     return (
@@ -481,9 +484,9 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                     className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex items-center gap-1 transition border ${theme === 'dark' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`}>
                                     <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">CSV</span>
                                 </button>
-                                <button onClick={exportPDF} title="Export PDF (Card View)"
-                                    className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex items-center gap-1 transition border ${theme === 'dark' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}>
-                                    <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">PDF</span>
+                                <button onClick={exportPDF} title="Export PDF (Card View)" disabled={isExportingPDF}
+                                    className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex items-center gap-1 transition border ${theme === 'dark' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'} ${isExportingPDF ? 'opacity-70 cursor-not-allowed' : ''}`}>
+                                    {isExportingPDF ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" />} <span className="hidden sm:inline">{isExportingPDF ? 'Exporting…' : 'PDF'}</span>
                                 </button>
                             </>
                         )}
@@ -580,9 +583,9 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                     className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex items-center gap-1 transition border ${theme === 'dark' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`}>
                                     <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">CSV</span>
                                 </button>
-                                <button onClick={exportPDF} title="Export PDF (Card View)"
-                                    className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex items-center gap-1 transition border ${theme === 'dark' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}>
-                                    <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">PDF</span>
+                                <button onClick={exportPDF} title="Export PDF (Card View)" disabled={isExportingPDF}
+                                    className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex items-center gap-1 transition border ${theme === 'dark' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'} ${isExportingPDF ? 'opacity-70 cursor-not-allowed' : ''}`}>
+                                    {isExportingPDF ? <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" /> : <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" />} <span className="hidden sm:inline">{isExportingPDF ? 'Exporting…' : 'PDF'}</span>
                                 </button>
                             </div>
                         )}
