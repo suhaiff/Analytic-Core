@@ -6,9 +6,15 @@ import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
 import {
+    BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
+} from 'recharts';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import {
     Home, Plus, ArrowRight, Loader2, Table, Key, Link as LinkIcon,
     AlertCircle, Hash, Type as TypeIcon, BarChart3, Sparkles,
-    Percent, Calendar, ToggleLeft, AtSign, Phone, Globe, HelpCircle, X, RefreshCw, FileText, Database, Cpu
+    Percent, Calendar, ToggleLeft, AtSign, Phone, Globe, HelpCircle, X, RefreshCw, FileText, Database, Cpu,
+    Download, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 interface DataProfilingProps {
@@ -18,6 +24,7 @@ interface DataProfilingProps {
     sourceType?: string;
     onProceed: (tables: DataTable[]) => void;
     onHome: () => void;
+    isEmbedded?: boolean;
 }
 
 // ── Local Rule-Based Fallback Profiler ────────────────────────────────────────
@@ -199,7 +206,7 @@ const getTypeColor = (type: string, theme: string) => {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export const DataProfiling: React.FC<DataProfilingProps> = ({
-    initialTables, fileName, uploadedFileId, sourceType, onProceed, onHome
+    initialTables, fileName, uploadedFileId, sourceType, onProceed, onHome, isEmbedded = false
 }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
@@ -210,6 +217,9 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
     const [isLoading, setIsLoading] = useState(false);
     const [usedFallback, setUsedFallback] = useState(false);
     const [expandedTable, setExpandedTable] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'table' | 'card'>('card'); // User wants card view by default often, but left it originally as card? Wait, it was table in line 220. I will leave it as whatever it is and just add pageMap.
+    const [pageMap, setPageMap] = useState<Record<string, number>>({});
+    const cardViewRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (tables.length === 0) return;
@@ -268,45 +278,231 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
         : c >= 0.5 ? (theme === 'dark' ? 'text-amber-400' : 'text-amber-600')
         : (theme === 'dark' ? 'text-red-400' : 'text-red-600');
 
-    return (
-        <div className={`flex flex-col h-screen ${colors.bgPrimary} ${colors.textSecondary}`}>
-            {/* Header */}
-            <header className={`${theme === 'dark' ? 'bg-slate-900/50' : 'bg-white/80'} glass-effect border-b ${colors.borderPrimary} px-3 sm:px-5 md:px-8 py-2 sm:py-3 md:py-4 flex justify-between items-center sticky top-0 z-20`}>
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                    <button onClick={onHome} className={`p-1.5 sm:p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition active-press`} title="Go Home">
-                        <Home className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </button>
-                    <div className={`w-px h-6 ${colors.borderPrimary} hidden sm:block`}></div>
-                    <div className="bg-violet-500/20 p-1.5 sm:p-2 rounded-lg border border-violet-500/30">
-                        <Sparkles className="text-violet-400 w-4 h-4 sm:w-5 sm:h-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                        <h1 className={`text-sm sm:text-base md:text-lg font-bold ${colors.textPrimary} flex items-center gap-2`}>
-                            <span className="sm:hidden">Profiling</span>
-                            <span className="hidden sm:inline">Data Profiling</span>
-                            {isLoading && <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />}
-                        </h1>
-                        <p className={`hidden sm:block text-xs ${colors.textMuted}`}>AI-powered analysis of your data structure</p>
-                    </div>
-                </div>
+    const CHART_COLORS = ['#6366f1', '#818cf8', '#a5b4fc', '#c7d2fe', '#e0e7ff'];
 
+    const computeNumericStats = (colName: string, tp: TableProfile) => {
+        const table = tables.find(t => t.name === tp.tableName);
+        if (!table) return null;
+        const headerRow = table.rawData.rows[0] || table.rawData.headers || [];
+        const colIdx = headerRow.findIndex((h: string) => h === colName);
+        if (colIdx === -1) return null;
+        const dataRows = table.rawData.rows.slice(1);
+        const nums = dataRows.map(row => parseFloat(row[colIdx])).filter(n => !isNaN(n));
+        if (nums.length === 0) return null;
+        const sorted = [...nums].sort((a, b) => a - b);
+        return {
+            min: sorted[0],
+            max: sorted[sorted.length - 1],
+            mean: nums.reduce((a, b) => a + b, 0) / nums.length,
+            median: sorted[Math.floor(sorted.length / 2)]
+        };
+    };
+
+    const getTopValues = (colName: string, tp: TableProfile) => {
+        const table = tables.find(t => t.name === tp.tableName);
+        if (!table) return [];
+        const headerRow = table.rawData.rows[0] || table.rawData.headers || [];
+        const colIdx = headerRow.findIndex((h: string) => h === colName);
+        if (colIdx === -1) return [];
+        const dataRows = table.rawData.rows.slice(1);
+        const counts: Record<string, number> = {};
+        dataRows.forEach(row => {
+            const val = (row[colIdx] ?? '').toString().trim();
+            if (val !== '' && val.toLowerCase() !== 'null' && val !== 'N/A') {
+                counts[val] = (counts[val] || 0) + 1;
+            }
+        });
+        return Object.entries(counts)
+            .map(([value, count]) => ({ value: value.length > 12 ? value.slice(0, 12) + '…' : value, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+    };
+
+    const renderPagination = (tp: TableProfile) => {
+        const itemsPerPage = 5;
+        const totalPages = Math.ceil(tp.columns.length / itemsPerPage);
+        if (totalPages <= 1) return null;
+
+        const currentPage = pageMap[tp.tableName] || 1;
+
+        const handleNext = () => setPageMap(prev => ({ ...prev, [tp.tableName]: Math.min(currentPage + 1, totalPages) }));
+        const handlePrev = () => setPageMap(prev => ({ ...prev, [tp.tableName]: Math.max(currentPage - 1, 1) }));
+
+        return (
+            <div className={`flex items-center justify-between py-3 px-4 sm:px-6 border-t ${colors.borderPrimary}`}>
+                <span className={`text-xs ${colors.textMuted}`}>
+                    Showing {Math.min((currentPage - 1) * itemsPerPage + 1, tp.columns.length)} to {Math.min(currentPage * itemsPerPage, tp.columns.length)} of {tp.columns.length} columns
+                </span>
                 <div className="flex items-center gap-2">
-                    <ThemeToggle />
-                    <button
-                        onClick={() => onProceed(tables)}
-                        disabled={isLoading}
-                        className="px-3 sm:px-5 py-1.5 sm:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-lg shadow-indigo-900/20 active-press disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        <span className="hidden sm:inline">Data Relationships</span>
-                        <span className="sm:hidden">Next</span>
-                        <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <button onClick={handlePrev} disabled={currentPage === 1} 
+                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border ${colors.borderPrimary} disabled:opacity-50 disabled:cursor-not-allowed ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'} transition`}>
+                        <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                    </button>
+                    <div className={`text-xs font-semibold ${colors.textPrimary} px-2`}>
+                        {currentPage} / {totalPages}
+                    </div>
+                    <button onClick={handleNext} disabled={currentPage === totalPages} 
+                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border ${colors.borderPrimary} disabled:opacity-50 disabled:cursor-not-allowed ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'} transition`}>
+                        Next <ChevronRight className="w-3.5 h-3.5" />
                     </button>
                 </div>
-            </header>
+            </div>
+        );
+    };
+
+    const exportCSV = () => {
+        if (!profilingResult) return;
+        const headers = ['Column', 'Type', 'Count', 'Unique', 'Nulls', 'Null Rate %', 'Mean', 'Min', 'Max'];
+        const rows: string[][] = [];
+        profilingResult.tables.forEach(tp => {
+            tp.columns.forEach(col => {
+                const ns = ['INTEGER', 'DECIMAL', 'CURRENCY', 'PERCENT'].includes(col.inferredType)
+                    ? computeNumericStats(col.name, tp) : null;
+                rows.push([
+                    col.name, col.inferredType.toLowerCase(), tp.totalRows.toString(),
+                    col.uniqueCount.toString(), col.nullCount.toString(),
+                    col.nullPercent.toFixed(1),
+                    ns ? ns.mean.toFixed(3) : 'N/A',
+                    ns ? String(ns.min) : 'N/A',
+                    ns ? String(ns.max) : 'N/A'
+                ]);
+            });
+        });
+        const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `profiling_summary_${fileName.replace(/\.[^.]+$/, '')}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const exportPDF = async () => {
+        const prevMode = viewMode;
+        if (prevMode !== 'card') setViewMode('card');
+        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 800)));
+        const el = cardViewRef.current;
+        if (!el) { if (prevMode !== 'card') setViewMode(prevMode); return; }
+        try {
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pw = pdf.internal.pageSize.getWidth();
+            const ph = pdf.internal.pageSize.getHeight();
+            
+            const sections = el.querySelectorAll('.pdf-export-section');
+            if (sections.length > 0) {
+                let currentY = 10;
+                for (let i = 0; i < sections.length; i++) {
+                    const section = sections[i] as HTMLElement;
+                    const canvas = await html2canvas(section, {
+                        scale: 2, useCORS: true, logging: false,
+                        backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff'
+                    });
+                    const imgData = canvas.toDataURL('image/png');
+                    const iw = pw - 20;
+                    const ih = (canvas.height * iw) / canvas.width;
+                    
+                    if (i > 0 && currentY + ih > ph - 10) {
+                        pdf.addPage();
+                        currentY = 10;
+                    }
+                    
+                    pdf.addImage(imgData, 'PNG', 10, currentY, iw, ih);
+                    currentY += ih + 5;
+                }
+            } else {
+                const canvas = await html2canvas(el, {
+                    scale: 2, useCORS: true, logging: false,
+                    backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff'
+                });
+                const imgData = canvas.toDataURL('image/png');
+                const iw = pw - 20;
+                const ih = (canvas.height * iw) / canvas.width;
+                let left = ih;
+                let pos = 10;
+                pdf.addImage(imgData, 'PNG', 10, pos, iw, ih);
+                left -= (ph - 20);
+                while (left > 0) {
+                    pdf.addPage();
+                    pos = 10 - (ih - left);
+                    pdf.addImage(imgData, 'PNG', 10, pos, iw, ih);
+                    left -= (ph - 20);
+                }
+            }
+            pdf.save(`profiling_report_${fileName.replace(/\.[^.]+$/, '')}.pdf`);
+        } catch (err) {
+            console.error('PDF export failed:', err);
+        }
+        if (prevMode !== 'card') setViewMode(prevMode);
+    };
+
+    return (
+        <div className={`flex flex-col ${isEmbedded ? 'h-full' : 'h-screen'} ${colors.bgPrimary} ${colors.textSecondary}`}>
+            {/* Header - Only show if not embedded */}
+            {!isEmbedded && (
+                <header className={`${theme === 'dark' ? 'bg-slate-900/50' : 'bg-white/80'} glass-effect border-b ${colors.borderPrimary} px-3 sm:px-5 md:px-8 py-2 sm:py-3 md:py-4 flex justify-between items-center sticky top-0 z-20`}>
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                        <button onClick={onHome} className={`p-1.5 sm:p-2 rounded-lg hover:${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} transition active-press`} title="Go Home">
+                            <Home className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
+                        <div className={`w-px h-6 ${colors.borderPrimary} hidden sm:block`}></div>
+                        <div className="bg-violet-500/20 p-1.5 sm:p-2 rounded-lg border border-violet-500/30">
+                            <Sparkles className="text-violet-400 w-4 h-4 sm:w-5 sm:h-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <h1 className={`text-sm sm:text-base md:text-lg font-bold ${colors.textPrimary} flex items-center gap-2`}>
+                                <span className="sm:hidden">Profiling</span>
+                                <span className="hidden sm:inline">Data Profiling</span>
+                                {isLoading && <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />}
+                            </h1>
+                            <p className={`hidden sm:block text-xs ${colors.textMuted}`}>AI-powered analysis of your data structure</p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <ThemeToggle />
+                        {/* View Toggle */}
+                        {profilingResult && !isLoading && (
+                            <div className={`flex items-center rounded-lg border ${colors.borderPrimary} overflow-hidden`}>
+                                <button onClick={() => setViewMode('table')}
+                                    className={`px-2.5 py-1.5 text-[10px] sm:text-xs font-medium flex items-center gap-1 transition ${viewMode === 'table' ? 'bg-indigo-600 text-white' : `${colors.textMuted}`}`}>
+                                    <Table className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">Table</span>
+                                </button>
+                                <button onClick={() => setViewMode('card')}
+                                    className={`px-2.5 py-1.5 text-[10px] sm:text-xs font-medium flex items-center gap-1 transition ${viewMode === 'card' ? 'bg-indigo-600 text-white' : `${colors.textMuted}`}`}>
+                                    <BarChart3 className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">Cards</span>
+                                </button>
+                            </div>
+                        )}
+                        {/* Export Buttons */}
+                        {profilingResult && !isLoading && (
+                            <>
+                                <button onClick={exportCSV} title="Export CSV"
+                                    className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex items-center gap-1 transition border ${theme === 'dark' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`}>
+                                    <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">CSV</span>
+                                </button>
+                                <button onClick={exportPDF} title="Export PDF (Card View)"
+                                    className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex items-center gap-1 transition border ${theme === 'dark' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}>
+                                    <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">PDF</span>
+                                </button>
+                            </>
+                        )}
+                        <button
+                            onClick={() => onProceed(tables)}
+                            disabled={isLoading}
+                            className="px-3 sm:px-5 py-1.5 sm:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-lg shadow-indigo-900/20 active-press disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <span className="hidden sm:inline">Data Relationships</span>
+                            <span className="sm:hidden">Next</span>
+                            <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        </button>
+                    </div>
+                </header>
+            )}
 
             {/* Main Content */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <div className="max-w-7xl mx-auto px-3 sm:px-6 md:px-8 py-4 sm:py-6 md:py-8 space-y-6">
+            <div className={`flex-1 overflow-y-auto custom-scrollbar ${isEmbedded ? '' : 'overflow-y-auto'}`}>
+                <div className={`mx-auto w-full ${isEmbedded ? 'px-0 pt-0 pb-6' : 'max-w-7xl px-3 sm:px-6 md:px-8 py-4 sm:py-6 md:py-8'} space-y-6`}>
 
 
 
@@ -353,23 +549,49 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                     )}
 
                     {/* Tables Header */}
-                    <div className="flex items-center justify-between">
-                        <h2 className={`text-xs sm:text-sm font-bold ${colors.textMuted} uppercase tracking-wider flex items-center gap-2`}>
-                            <Database className={`w-4 h-4 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-500'}`} />
-                            Uploaded Tables ({tables.length})
-                        </h2>
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 border border-violet-500/20 transition"
-                        >
-                            <Plus className="w-3.5 h-3.5" /> Add Table
-                        </button>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <h2 className={`text-xs sm:text-sm font-bold ${colors.textMuted} uppercase tracking-wider flex items-center gap-2`}>
+                                <Database className={`w-4 h-4 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-500'}`} />
+                                Uploaded Tables ({tables.length})
+                            </h2>
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 transition"
+                            >
+                                <Plus className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Add Table</span>
+                            </button>
+                        </div>
+                        
+                        {/* Render Toggles if Embedded */}
+                        {isEmbedded && profilingResult && !isLoading && (
+                            <div className="flex items-center gap-2 self-end sm:self-auto">
+                                <div className={`flex items-center rounded-lg border ${colors.borderPrimary} overflow-hidden`}>
+                                    <button onClick={() => setViewMode('table')}
+                                        className={`px-2.5 py-1.5 text-[10px] sm:text-xs font-medium flex items-center gap-1 transition ${viewMode === 'table' ? 'bg-indigo-600 text-white' : `${colors.textMuted}`}`}>
+                                        <Table className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">Table</span>
+                                    </button>
+                                    <button onClick={() => setViewMode('card')}
+                                        className={`px-2.5 py-1.5 text-[10px] sm:text-xs font-medium flex items-center gap-1 transition ${viewMode === 'card' ? 'bg-indigo-600 text-white' : `${colors.textMuted}`}`}>
+                                        <BarChart3 className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">Cards</span>
+                                    </button>
+                                </div>
+                                <button onClick={exportCSV} title="Export CSV"
+                                    className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex items-center gap-1 transition border ${theme === 'dark' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`}>
+                                    <Download className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">CSV</span>
+                                </button>
+                                <button onClick={exportPDF} title="Export PDF (Card View)"
+                                    className={`px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-medium flex items-center gap-1 transition border ${theme === 'dark' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}>
+                                    <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> <span className="hidden sm:inline">PDF</span>
+                                </button>
+                            </div>
+                        )}
                         <input type="file" accept=".csv,.xlsx,.xls" ref={fileInputRef} className="hidden"
                             onChange={(e) => e.target.files?.[0] && handleAddTable(e.target.files[0])} />
                     </div>
 
-                    {/* Table Profile Cards */}
-                    {profilingResult && !isLoading && profilingResult.tables.map((tp, tIdx) => {
+                    {/* Table Profile Cards — Table View */}
+                    {viewMode === 'table' && profilingResult && !isLoading && profilingResult.tables.map((tp, tIdx) => {
                         const isExpanded = expandedTable === tp.tableName;
                         const pkCols = tp.columns.filter(c => c.isPrimaryKey);
                         const fkCols = tp.columns.filter(c => c.isForeignKey);
@@ -418,7 +640,7 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {tp.columns.map((col, cIdx) => (
+                                                    {tp.columns.slice(((pageMap[tp.tableName] || 1) - 1) * 5, (pageMap[tp.tableName] || 1) * 5).map((col, cIdx) => (
                                                         <tr key={`${col.name}-${cIdx}`} className={`border-t ${colors.borderPrimary} transition-colors ${theme === 'dark' ? 'hover:bg-slate-800/30' : 'hover:bg-slate-50/80'}`}>
                                                             <td className="px-4 sm:px-6 py-3">
                                                                 <span className={`text-xs sm:text-sm font-semibold ${colors.textPrimary}`}>{col.name}</span>
@@ -472,11 +694,160 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                                 </tbody>
                                             </table>
                                         </div>
+                                        {renderPagination(tp)}
                                     </div>
                                 )}
                             </div>
                         );
                     })}
+
+                    {/* Card View */}
+                    {viewMode === 'card' && profilingResult && !isLoading && (
+                        <div ref={cardViewRef} className="space-y-6">
+                            {profilingResult.tables.map((tp, tIdx) => (
+                                <div key={`cv-${tp.tableName}-${tIdx}`} className="space-y-5">
+                                    {/* Table info header */}
+                                    <div className="flex items-center gap-3 px-1 pdf-export-section">
+                                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'bg-indigo-500/20 border border-indigo-500/30' : 'bg-indigo-50 border border-indigo-200'}`}>
+                                            <Table className={`w-4 h-4 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-500'}`} />
+                                        </div>
+                                        <div>
+                                            <h3 className={`text-sm font-bold ${colors.textPrimary}`}>{tp.tableName}</h3>
+                                            <p className={`text-[10px] ${colors.textMuted}`}>{tp.tableDescription}</p>
+                                        </div>
+                                        <div className={`ml-auto flex items-center gap-3 text-xs ${colors.textMuted}`}>
+                                            <span className="flex items-center gap-1"><BarChart3 className="w-3 h-3" /> {tp.totalColumns} cols</span>
+                                            <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> {tp.totalRows.toLocaleString()} rows</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Column Cards */}
+                                    <div className="space-y-6">
+                                    {tp.columns.slice(((pageMap[tp.tableName] || 1) - 1) * 5, (pageMap[tp.tableName] || 1) * 5).map((col, cIdx) => {
+                                        const numStats = computeNumericStats(col.name, tp);
+                                        const topVals = getTopValues(col.name, tp);
+                                        const isNumeric = ['INTEGER', 'DECIMAL', 'CURRENCY', 'PERCENT'].includes(col.inferredType);
+
+                                        return (
+                                            <div key={`cc-${col.name}-${cIdx}`}
+                                                className={`pdf-export-section ${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-6 sm:p-8 overflow-hidden elevation-md transition-all ${theme === 'dark' ? 'hover:border-slate-600' : 'hover:border-slate-300 hover:shadow-lg'}`}>
+                                                <div className="flex flex-col xl:flex-row gap-8">
+                                                    {/* Left: Column info + stats */}
+                                                    <div className="xl:w-1/3 space-y-5">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${theme === 'dark' ? 'bg-indigo-500/20 border border-indigo-500/30' : 'bg-indigo-50 border border-indigo-200'}`}>
+                                                                <FileText className={`w-6 h-6 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-500'}`} />
+                                                            </div>
+                                                            <div>
+                                                                <h4 className={`text-lg font-bold ${colors.textPrimary} truncate max-w-[200px]`} title={col.name}>{col.name}</h4>
+                                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider border ${getTypeColor(col.inferredType, theme)}`}>
+                                                                    {TYPE_ICON_MAP[col.inferredType] || TYPE_ICON_MAP['UNKNOWN']}
+                                                                    {col.inferredType}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        {(col.isPrimaryKey || col.isForeignKey) && (
+                                                            <div className="flex gap-2">
+                                                                {col.isPrimaryKey && <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold ${theme === 'dark' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}><Key className="w-3 h-3" /> Primary Key</span>}
+                                                                {col.isForeignKey && <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold ${theme === 'dark' ? 'bg-violet-500/15 text-violet-400 border border-violet-500/30' : 'bg-violet-50 text-violet-600 border border-violet-200'}`}><LinkIcon className="w-3 h-3" /> Foreign Key</span>}
+                                                            </div>
+                                                        )}
+
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <div className={`p-4 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-slate-50 border-slate-200'}`}>
+                                                                <span className={`block text-[10px] font-bold ${colors.textMuted} uppercase mb-1`}>Uniqueness</span>
+                                                                <span className={`text-lg font-bold ${colors.textPrimary}`}>{col.uniquePercent.toFixed(1)}%</span>
+                                                            </div>
+                                                            <div className={`p-4 rounded-xl border ${col.nullPercent > 0 ? (theme === 'dark' ? 'bg-amber-950/20 border-amber-900/50' : 'bg-amber-50 border-amber-100') : (theme === 'dark' ? 'bg-emerald-950/20 border-emerald-900/50' : 'bg-emerald-50 border-emerald-100')}`}>
+                                                                <span className={`block text-[10px] font-bold ${colors.textMuted} uppercase mb-1`}>Null Rate</span>
+                                                                <span className={`text-lg font-bold ${col.nullPercent > 0 ? (theme === 'dark' ? 'text-amber-400' : 'text-amber-600') : (theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600')}`}>{col.nullPercent.toFixed(1)}%</span>
+                                                            </div>
+                                                        </div>
+
+                                                        {isNumeric && numStats && (
+                                                            <div className={`p-5 rounded-2xl space-y-3 bg-slate-900`}>
+                                                                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-700 pb-2">Distribution Summary</span>
+                                                                <div className="grid grid-cols-2 gap-y-3">
+                                                                    <div><span className="text-[10px] text-slate-500 uppercase font-bold">Min</span><p className="font-bold text-white">{numStats.min.toLocaleString(undefined, {maximumFractionDigits: 2})}</p></div>
+                                                                    <div><span className="text-[10px] text-slate-500 uppercase font-bold">Max</span><p className="font-bold text-white">{numStats.max.toLocaleString(undefined, {maximumFractionDigits: 2})}</p></div>
+                                                                    <div><span className="text-[10px] text-slate-500 uppercase font-bold">Mean</span><p className="font-bold text-indigo-400">{numStats.mean.toLocaleString(undefined, {maximumFractionDigits: 2})}</p></div>
+                                                                    <div><span className="text-[10px] text-slate-500 uppercase font-bold">Median</span><p className="font-bold text-white">{numStats.median.toLocaleString(undefined, {maximumFractionDigits: 2})}</p></div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Right: Charts */}
+                                                    <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                        <div className="space-y-4">
+                                                            <h5 className={`text-[10px] font-bold ${colors.textMuted} uppercase tracking-widest flex items-center gap-2`}>
+                                                                <BarChart3 className={`w-3.5 h-3.5 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-500'}`} /> Top Values Breakdown
+                                                            </h5>
+                                                            <div className="h-[200px] w-full">
+                                                                {topVals.length > 0 ? (
+                                                                    <ResponsiveContainer width="100%" height="100%">
+                                                                        <BarChart data={topVals} layout="vertical" margin={{ left: 10, right: 30 }}>
+                                                                            <XAxis type="number" hide />
+                                                                            <YAxis dataKey="value" type="category" width={80} axisLine={false} tickLine={false}
+                                                                                tick={{ fontSize: 11, fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontWeight: 700 }} />
+                                                                            <Tooltip cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                                                                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', backgroundColor: theme === 'dark' ? '#1e293b' : '#fff', color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }} />
+                                                                            <Bar dataKey="count" radius={[0, 8, 8, 0]} barSize={20}>
+                                                                                {topVals.map((_, index) => (
+                                                                                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                                                                                ))}
+                                                                            </Bar>
+                                                                        </BarChart>
+                                                                    </ResponsiveContainer>
+                                                                ) : (
+                                                                    <div className={`h-full flex items-center justify-center text-xs ${colors.textMuted}`}>No data available</div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className={`flex flex-col items-center justify-center p-6 rounded-2xl ${theme === 'dark' ? 'bg-slate-800/20' : 'bg-slate-50'}`}>
+                                                            <div className="w-full h-[180px] relative">
+                                                                <ResponsiveContainer width="100%" height="100%">
+                                                                    <PieChart>
+                                                                        <Pie
+                                                                            data={[
+                                                                                { name: 'Valid', value: Math.max(tp.totalRows - col.nullCount, 0) },
+                                                                                { name: 'Null', value: col.nullCount }
+                                                                            ]}
+                                                                            innerRadius={55} outerRadius={75}
+                                                                            paddingAngle={col.nullCount > 0 ? 10 : 0}
+                                                                            dataKey="value" stroke="none">
+                                                                            <Cell fill="#6366f1" />
+                                                                            <Cell fill={theme === 'dark' ? '#334155' : '#e2e8f0'} />
+                                                                        </Pie>
+                                                                        <Tooltip />
+                                                                    </PieChart>
+                                                                </ResponsiveContainer>
+                                                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                                                    <span className={`text-2xl font-bold ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{(100 - col.nullPercent).toFixed(0)}%</span>
+                                                                    <span className={`text-[8px] font-bold ${colors.textMuted} uppercase tracking-tighter`}>Density</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex gap-4 mt-2">
+                                                                <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> <span className={`text-[10px] font-bold ${colors.textMuted} uppercase`}>Valid</span></div>
+                                                                <div className="flex items-center gap-1.5"><div className={`w-2 h-2 rounded-full ${theme === 'dark' ? 'bg-slate-600' : 'bg-slate-200'}`}></div> <span className={`text-[10px] font-bold ${colors.textMuted} uppercase`}>Null</span></div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className={`mt-4 pt-4 border-t ${colors.borderPrimary}`}>
+                                                    <p className={`text-xs ${colors.textMuted} leading-relaxed`}>{col.description}</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    </div>
+                                    {renderPagination(tp)}
+                                </div>
+                            ))}
+                        </div>
+                    )}
 
                     {/* Join Suggestions */}
                     {profilingResult && !isLoading && profilingResult.joinSuggestions.length > 0 && (

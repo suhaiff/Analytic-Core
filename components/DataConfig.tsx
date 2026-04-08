@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { DataModel, ProcessedRow, DataTable, JoinConfig, JoinType, ColumnType, ColumnMetadata, AggregationType, AggregatedColumnDefinition, AppendConfig } from '../types';
-import { ArrowRight, Table, CheckSquare, Square, Database, Columns, Plus, Link as LinkIcon, Trash2, Upload, Settings2, Home, Eye, X, FileText, Loader2, Activity, ChevronDown, Wand2 } from 'lucide-react';
+import { ArrowRight, Table, CheckSquare, Square, Database, Columns, Plus, Link as LinkIcon, Trash2, Upload, Settings2, Home, Eye, X, FileText, Loader2, Activity, ChevronDown, Wand2, Sparkles } from 'lucide-react';
 import { processFile } from '../utils/fileParser';
 import { performJoins, processRawData } from '../utils/dataProcessing';
 import { useTheme } from '../ThemeContext';
@@ -10,6 +10,7 @@ import { fileService, FileContent } from '../services/fileService';
 import { smartFormat, convertCurrencyValue, CURRENCY_SYMBOLS, CURRENCY_LABELS, CURRENCY_RATES_TO_INR } from '../utils/formatters';
 import { performSchemaAudit } from '../services/schemaService';
 import { DataPreparation } from './DataPreparation';
+import { DataProfiling } from './DataProfiling';
 
 interface DataConfigProps {
     initialTables: DataTable[];
@@ -31,7 +32,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
     const [dashboardTitle, setDashboardTitle] = useState('');
 
     // Configuration State
-    const [activeTab, setActiveTab] = useState<'JOIN' | 'TRANSFORM'>('JOIN');
+    const [activeTab, setActiveTab] = useState<'PROFILING' | 'JOIN' | 'TRANSFORM'>('PROFILING');
     const [joins, setJoins] = useState<JoinConfig[]>([]);
     const [appends, setAppends] = useState<AppendConfig[]>([]);
     const [headerIndices, setHeaderIndices] = useState<{ [key: string]: number }>({});
@@ -437,6 +438,17 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
                 {/* Center Section - Tab Switcher */}
                 <div className={`flex ${colors.bgSecondary} p-0.5 rounded-lg border ${colors.borderPrimary} flex-shrink-0`}>
                     <button
+                        onClick={() => setActiveTab('PROFILING')}
+                        className={`px-1.5 sm:px-2.5 md:px-3 lg:px-4 py-0.5 sm:py-1 md:py-1.5 text-[10px] sm:text-xs font-bold rounded-md transition-all flex items-center gap-0.5 sm:gap-1 md:gap-1.5 whitespace-nowrap
+                    ${activeTab === 'PROFILING' ? 'bg-indigo-600 text-white shadow-lg' : `${colors.textMuted} hover:${colors.textPrimary}`}
+                `}
+                        title="Data Profiling"
+                    >
+                        <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 flex-shrink-0" />
+                        <span className="hidden sm:inline lg:hidden">Profile</span>
+                        <span className="hidden lg:inline">Data Profiling</span>
+                    </button>
+                    <button
                         onClick={() => setActiveTab('JOIN')}
                         className={`px-1.5 sm:px-2.5 md:px-3 lg:px-4 py-0.5 sm:py-1 md:py-1.5 text-[10px] sm:text-xs font-bold rounded-md transition-all flex items-center gap-0.5 sm:gap-1 md:gap-1.5 whitespace-nowrap
                     ${activeTab === 'JOIN' ? 'bg-indigo-600 text-white shadow-lg' : `${colors.textMuted} hover:${colors.textPrimary}`}
@@ -786,6 +798,20 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
 
                 {/* Main Content Area - Responsive */}
                 <main className={`flex-1 responsive-container overflow-hidden flex flex-col ${colors.bgPrimary}`}>
+                
+                    {activeTab === 'PROFILING' && (
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
+                           <DataProfiling 
+                               initialTables={tables} 
+                               fileName={fileName} 
+                               uploadedFileId={uploadedFileId} 
+                               sourceType={sourceType}
+                               onProceed={(updatedTables) => { setTables(updatedTables); setActiveTab('JOIN'); }}
+                               onHome={onHome}
+                               isEmbedded={true}
+                           />
+                        </div>
+                    )}
 
                     {activeTab === 'JOIN' && (
                         <div className="flex-1 flex flex-col gap-4 sm:gap-6 md:gap-8 overflow-y-auto custom-scrollbar pb-20">
