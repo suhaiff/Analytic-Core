@@ -14,7 +14,7 @@ import {
     Home, Plus, ArrowRight, Loader2, Table, Key, Link as LinkIcon,
     AlertCircle, Hash, Type as TypeIcon, BarChart3, Sparkles,
     Percent, Calendar, ToggleLeft, AtSign, Phone, Globe, HelpCircle, X, RefreshCw, FileText, Database, Cpu,
-    Download, ChevronLeft, ChevronRight
+    Download, ChevronLeft, ChevronRight, Search
 } from 'lucide-react';
 
 interface DataProfilingProps {
@@ -221,6 +221,18 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
     const [pageMap, setPageMap] = useState<Record<string, number>>({});
     const [isExportingPDF, setIsExportingPDF] = useState(false);
     const cardViewRef = useRef<HTMLDivElement>(null);
+    const [columnSearchMap, setColumnSearchMap] = useState<Record<string, string>>({});
+
+    const getFilteredColumns = (tp: TableProfile): ColumnProfile[] => {
+        const query = (columnSearchMap[tp.tableName] || '').toLowerCase().trim();
+        if (!query) return tp.columns;
+        return tp.columns.filter(col => col.name.toLowerCase().includes(query));
+    };
+
+    const handleColumnSearch = (tableName: string, query: string) => {
+        setColumnSearchMap(prev => ({ ...prev, [tableName]: query }));
+        setPageMap(prev => ({ ...prev, [tableName]: 1 }));
+    };
 
     useEffect(() => {
         if (tables.length === 0) return;
@@ -319,9 +331,9 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
             .slice(0, 5);
     };
 
-    const renderPagination = (tp: TableProfile) => {
-        const itemsPerPage = 5;
-        const totalPages = Math.ceil(tp.columns.length / itemsPerPage);
+    const renderPagination = (tp: TableProfile, filteredTotal?: number, itemsPerPage: number = 5) => {
+        const total = filteredTotal ?? tp.columns.length;
+        const totalPages = Math.ceil(total / itemsPerPage);
         if (totalPages <= 1) return null;
 
         const currentPage = pageMap[tp.tableName] || 1;
@@ -332,7 +344,7 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
         return (
             <div className={`flex items-center justify-between py-3 px-4 sm:px-6 border-t ${colors.borderPrimary}`}>
                 <span className={`text-xs ${colors.textMuted}`}>
-                    Showing {Math.min((currentPage - 1) * itemsPerPage + 1, tp.columns.length)} to {Math.min(currentPage * itemsPerPage, tp.columns.length)} of {tp.columns.length} columns
+                    Showing {Math.min((currentPage - 1) * itemsPerPage + 1, total)} to {Math.min(currentPage * itemsPerPage, total)} of {total} columns
                 </span>
                 <div className="flex items-center gap-2">
                     <button onClick={handlePrev} disabled={currentPage === 1} 
@@ -598,6 +610,7 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                         const isExpanded = expandedTable === tp.tableName;
                         const pkCols = tp.columns.filter(c => c.isPrimaryKey);
                         const fkCols = tp.columns.filter(c => c.isForeignKey);
+                        const filteredCols = getFilteredColumns(tp);
 
                         return (
                             <div key={`${tp.tableName}-${tIdx}`} className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} overflow-hidden elevation-md`}>
@@ -629,6 +642,28 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                 {/* Expanded Column Table */}
                                 {isExpanded && (
                                     <div className={`border-t ${colors.borderPrimary}`}>
+                                        <div className={`px-4 sm:px-6 py-3 flex items-center gap-3 border-b ${colors.borderPrimary}`}>
+                                            <div className="relative flex-1 max-w-xs">
+                                                <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${colors.textMuted}`} />
+                                                <input
+                                                    type="text"
+                                                    id={`column-search-table-${tp.tableName}`}
+                                                    placeholder="Search columns..."
+                                                    value={columnSearchMap[tp.tableName] || ''}
+                                                    onChange={(e) => handleColumnSearch(tp.tableName, e.target.value)}
+                                                    className={`w-full pl-9 pr-8 py-2 rounded-lg text-xs border ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-800/50 text-slate-200 placeholder-slate-500' : 'bg-white text-slate-800 placeholder-slate-400'} focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/50 transition`}
+                                                />
+                                                {columnSearchMap[tp.tableName] && (
+                                                    <button
+                                                        onClick={() => handleColumnSearch(tp.tableName, '')}
+                                                        className={`absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full ${colors.textMuted} hover:${colors.textPrimary} transition`}
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <span className={`text-[10px] ${colors.textMuted} whitespace-nowrap`}>{filteredCols.length} of {tp.columns.length} columns</span>
+                                        </div>
                                         <div className="overflow-x-auto">
                                             <table className="w-full min-w-[700px]">
                                                 <thead>
@@ -643,7 +678,9 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {tp.columns.slice(((pageMap[tp.tableName] || 1) - 1) * 5, (pageMap[tp.tableName] || 1) * 5).map((col, cIdx) => (
+                                                    {filteredCols.length === 0 ? (
+                                                        <tr><td colSpan={7} className={`px-6 py-8 text-center text-xs ${colors.textMuted}`}><div className="flex flex-col items-center gap-2"><Search className="w-5 h-5" /><span>No columns match your search.</span></div></td></tr>
+                                                    ) : filteredCols.slice(((pageMap[tp.tableName] || 1) - 1) * 20, (pageMap[tp.tableName] || 1) * 20).map((col, cIdx) => (
                                                         <tr key={`${col.name}-${cIdx}`} className={`border-t ${colors.borderPrimary} transition-colors ${theme === 'dark' ? 'hover:bg-slate-800/30' : 'hover:bg-slate-50/80'}`}>
                                                             <td className="px-4 sm:px-6 py-3">
                                                                 <span className={`text-xs sm:text-sm font-semibold ${colors.textPrimary}`}>{col.name}</span>
@@ -697,7 +734,7 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                                 </tbody>
                                             </table>
                                         </div>
-                                        {renderPagination(tp)}
+                                        {renderPagination(tp, filteredCols.length, 20)}
                                     </div>
                                 )}
                             </div>
@@ -707,26 +744,56 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                     {/* Card View */}
                     {viewMode === 'card' && profilingResult && !isLoading && (
                         <div ref={cardViewRef} className="space-y-6">
-                            {profilingResult.tables.map((tp, tIdx) => (
+                            {profilingResult.tables.map((tp, tIdx) => {
+                                const filteredCols = getFilteredColumns(tp);
+                                return (
                                 <div key={`cv-${tp.tableName}-${tIdx}`} className="space-y-5">
                                     {/* Table info header */}
-                                    <div className="flex items-center gap-3 px-1 pdf-export-section">
-                                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'bg-indigo-500/20 border border-indigo-500/30' : 'bg-indigo-50 border border-indigo-200'}`}>
-                                            <Table className={`w-4 h-4 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-500'}`} />
+                                    <div className={`pdf-export-section rounded-2xl border p-4 sm:p-5 flex flex-col items-center gap-2 text-center ${theme === 'dark' ? 'bg-gradient-to-r from-indigo-950/60 via-slate-900/80 to-indigo-950/60 border-indigo-500/30' : 'bg-gradient-to-r from-indigo-50 via-white to-indigo-50 border-indigo-200 shadow-sm'}`}>
+                                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${theme === 'dark' ? 'bg-indigo-500/20 border border-indigo-500/30' : 'bg-indigo-100 border border-indigo-200'}`}>
+                                            <Table className={`w-5 h-5 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-500'}`} />
                                         </div>
-                                        <div>
-                                            <h3 className={`text-sm font-bold ${colors.textPrimary}`}>{tp.tableName}</h3>
-                                            <p className={`text-[10px] ${colors.textMuted}`}>{tp.tableDescription}</p>
+                                        <h3 className={`text-base sm:text-lg font-bold ${colors.textPrimary}`}>{tp.tableName}</h3>
+                                        <p className={`text-[10px] sm:text-xs ${colors.textMuted}`}>{tp.tableDescription}</p>
+                                        <div className={`flex items-center gap-4 text-xs ${colors.textMuted} mt-1`}>
+                                            <span className="flex items-center gap-1"><BarChart3 className="w-3.5 h-3.5" /> {tp.totalColumns} cols</span>
+                                            <span className={`w-px h-3 ${theme === 'dark' ? 'bg-slate-700' : 'bg-slate-300'}`}></span>
+                                            <span className="flex items-center gap-1"><FileText className="w-3.5 h-3.5" /> {tp.totalRows.toLocaleString()} rows</span>
                                         </div>
-                                        <div className={`ml-auto flex items-center gap-3 text-xs ${colors.textMuted}`}>
-                                            <span className="flex items-center gap-1"><BarChart3 className="w-3 h-3" /> {tp.totalColumns} cols</span>
-                                            <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> {tp.totalRows.toLocaleString()} rows</span>
+                                    </div>
+
+                                    {/* Column Search */}
+                                    <div className={`flex items-center gap-3 px-1`}>
+                                        <div className="relative flex-1 max-w-xs">
+                                            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${colors.textMuted}`} />
+                                            <input
+                                                type="text"
+                                                id={`column-search-card-${tp.tableName}`}
+                                                placeholder="Search columns..."
+                                                value={columnSearchMap[tp.tableName] || ''}
+                                                onChange={(e) => handleColumnSearch(tp.tableName, e.target.value)}
+                                                className={`w-full pl-9 pr-8 py-2 rounded-lg text-xs border ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-800/50 text-slate-200 placeholder-slate-500' : 'bg-white text-slate-800 placeholder-slate-400'} focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/50 transition`}
+                                            />
+                                            {columnSearchMap[tp.tableName] && (
+                                                <button
+                                                    onClick={() => handleColumnSearch(tp.tableName, '')}
+                                                    className={`absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full ${colors.textMuted} hover:${colors.textPrimary} transition`}
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            )}
                                         </div>
+                                        <span className={`text-[10px] ${colors.textMuted} whitespace-nowrap`}>{filteredCols.length} of {tp.columns.length} columns</span>
                                     </div>
 
                                     {/* Column Cards */}
                                     <div className="space-y-6">
-                                    {tp.columns.slice(((pageMap[tp.tableName] || 1) - 1) * 5, (pageMap[tp.tableName] || 1) * 5).map((col, cIdx) => {
+                                    {filteredCols.length === 0 ? (
+                                        <div className={`${colors.bgSecondary} rounded-2xl border ${colors.borderPrimary} p-8 text-center`}>
+                                            <Search className={`w-8 h-8 mx-auto mb-2 ${colors.textMuted}`} />
+                                            <p className={`text-xs ${colors.textMuted}`}>No columns match your search.</p>
+                                        </div>
+                                    ) : filteredCols.slice(((pageMap[tp.tableName] || 1) - 1) * 5, (pageMap[tp.tableName] || 1) * 5).map((col, cIdx) => {
                                         const numStats = computeNumericStats(col.name, tp);
                                         const topVals = getTopValues(col.name, tp);
                                         const isNumeric = ['INTEGER', 'DECIMAL', 'CURRENCY', 'PERCENT'].includes(col.inferredType);
@@ -809,8 +876,8 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                                             </div>
                                                         </div>
 
-                                                        <div className={`flex flex-col items-center justify-center p-6 rounded-2xl ${theme === 'dark' ? 'bg-slate-800/20' : 'bg-slate-50'}`}>
-                                                            <div className="w-full h-[180px] relative">
+                                                        <div className={`flex flex-col items-center justify-center p-6 rounded-2xl ${theme === 'dark' ? 'bg-slate-800/20' : 'bg-slate-50'} h-full`}>
+                                                            <div className="w-full h-[220px] relative">
                                                                 <ResponsiveContainer width="100%" height="100%">
                                                                     <PieChart>
                                                                         <Pie
@@ -818,7 +885,7 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                                                                 { name: 'Valid', value: Math.max(tp.totalRows - col.nullCount, 0) },
                                                                                 { name: 'Null', value: col.nullCount }
                                                                             ]}
-                                                                            innerRadius={55} outerRadius={75}
+                                                                            innerRadius={70} outerRadius={95}
                                                                             paddingAngle={col.nullCount > 0 ? 10 : 0}
                                                                             dataKey="value" stroke="none">
                                                                             <Cell fill="#6366f1" />
@@ -828,8 +895,8 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                                                     </PieChart>
                                                                 </ResponsiveContainer>
                                                                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                                                    <span className={`text-2xl font-bold ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{(100 - col.nullPercent).toFixed(0)}%</span>
-                                                                    <span className={`text-[8px] font-bold ${colors.textMuted} uppercase tracking-tighter`}>Density</span>
+                                                                    <span className={`text-3xl font-bold ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{(100 - col.nullPercent).toFixed(0)}%</span>
+                                                                    <span className={`text-[10px] font-bold ${colors.textMuted} uppercase tracking-tight mt-1`}>Density</span>
                                                                 </div>
                                                             </div>
                                                             <div className="flex gap-4 mt-2">
@@ -846,9 +913,10 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                         );
                                     })}
                                     </div>
-                                    {renderPagination(tp)}
+                                    {renderPagination(tp, filteredCols.length)}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
 
