@@ -854,7 +854,7 @@ class SupabaseService {
                     owner_id: folder.owner_id,
                     created_at: folder.created_at,
                     access_users: accessUsers,
-                    is_owner: folder.owner_id === userIdStr
+                    is_owner: folder.owner_id && folder.owner_id.toString() === userIdStr
                 };
             }));
 
@@ -962,7 +962,7 @@ class SupabaseService {
                 .eq('id', folderId)
                 .single();
 
-            const isOwner = folder && folder.owner_id === requestingUserId.toString();
+            const isOwner = folder && folder.owner_id && folder.owner_id.toString() === requestingUserId.toString();
 
             if (!isOwner) {
                 const { data: access } = await this.supabase
