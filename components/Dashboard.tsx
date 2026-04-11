@@ -29,10 +29,11 @@ interface DashboardProps {
     filterColumns?: string[];
     onHome: () => void;
     homeTitle?: string;
-    onSave: (name: string, charts: ChartConfig[], sections?: DashboardSection[], filterColumns?: string[], overwriteId?: string | null) => void;
+    onSave: (name: string, charts: ChartConfig[], sections?: DashboardSection[], filterColumns?: string[], overwriteId?: string | null, folderId?: string | null, isWorkspace?: boolean) => void;
     onRefresh?: () => Promise<void>;
     dashboardId?: string | null;
     savedDashboards?: SavedDashboard[];
+    workspaceFolders?: import('../types').WorkspaceFolder[];
 }
 
 // Vibrant dark mode palette
@@ -1431,7 +1432,7 @@ const FilterSidebar = React.memo<FilterSidebarProps>(({
 });
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
-export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, sections: explicitSections = [], filterColumns = [], onHome, homeTitle, onSave, onRefresh, dashboardId = null, savedDashboards }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, sections: explicitSections = [], filterColumns = [], onHome, homeTitle, onSave, onRefresh, dashboardId = null, savedDashboards, workspaceFolders = [] }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
 
@@ -1466,6 +1467,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     const [overwriteMatch, setOverwriteMatch] = useState<SavedDashboard | null>(null);
     const [dashboardName, setDashboardName] = useState(dataModel?.name || "Untitled Dashboard");
     const [isRefreshing, setIsRefreshing] = useState(false);
+    // Workspace save state
+    const [saveDestination, setSaveDestination] = useState<'personal' | 'workspace'>('personal');
+    const [selectedFolderId, setSelectedFolderId] = useState<string>('');
 
     // --- NEW: Per-Chart Filter Dropdown State ---
     const [chartFilterMenuOpen, setChartFilterMenuOpen] = useState<string | null>(null);
@@ -2237,10 +2241,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         // Mark this as a self-save so the prop-sync useEffect doesn't reset our local state
         isSelfSaveRef.current = true;
 
+        const folderId = saveDestination === 'workspace' && selectedFolderId ? selectedFolderId : null;
+        const isWorkspace = saveDestination === 'workspace' && !!folderId;
+
         // Save exactly what is in local state — ChartBuilder already assigned correct sectionIds
-        onSave(dashboardName, currentCharts, currentSections, currentFilterColumns, targetId);
+        onSave(dashboardName, currentCharts, currentSections, currentFilterColumns, targetId, folderId, isWorkspace);
         setIsSaveModalOpen(false);
         setOverwriteMatch(null);
+        setSaveDestination('personal');
+        setSelectedFolderId('');
     };
 
     const handleUpdateFromBuilder = (updatedCharts: ChartConfig[], updatedFilterCols: string[], updatedSections?: DashboardSection[]) => {
@@ -2300,8 +2309,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                 </>
                             ) : (
                                 <>
-                                    <h3 className={`text-xl font-bold ${colors.textPrimary} mb-4`}>{dashboardId ? 'Update Dashboard' : 'Save Dashboard'}</h3>
-                                    <div className="mb-6">
+                                    <h3 className={`text-xl font-bold ${colors.textPrimary} mb-5`}>{dashboardId ? 'Update Dashboard' : 'Save Dashboard'}</h3>
+
+                                    {/* Dashboard Name */}
+                                    <div className="mb-5">
                                         <label className={`block text-xs font-bold ${colors.textMuted} uppercase mb-2`}>Dashboard Name</label>
                                         <input
                                             type="text"
@@ -2312,16 +2323,78 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             autoFocus
                                         />
                                     </div>
+
+                                    {/* Save destination — only when not updating */}
+                                    {!dashboardId && (
+                                        <div className="mb-5">
+                                            <label className={`block text-xs font-bold ${colors.textMuted} uppercase mb-3`}>Save to</label>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setSaveDestination('personal'); setSelectedFolderId(''); }}
+                                                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                                                        saveDestination === 'personal'
+                                                            ? 'border-indigo-500 bg-indigo-500/10'
+                                                            : `${colors.borderPrimary} ${colors.bgTertiary} hover:border-indigo-500/40`
+                                                    }`}
+                                                >
+                                                    <div className={`p-2 rounded-lg ${saveDestination === 'personal' ? 'bg-indigo-500/20' : colors.bgSecondary}`}>
+                                                        <Save className={`w-5 h-5 ${saveDestination === 'personal' ? 'text-indigo-400' : colors.textMuted}`} />
+                                                    </div>
+                                                    <span className={`text-sm font-semibold ${saveDestination === 'personal' ? 'text-indigo-400' : colors.textPrimary}`}>My Dashboard</span>
+                                                    <span className={`text-[10px] ${colors.textMuted} text-center`}>Private to you</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSaveDestination('workspace')}
+                                                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                                                        saveDestination === 'workspace'
+                                                            ? 'border-violet-500 bg-violet-500/10'
+                                                            : `${colors.borderPrimary} ${colors.bgTertiary} hover:border-violet-500/40`
+                                                    }`}
+                                                >
+                                                    <div className={`p-2 rounded-lg ${saveDestination === 'workspace' ? 'bg-violet-500/20' : colors.bgSecondary}`}>
+                                                        <Home className={`w-5 h-5 ${saveDestination === 'workspace' ? 'text-violet-400' : colors.textMuted}`} />
+                                                    </div>
+                                                    <span className={`text-sm font-semibold ${saveDestination === 'workspace' ? 'text-violet-400' : colors.textPrimary}`}>My Workspace</span>
+                                                    <span className={`text-[10px] ${colors.textMuted} text-center`}>Shared folder</span>
+                                                </button>
+                                            </div>
+
+                                            {/* Folder dropdown */}
+                                            {saveDestination === 'workspace' && (
+                                                <div className="mt-4">
+                                                    <label className={`block text-xs font-bold ${colors.textMuted} uppercase mb-2`}>Select Folder</label>
+                                                    {workspaceFolders.length === 0 ? (
+                                                        <p className={`text-xs ${colors.textMuted} italic`}>No workspace folders yet. Create one in My Workspace.</p>
+                                                    ) : (
+                                                        <select
+                                                            value={selectedFolderId}
+                                                            onChange={e => setSelectedFolderId(e.target.value)}
+                                                            className={`w-full ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} rounded-lg px-4 py-3 focus:ring-2 focus:ring-violet-500 outline-none text-sm`}
+                                                        >
+                                                            <option value="">-- Choose a folder --</option>
+                                                            {workspaceFolders.map(f => (
+                                                                <option key={f.id} value={f.id}>{f.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
                                     <div className="flex justify-end gap-3">
                                         <button
-                                            onClick={() => { setIsSaveModalOpen(false); setOverwriteMatch(null); }}
+                                            onClick={() => { setIsSaveModalOpen(false); setOverwriteMatch(null); setSaveDestination('personal'); setSelectedFolderId(''); }}
                                             className={`px-4 py-2 rounded-lg ${colors.textTertiary} hover:${colors.textPrimary} ${colors.bgTertiary} transition`}
                                         >
                                             Cancel
                                         </button>
                                         <button
                                             onClick={handleSaveConfirm}
-                                            className="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition shadow-lg shadow-indigo-900/20 flex items-center gap-2"
+                                            disabled={saveDestination === 'workspace' && !selectedFolderId}
+                                            className="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium transition shadow-lg shadow-indigo-900/20 flex items-center gap-2"
                                         >
                                             <Save className="w-4 h-4" /> {dashboardId ? 'Update' : 'Save'}
                                         </button>

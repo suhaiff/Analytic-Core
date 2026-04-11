@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, Clock, LayoutDashboard, Sparkles, ChevronRight, FileSpreadsheet, Trash2, FolderOpen, PlusCircle, Settings, LogOut, Database, Globe, X, Info, BarChart3 } from 'lucide-react';
+import { Upload, FileText, Clock, LayoutDashboard, Sparkles, ChevronRight, FileSpreadsheet, Trash2, FolderOpen, PlusCircle, Settings, LogOut, Database, Globe, X, Info, BarChart3, Briefcase } from 'lucide-react';
 import { SavedDashboard, User } from '../types';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
@@ -17,10 +17,11 @@ interface LandingProps {
   onDeleteDashboard: (id: string) => void;
   onLogout: () => void;
   onNavigateToAdmin?: () => void;
+  onNavigateToWorkspace?: () => void;
   user: User | null;
 }
 
-export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImport, onSharePointImport, onSqlDatabaseImport, savedDashboards, onLoadDashboard, onDeleteDashboard, onLogout, onNavigateToAdmin, user }) => {
+export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImport, onSharePointImport, onSqlDatabaseImport, savedDashboards, onLoadDashboard, onDeleteDashboard, onLogout, onNavigateToAdmin, onNavigateToWorkspace, user }) => {
   const { theme } = useTheme();
   const colors = getThemeClasses(theme);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -546,6 +547,15 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
               <FolderOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span className="hidden xs:inline">My Dashboards</span>
             </button>
+            {onNavigateToWorkspace && (
+              <button
+                onClick={onNavigateToWorkspace}
+                className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2 ${colors.textMuted} hover:${colors.textPrimary}`}
+              >
+                <Briefcase className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden xs:inline">My Workspace</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -557,7 +567,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
               <div>
                 <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs sm:text-sm font-medium mb-4 sm:mb-6">
                   <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span>Powered by Gemini 2.0 Flash</span>
+                  <span>Welcome to AI Reporting WireFrame</span>
                 </div>
                 <h2 className={`hero-title font-extrabold ${colors.textPrimary} leading-tight mb-4 sm:mb-6`}>
                   Data to Analytics <br className="hidden sm:block" />

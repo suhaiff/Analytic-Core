@@ -151,6 +151,8 @@ export interface SavedDashboard {
   chartConfigs: ChartConfig[];
   sections?: DashboardSection[];
   filterColumns?: string[];
+  folder_id?: string | null;
+  is_workspace?: boolean;
 }
 
 export type UserRole = 'ADMIN' | 'USER';
@@ -165,4 +167,13 @@ export interface User {
   company?: string;
   job_title?: string;
   domain?: string;
+}
+
+export interface WorkspaceFolder {
+  id: string;
+  name: string;
+  owner_id: string;
+  created_at: string;
+  access_users?: { id: number; name: string; email: string }[];
+  is_owner?: boolean;
 }

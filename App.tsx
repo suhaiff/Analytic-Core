@@ -8,16 +8,18 @@ import { Login } from './components/auth/Login';
 import { Signup } from './components/auth/Signup';
 import { Welcome } from './components/Welcome';
 import { AdminDashboard } from './components/admin/AdminDashboard';
+import { WorkspacePage } from './components/workspace/WorkspacePage';
 import { processFile } from './utils/fileParser';
 import { processRawData, performJoins } from './utils/dataProcessing';
 import { DashboardLoader } from './components/DashboardLoader';
-import { DataModel, ChartConfig, DataTable, SavedDashboard, User, ProcessedRow, DashboardSection, RawData } from './types';
+import { DataModel, ChartConfig, DataTable, SavedDashboard, User, ProcessedRow, DashboardSection, RawData, WorkspaceFolder } from './types';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import { getThemeClasses } from './theme';
 import { authService } from './services/authService';
 import { dashboardService } from './services/dashboardService';
 import { fileService } from './services/fileService';
+import { workspaceService } from './services/workspaceService';
 
 enum Step {
   WELCOME = 'WELCOME',
@@ -28,7 +30,8 @@ enum Step {
   DATA_PROFILING = 'DATA_PROFILING',
   CONFIG = 1,
   BUILDER = 2,
-  DASHBOARD = 3
+  DASHBOARD = 3,
+  WORKSPACE = 'WORKSPACE'
 }
 
 interface ToastState {
@@ -64,6 +67,9 @@ function AppContent() {
   // Saved Dashboards State
   const [savedDashboards, setSavedDashboards] = useState<SavedDashboard[]>([]);
 
+  // Workspace Folders State
+  const [workspaceFolders, setWorkspaceFolders] = useState<WorkspaceFolder[]>([]);
+
   // Check for logged in user on init
   useEffect(() => {
     const user = authService.getCurrentUser();
@@ -79,10 +85,11 @@ function AppContent() {
     }
   }, []);
 
-  // Load saved dashboards from DB on init or user change
+  // Load saved dashboards and workspace folders from DB on init or user change
   useEffect(() => {
     if (currentUser && currentUser.role !== 'ADMIN') {
       loadUserDashboards(currentUser.id);
+      loadWorkspaceFolders(currentUser.id);
     }
   }, [currentUser]);
 
@@ -93,6 +100,15 @@ function AppContent() {
     } catch (error) {
       console.error("Failed to load dashboards", error);
       showToast("Failed to load dashboards", 'error');
+    }
+  };
+
+  const loadWorkspaceFolders = async (userId: number) => {
+    try {
+      const folders = await workspaceService.getFolders(userId);
+      setWorkspaceFolders(folders);
+    } catch (error) {
+      console.error("Failed to load workspace folders", error);
     }
   };
 
@@ -383,7 +399,7 @@ function AppContent() {
     setCurrentDashboardId(null);
   };
 
-  const handleSaveDashboard = async (name: string, currentCharts: ChartConfig[], currentSections?: DashboardSection[], updatedFilterColumns?: string[], overwriteId?: string | null) => {
+  const handleSaveDashboard = async (name: string, currentCharts: ChartConfig[], currentSections?: DashboardSection[], updatedFilterColumns?: string[], overwriteId?: string | null, folderId?: string | null, isWorkspace?: boolean) => {
     if (!dataModel || !currentUser) return;
 
     // Use updated filter columns if provided (from Dashboard state), otherwise fall back to App state
@@ -398,7 +414,9 @@ function AppContent() {
       dataModel: dataModel,
       chartConfigs: currentCharts,
       sections: currentSections,
-      filterColumns: finalFilterColumns
+      filterColumns: finalFilterColumns,
+      folder_id: folderId || null,
+      is_workspace: isWorkspace || false
     };
 
     // Update App state after successful save so Dashboard props match current state
@@ -417,8 +435,9 @@ function AppContent() {
         showToast(`Dashboard "${name}" saved successfully!`, 'success');
       }
       setCurrentDashboardId(targetId || dashData.id);
-      // Reload dashboards
+      // Reload dashboards and workspace folders
       await loadUserDashboards(currentUser.id);
+      if (isWorkspace) await loadWorkspaceFolders(currentUser.id);
     } catch (error: any) {
       console.error("Failed to save dashboard", error);
       const errorMessage = error?.message || 'Unknown error occurred';
@@ -542,7 +561,18 @@ function AppContent() {
             onDeleteDashboard={handleDeleteDashboard}
             onLogout={handleLogout}
             onNavigateToAdmin={() => setStep(Step.ADMIN)}
+            onNavigateToWorkspace={() => setStep(Step.WORKSPACE)}
             user={currentUser}
+          />
+        )}
+
+        {step === Step.WORKSPACE && currentUser && (
+          <WorkspacePage
+            user={currentUser}
+            onLogout={handleLogout}
+            onNavigateHome={() => setStep(Step.LANDING)}
+            onNavigateToAdmin={currentUser.role === 'ADMIN' ? () => setStep(Step.ADMIN) : undefined}
+            onLoadDashboard={handleLoadDashboard}
           />
         )}
 
@@ -580,6 +610,7 @@ function AppContent() {
             onRefresh={handleRefresh}
             dashboardId={currentDashboardId}
             savedDashboards={savedDashboards}
+            workspaceFolders={workspaceFolders}
             homeTitle={returnToAdmin ? "Admin Portal" : "Home"}
           />
         )}
