@@ -71,7 +71,9 @@ export const dashboardService = {
                         dataModel: dashboard.dataModel,
                         chartConfigs: dashboard.chartConfigs,
                         sections: dashboard.sections,
-                        filterColumns: dashboard.filterColumns
+                        filterColumns: dashboard.filterColumns,
+                        folderId: dashboard.folder_id || null,
+                        isWorkspace: dashboard.is_workspace || false
                     }
                 }),
                 signal: controller.signal

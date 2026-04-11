@@ -212,8 +212,8 @@ app.put('/api/dashboards/:id', async (req, res) => {
             return res.status(400).json({ error: 'Missing dashboard data' });
         }
 
-        const { name, dataModel, chartConfigs, sections, filterColumns } = dashboard;
-        const result = await supabaseService.updateDashboard(id, name, dataModel, chartConfigs, sections, filterColumns);
+        const { name, dataModel, chartConfigs, sections, filterColumns, folderId, isWorkspace } = dashboard;
+        const result = await supabaseService.updateDashboard(id, name, dataModel, chartConfigs, sections, filterColumns, folderId, isWorkspace);
         console.log('✅ Dashboard updated successfully:', id);
         res.json(result);
     } catch (error) {

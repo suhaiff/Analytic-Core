@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { WorkspaceFolder, User, SavedDashboard } from '../../types';
 import { workspaceService } from '../../services/workspaceService';
+import { dashboardService } from '../../services/dashboardService';
 import { authService } from '../../services/authService';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
@@ -28,6 +29,26 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
     onLoadDashboard
 }) => {
     const { theme } = useTheme();
+
+    const handleDeleteDashboard = async (dashboardId: string) => {
+        if (!window.confirm('Are you sure you want to delete this dashboard?')) return;
+
+        try {
+            setIsDashboardsLoading(true);
+            setDashboardError('');
+            await dashboardService.deleteDashboard(dashboardId);
+            // Refresh dashboards in current folder
+            if (activeFolderId) {
+                const updatedDashboards = await workspaceService.getFolderDashboards(activeFolderId, user.id);
+                setFolderDashboards(updatedDashboards);
+            }
+        } catch (err: any) {
+            setDashboardError(err.message);
+        } finally {
+            setIsDashboardsLoading(false);
+        }
+    };
+
     const colors = getThemeClasses(theme);
 
     const [folders, setFolders] = useState<WorkspaceFolder[]>([]);
@@ -305,6 +326,10 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
                                         colors={colors}
                                         theme={theme}
                                         onClick={() => onLoadDashboard(dash)}
+                                        onDelete={activeFolder && activeFolder.owner_id.toString() === user.id.toString() 
+                                            ? () => handleDeleteDashboard(dash.id) 
+                                            : undefined
+                                        }
                                     />
                                 ))}
                             </div>
@@ -413,9 +438,10 @@ interface DashboardCardProps {
     colors: any;
     theme: string;
     onClick: () => void;
+    onDelete?: () => void;
 }
 
-const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, colors, theme, onClick }) => (
+const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, colors, theme, onClick, onDelete }) => (
     <div
         className={`group relative ${colors.bgSecondary} border ${colors.borderPrimary} rounded-xl p-5 cursor-pointer hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-900/20 transition-all`}
         onClick={onClick}
@@ -424,6 +450,18 @@ const DashboardCard: React.FC<DashboardCardProps> = ({ dashboard, colors, theme,
             <div className="p-2 bg-indigo-500/10 rounded-xl">
                 <FileText className="w-5 h-5 text-indigo-400" />
             </div>
+            {onDelete && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete();
+                    }}
+                    className={`p-1.5 ${theme === 'dark' ? 'text-slate-600' : 'text-slate-400'} hover:text-red-400 hover:bg-red-400/10 rounded-lg transition opacity-0 group-hover:opacity-100`}
+                    title="Delete dashboard"
+                >
+                    <Trash2 className="w-4 h-4" />
+                </button>
+            )}
         </div>
 
         <h3 className={`font-bold ${colors.textPrimary} mb-1 group-hover:text-indigo-400 transition text-base leading-tight`}>

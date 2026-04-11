@@ -1,0 +1,122 @@
+{
+  "target": "https://analytic-core.netlify.app",
+  "generated_at": "2026-04-10T15:10:41.340676",
+  "total_findings": 12,
+  "finding_counts": {
+    "CRITICAL": 2,
+    "HIGH": 4,
+    "MEDIUM": 3,
+    "LOW": 3,
+    "INFO": 0
+  },
+  "findings": [
+    {
+      "title": "Unauthenticated access to sensitive endpoint: /api/users",
+      "severity": "CRITICAL",
+      "category": "A01 Broken Access Control",
+      "description": "The endpoint '/api/users' returned data without requiring authentication.",
+      "evidence": "GET /api/users \u2192 HTTP 200, Content-Type: application/json; charset=utf-8, Body: [{\"id\":16,\"name\":\"Test User\",\"email\":\"test@example.com\",\"password\":\"password123\",\"role\":\"USER\",\"created_at\":\"2026-03-20T07:49:44.37+00:00\"},{\"id\":15,\"name\":\"Naveenkumar\",\"email\":\"naveenkumar.vtab@gmai",
+      "recommendation": "Protect ALL API endpoints with authentication middleware. Return HTTP 401 for unauthenticated requests.",
+      "timestamp": "2026-04-10T15:10:24.658997"
+    },
+    {
+      "title": "Potential Google API Key exposed in JavaScript bundle",
+      "severity": "CRITICAL",
+      "category": "A02 Cryptographic Failures",
+      "description": "A pattern matching a Google API Key was found in the JavaScript bundle. Hardcoded secrets in frontend code are visible to anyone who views the page source.",
+      "evidence": "File: https://analytic-core.netlify.app/assets/index-Dh3k4TCU.js | Pattern: Google API Key | Match: AIzaSyCFBcb0cqc8BHHG8fLXY1d_Dlx4QnldiUQ",
+      "recommendation": "Never embed secrets in frontend code. Move all secrets to backend environment variables. Rotate any exposed keys immediately. Use secret scanning in your CI/CD pipeline.",
+      "timestamp": "2026-04-10T15:10:40.992690"
+    },
+    {
+      "title": "Missing header: Content-Security-Policy",
+      "severity": "HIGH",
+      "category": "A05 Security Misconfiguration",
+      "description": "Missing CSP header \u2014 increased risk of XSS and data injection.",
+      "evidence": "Header 'Content-Security-Policy' not present in response from https://analytic-core.netlify.app",
+      "recommendation": "Define a strict CSP. At minimum: default-src 'self'",
+      "timestamp": "2026-04-10T15:08:38.429099"
+    },
+    {
+      "title": "No account lockout or rate limiting on login",
+      "severity": "HIGH",
+      "category": "A07 Identification & Authentication Failures",
+      "description": "Made 6 consecutive failed login attempts without triggering lockout or rate limiting. An attacker can brute-force passwords.",
+      "evidence": "Endpoint: https://analytic-core.netlify.app/api/login \u2014 no lockout after 6 attempts",
+      "recommendation": "Implement account lockout (e.g., lock after 5 failures for 15 min) or exponential back-off + CAPTCHA. Use a WAF rule on the login endpoint.",
+      "timestamp": "2026-04-10T15:09:13.248962"
+    },
+    {
+      "title": "CORS: untrusted origin 'http://localhost:3000' reflected with credentials",
+      "severity": "HIGH",
+      "category": "A05 Security Misconfiguration",
+      "description": "The API reflects the untrusted origin 'http://localhost:3000' in ACAO and allows credentials. An attacker-controlled site can make authenticated API requests on behalf of logged-in users.",
+      "evidence": "Origin: http://localhost:3000 \u2192 ACAO: http://localhost:3000, ACAC: true",
+      "recommendation": "Maintain an strict allowlist of trusted origins. Reject or drop the ACAO header for unknown origins.",
+      "timestamp": "2026-04-10T15:10:23.786877"
+    },
+    {
+      "title": "Unauthenticated access to sensitive endpoint: /api/health",
+      "severity": "HIGH",
+      "category": "A01 Broken Access Control",
+      "description": "The endpoint '/api/health' returned data without requiring authentication.",
+      "evidence": "GET /api/health \u2192 HTTP 200, Content-Type: application/json; charset=utf-8, Body: {\"status\":\"ok\",\"version\":\"1.0.3-dashboard-overwrite-fix\",\"uptime\":639719.556879922,\"timestamp\":\"2026-04-10T15:10:27.882Z\"}",
+      "recommendation": "Protect ALL API endpoints with authentication middleware. Return HTTP 401 for unauthenticated requests.",
+      "timestamp": "2026-04-10T15:10:27.877300"
+    },
+    {
+      "title": "Missing header: X-Content-Type-Options",
+      "severity": "MEDIUM",
+      "category": "A05 Security Misconfiguration",
+      "description": "Missing X-Content-Type-Options: nosniff \u2014 browser MIME sniffing enabled.",
+      "evidence": "Header 'X-Content-Type-Options' not present in response from https://analytic-core.netlify.app",
+      "recommendation": "Add: X-Content-Type-Options: nosniff",
+      "timestamp": "2026-04-10T15:08:38.434170"
+    },
+    {
+      "title": "Missing header: X-Frame-Options",
+      "severity": "MEDIUM",
+      "category": "A05 Security Misconfiguration",
+      "description": "Missing X-Frame-Options \u2014 app may be embeddable (clickjacking risk).",
+      "evidence": "Header 'X-Frame-Options' not present in response from https://analytic-core.netlify.app",
+      "recommendation": "Add: X-Frame-Options: DENY  (or use CSP frame-ancestors directive)",
+      "timestamp": "2026-04-10T15:08:38.439827"
+    },
+    {
+      "title": "No rate limiting on API endpoint",
+      "severity": "MEDIUM",
+      "category": "A04 Insecure Design",
+      "description": "Made 30 rapid requests to /api/search without receiving HTTP 429. Without rate limiting, the API is vulnerable to automated abuse, scraping, and DoS.",
+      "evidence": "GET /api/search \u2014 30 requests, no 429 returned",
+      "recommendation": "Implement API rate limiting (e.g., 60 requests/minute per IP or user). Use Netlify Edge functions or a CDN WAF rule for this. Return HTTP 429 with a Retry-After header when the limit is exceeded.",
+      "timestamp": "2026-04-10T15:10:38.414913"
+    },
+    {
+      "title": "Missing header: Referrer-Policy",
+      "severity": "LOW",
+      "category": "A05 Security Misconfiguration",
+      "description": "Missing Referrer-Policy \u2014 sensitive URL data may leak to third parties.",
+      "evidence": "Header 'Referrer-Policy' not present in response from https://analytic-core.netlify.app",
+      "recommendation": "Add: Referrer-Policy: strict-origin-when-cross-origin",
+      "timestamp": "2026-04-10T15:08:38.444958"
+    },
+    {
+      "title": "Missing header: Permissions-Policy",
+      "severity": "LOW",
+      "category": "A05 Security Misconfiguration",
+      "description": "Missing Permissions-Policy \u2014 browser features (camera, mic, etc.) unrestricted.",
+      "evidence": "Header 'Permissions-Policy' not present in response from https://analytic-core.netlify.app",
+      "recommendation": "Add: Permissions-Policy: camera=(), microphone=(), geolocation=()",
+      "timestamp": "2026-04-10T15:08:38.450845"
+    },
+    {
+      "title": "Information leak via header: Server",
+      "severity": "LOW",
+      "category": "A05 Security Misconfiguration",
+      "description": "Reveals server software version \u2014 remove or anonymize.",
+      "evidence": "Server: Netlify",
+      "recommendation": "Remove or anonymize the 'Server' response header.",
+      "timestamp": "2026-04-10T15:08:38.456212"
+    }
+  ]
+}

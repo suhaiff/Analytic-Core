@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Security Report — https://analytic-core.netlify.app</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 32px; }
+    a { color: #7dd3fc; }
+  </style>
+</head>
+<body>
+  <div style="max-width:900px;margin:0 auto">
+    <div style="border-bottom:1px solid #1e293b;padding-bottom:24px;margin-bottom:32px">
+      <h1 style="font-size:1.8rem;font-weight:800;color:#f8fafc">Security Assessment Report</h1>
+      <p style="color:#64748b;margin-top:6px">Target: <a href="https://analytic-core.netlify.app">https://analytic-core.netlify.app</a></p>
+      <p style="color:#64748b">Generated: 2026-04-10T15:10:41.340676 UTC</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:36px">
+      <div style="background:#dc262622;border:1px solid #dc2626;border-radius:8px;padding:16px 24px;text-align:center"><div style="font-size:2rem;font-weight:800;color:#dc2626">2</div><div style="color:#94a3b8;font-size:0.8rem;margin-top:4px">CRITICAL</div></div>
+      <div style="background:#ea580c22;border:1px solid #ea580c;border-radius:8px;padding:16px 24px;text-align:center"><div style="font-size:2rem;font-weight:800;color:#ea580c">4</div><div style="color:#94a3b8;font-size:0.8rem;margin-top:4px">HIGH</div></div>
+      <div style="background:#d9770622;border:1px solid #d97706;border-radius:8px;padding:16px 24px;text-align:center"><div style="font-size:2rem;font-weight:800;color:#d97706">3</div><div style="color:#94a3b8;font-size:0.8rem;margin-top:4px">MEDIUM</div></div>
+      <div style="background:#2563eb22;border:1px solid #2563eb;border-radius:8px;padding:16px 24px;text-align:center"><div style="font-size:2rem;font-weight:800;color:#2563eb">3</div><div style="color:#94a3b8;font-size:0.8rem;margin-top:4px">LOW</div></div>
+      <div style="background:#6b728022;border:1px solid #6b7280;border-radius:8px;padding:16px 24px;text-align:center"><div style="font-size:2rem;font-weight:800;color:#6b7280">0</div><div style="color:#94a3b8;font-size:0.8rem;margin-top:4px">INFO</div></div>
+    </div>
+
+    <h2 style="font-size:1.2rem;font-weight:700;color:#f1f5f9;margin-bottom:16px">
+      Findings (12)
+    </h2>
+
+    
+    <div style="border-left:4px solid #dc2626;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#1</span>
+        <span style="background:#dc2626;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">CRITICAL</span>
+        <strong style="color:#f1f5f9;font-size:1rem">Unauthenticated access to sensitive endpoint: /api/users</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A01 Broken Access Control
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">The endpoint '/api/users' returned data without requiring authentication.</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">GET /api/users → HTTP 200, Content-Type: application/json; charset=utf-8, Body: [{&quot;id&quot;:16,&quot;name&quot;:&quot;Test User&quot;,&quot;email&quot;:&quot;test@example.com&quot;,&quot;password&quot;:&quot;password123&quot;,&quot;role&quot;:&quot;USER&quot;,&quot;created_at&quot;:&quot;2026-03-20T07:49:44.37+00:00&quot;},{&quot;id&quot;:15,&quot;name&quot;:&quot;Naveenkumar&quot;,&quot;email&quot;:&quot;naveenkumar.vtab@gmai</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Protect ALL API endpoints with authentication middleware. Return HTTP 401 for unauthenticated requests.</p>
+      </div>
+    </div>
+    <div style="border-left:4px solid #dc2626;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#2</span>
+        <span style="background:#dc2626;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">CRITICAL</span>
+        <strong style="color:#f1f5f9;font-size:1rem">Potential Google API Key exposed in JavaScript bundle</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A02 Cryptographic Failures
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">A pattern matching a Google API Key was found in the JavaScript bundle. Hardcoded secrets in frontend code are visible to anyone who views the page source.</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">File: https://analytic-core.netlify.app/assets/index-Dh3k4TCU.js | Pattern: Google API Key | Match: AIzaSyCFBcb0cqc8BHHG8fLXY1d_Dlx4QnldiUQ</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Never embed secrets in frontend code. Move all secrets to backend environment variables. Rotate any exposed keys immediately. Use secret scanning in your CI/CD pipeline.</p>
+      </div>
+    </div>
+    <div style="border-left:4px solid #ea580c;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#3</span>
+        <span style="background:#ea580c;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">HIGH</span>
+        <strong style="color:#f1f5f9;font-size:1rem">Missing header: Content-Security-Policy</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A05 Security Misconfiguration
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">Missing CSP header — increased risk of XSS and data injection.</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">Header 'Content-Security-Policy' not present in response from https://analytic-core.netlify.app</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Define a strict CSP. At minimum: default-src 'self'</p>
+      </div>
+    </div>
+    <div style="border-left:4px solid #ea580c;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#4</span>
+        <span style="background:#ea580c;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">HIGH</span>
+        <strong style="color:#f1f5f9;font-size:1rem">No account lockout or rate limiting on login</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A07 Identification &amp; Authentication Failures
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">Made 6 consecutive failed login attempts without triggering lockout or rate limiting. An attacker can brute-force passwords.</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">Endpoint: https://analytic-core.netlify.app/api/login — no lockout after 6 attempts</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Implement account lockout (e.g., lock after 5 failures for 15 min) or exponential back-off + CAPTCHA. Use a WAF rule on the login endpoint.</p>
+      </div>
+    </div>
+    <div style="border-left:4px solid #ea580c;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#5</span>
+        <span style="background:#ea580c;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">HIGH</span>
+        <strong style="color:#f1f5f9;font-size:1rem">CORS: untrusted origin 'http://localhost:3000' reflected with credentials</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A05 Security Misconfiguration
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">The API reflects the untrusted origin 'http://localhost:3000' in ACAO and allows credentials. An attacker-controlled site can make authenticated API requests on behalf of logged-in users.</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">Origin: http://localhost:3000 → ACAO: http://localhost:3000, ACAC: true</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Maintain an strict allowlist of trusted origins. Reject or drop the ACAO header for unknown origins.</p>
+      </div>
+    </div>
+    <div style="border-left:4px solid #ea580c;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#6</span>
+        <span style="background:#ea580c;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">HIGH</span>
+        <strong style="color:#f1f5f9;font-size:1rem">Unauthenticated access to sensitive endpoint: /api/health</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A01 Broken Access Control
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">The endpoint '/api/health' returned data without requiring authentication.</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">GET /api/health → HTTP 200, Content-Type: application/json; charset=utf-8, Body: {&quot;status&quot;:&quot;ok&quot;,&quot;version&quot;:&quot;1.0.3-dashboard-overwrite-fix&quot;,&quot;uptime&quot;:639719.556879922,&quot;timestamp&quot;:&quot;2026-04-10T15:10:27.882Z&quot;}</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Protect ALL API endpoints with authentication middleware. Return HTTP 401 for unauthenticated requests.</p>
+      </div>
+    </div>
+    <div style="border-left:4px solid #d97706;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#7</span>
+        <span style="background:#d97706;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">MEDIUM</span>
+        <strong style="color:#f1f5f9;font-size:1rem">Missing header: X-Content-Type-Options</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A05 Security Misconfiguration
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">Missing X-Content-Type-Options: nosniff — browser MIME sniffing enabled.</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">Header 'X-Content-Type-Options' not present in response from https://analytic-core.netlify.app</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Add: X-Content-Type-Options: nosniff</p>
+      </div>
+    </div>
+    <div style="border-left:4px solid #d97706;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#8</span>
+        <span style="background:#d97706;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">MEDIUM</span>
+        <strong style="color:#f1f5f9;font-size:1rem">Missing header: X-Frame-Options</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A05 Security Misconfiguration
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">Missing X-Frame-Options — app may be embeddable (clickjacking risk).</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">Header 'X-Frame-Options' not present in response from https://analytic-core.netlify.app</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Add: X-Frame-Options: DENY  (or use CSP frame-ancestors directive)</p>
+      </div>
+    </div>
+    <div style="border-left:4px solid #d97706;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#9</span>
+        <span style="background:#d97706;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">MEDIUM</span>
+        <strong style="color:#f1f5f9;font-size:1rem">No rate limiting on API endpoint</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A04 Insecure Design
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">Made 30 rapid requests to /api/search without receiving HTTP 429. Without rate limiting, the API is vulnerable to automated abuse, scraping, and DoS.</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">GET /api/search — 30 requests, no 429 returned</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Implement API rate limiting (e.g., 60 requests/minute per IP or user). Use Netlify Edge functions or a CDN WAF rule for this. Return HTTP 429 with a Retry-After header when the limit is exceeded.</p>
+      </div>
+    </div>
+    <div style="border-left:4px solid #2563eb;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#10</span>
+        <span style="background:#2563eb;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">LOW</span>
+        <strong style="color:#f1f5f9;font-size:1rem">Missing header: Referrer-Policy</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A05 Security Misconfiguration
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">Missing Referrer-Policy — sensitive URL data may leak to third parties.</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">Header 'Referrer-Policy' not present in response from https://analytic-core.netlify.app</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Add: Referrer-Policy: strict-origin-when-cross-origin</p>
+      </div>
+    </div>
+    <div style="border-left:4px solid #2563eb;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#11</span>
+        <span style="background:#2563eb;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">LOW</span>
+        <strong style="color:#f1f5f9;font-size:1rem">Missing header: Permissions-Policy</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A05 Security Misconfiguration
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">Missing Permissions-Policy — browser features (camera, mic, etc.) unrestricted.</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">Header 'Permissions-Policy' not present in response from https://analytic-core.netlify.app</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Add: Permissions-Policy: camera=(), microphone=(), geolocation=()</p>
+      </div>
+    </div>
+    <div style="border-left:4px solid #2563eb;background:#1e293b;border-radius:6px;
+                padding:18px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <span style="color:#94a3b8;font-size:0.8rem">#12</span>
+        <span style="background:#2563eb;color:#fff;padding:2px 10px;border-radius:4px;font-size:0.75rem;font-weight:700;letter-spacing:0.05em">LOW</span>
+        <strong style="color:#f1f5f9;font-size:1rem">Information leak via header: Server</strong>
+      </div>
+      <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 6px">
+        <strong style="color:#cbd5e1">Category:</strong> A05 Security Misconfiguration
+      </p>
+      <p style="color:#cbd5e1;margin:0 0 10px">Reveals server software version — remove or anonymize.</p>
+      <div style="background:#0f172a;border-radius:4px;padding:10px;margin-bottom:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">EVIDENCE</p>
+        <code style="color:#86efac;font-size:0.8rem;word-break:break-all">Server: Netlify</code>
+      </div>
+      <div style="background:#162032;border-radius:4px;padding:10px">
+        <p style="color:#64748b;font-size:0.75rem;margin:0 0 4px">RECOMMENDATION</p>
+        <p style="color:#7dd3fc;margin:0;font-size:0.85rem">Remove or anonymize the 'Server' response header.</p>
+      </div>
+    </div>
+
+    <div style="margin-top:48px;padding-top:20px;border-top:1px solid #1e293b;color:#475569;font-size:0.78rem">
+      Generated by AnalyticCore Security Test Suite — for authorized testing only.
+    </div>
+  </div>
+</body>
+</html>

@@ -182,7 +182,7 @@ class SupabaseService {
         }
     }
 
-    async updateDashboard(dashboardId, name, dataModel, chartConfigs, sections = null, filterColumns = null) {
+    async updateDashboard(dashboardId, name, dataModel, chartConfigs, sections = null, filterColumns = null, folderId = null, isWorkspace = false) {
         try {
             const chartConfigsWrapper = {
                 charts: chartConfigs,
@@ -195,7 +195,9 @@ class SupabaseService {
                 .update({
                     name,
                     data_model: dataModel,
-                    chart_configs: chartConfigsWrapper
+                    chart_configs: chartConfigsWrapper,
+                    folder_id: folderId || null,
+                    is_workspace: isWorkspace || false
                 })
                 .eq('id', dashboardId)
                 .select()
@@ -215,6 +217,7 @@ class SupabaseService {
                 .from('dashboards')
                 .select('*')
                 .eq('user_id', userId)
+                .eq('is_workspace', false)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -243,7 +246,9 @@ class SupabaseService {
                     dataModel: dashboard.data_model || {},
                     chartConfigs,
                     sections,
-                    filterColumns
+                    filterColumns,
+                    folder_id: dashboard.folder_id || null,
+                    is_workspace: dashboard.is_workspace || false
                 };
             });
         } catch (error) {
@@ -877,7 +882,15 @@ class SupabaseService {
             if (fetchError) throw fetchError;
             if (!folder) throw new Error('Folder not found');
 
-            if (folder.owner_id !== requestingUserId.toString()) {
+            console.log('--- Workspace Update Ownership Check ---');
+            console.log('Folder ID:', folderId);
+            console.log('Folder owner_id:', folder.owner_id, typeof folder.owner_id);
+            console.log('Requesting userId:', requestingUserId, typeof requestingUserId);
+            
+            const isOwner = folder && folder.owner_id && folder.owner_id.toString() === requestingUserId.toString();
+            console.log('Is Owner?', isOwner);
+
+            if (!isOwner) {
                 throw new Error('Only the folder owner can update it');
             }
 
@@ -927,7 +940,15 @@ class SupabaseService {
             if (fetchError) throw fetchError;
             if (!folder) throw new Error('Folder not found');
 
-            if (folder.owner_id !== requestingUserId.toString()) {
+            console.log('--- Workspace Delete Ownership Check ---');
+            console.log('Folder ID:', folderId);
+            console.log('Folder owner_id:', folder.owner_id, typeof folder.owner_id);
+            console.log('Requesting userId:', requestingUserId, typeof requestingUserId);
+
+            const isOwner = folder && folder.owner_id && folder.owner_id.toString() === requestingUserId.toString();
+            console.log('Is Owner?', isOwner);
+
+            if (!isOwner) {
                 throw new Error('Only the folder owner can delete it');
             }
 
