@@ -24,3 +24,10 @@ CREATE INDEX IF NOT EXISTS idx_workspace_folders_owner ON workspace_folders(owne
 CREATE INDEX IF NOT EXISTS idx_workspace_folder_access_folder ON workspace_folder_access(folder_id);
 CREATE INDEX IF NOT EXISTS idx_workspace_folder_access_user ON workspace_folder_access(user_id);
 CREATE INDEX IF NOT EXISTS idx_dashboards_folder ON dashboards(folder_id);
+
+-- ==========================================
+-- FIX: Prevent Row Level Security (RLS) recursion 
+-- Ensure RLS is disabled since Express backend handles all security validation
+-- ==========================================
+ALTER TABLE workspace_folders DISABLE ROW LEVEL SECURITY;
+ALTER TABLE workspace_folder_access DISABLE ROW LEVEL SECURITY;
