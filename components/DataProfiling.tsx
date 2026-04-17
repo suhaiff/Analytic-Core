@@ -333,10 +333,10 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
 
     const renderPagination = (tp: TableProfile, filteredTotal?: number, itemsPerPage: number = 5) => {
         const total = filteredTotal ?? tp.columns.length;
-        const totalPages = Math.ceil(total / itemsPerPage);
+        const totalPages = Math.max(1, Math.ceil(total / itemsPerPage));
         if (totalPages <= 1) return null;
 
-        const currentPage = pageMap[tp.tableName] || 1;
+        const currentPage = Math.min(pageMap[tp.tableName] || 1, totalPages);
 
         const handleNext = () => setPageMap(prev => ({ ...prev, [tp.tableName]: Math.min(currentPage + 1, totalPages) }));
         const handlePrev = () => setPageMap(prev => ({ ...prev, [tp.tableName]: Math.max(currentPage - 1, 1) }));
@@ -680,7 +680,7 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                                 <tbody>
                                                     {filteredCols.length === 0 ? (
                                                         <tr><td colSpan={7} className={`px-6 py-8 text-center text-xs ${colors.textMuted}`}><div className="flex flex-col items-center gap-2"><Search className="w-5 h-5" /><span>No columns match your search.</span></div></td></tr>
-                                                    ) : filteredCols.slice(((pageMap[tp.tableName] || 1) - 1) * 20, (pageMap[tp.tableName] || 1) * 20).map((col, cIdx) => (
+                                                    ) : filteredCols.slice((Math.min(pageMap[tp.tableName] || 1, Math.max(1, Math.ceil(filteredCols.length / 20))) - 1) * 20, Math.min(pageMap[tp.tableName] || 1, Math.max(1, Math.ceil(filteredCols.length / 20))) * 20).map((col, cIdx) => (
                                                         <tr key={`${col.name}-${cIdx}`} className={`border-t ${colors.borderPrimary} transition-colors ${theme === 'dark' ? 'hover:bg-slate-800/30' : 'hover:bg-slate-50/80'}`}>
                                                             <td className="px-4 sm:px-6 py-3">
                                                                 <span className={`text-xs sm:text-sm font-semibold ${colors.textPrimary}`}>{col.name}</span>
@@ -793,7 +793,7 @@ export const DataProfiling: React.FC<DataProfilingProps> = ({
                                             <Search className={`w-8 h-8 mx-auto mb-2 ${colors.textMuted}`} />
                                             <p className={`text-xs ${colors.textMuted}`}>No columns match your search.</p>
                                         </div>
-                                    ) : filteredCols.slice(((pageMap[tp.tableName] || 1) - 1) * 5, (pageMap[tp.tableName] || 1) * 5).map((col, cIdx) => {
+                                    ) : filteredCols.slice((Math.min(pageMap[tp.tableName] || 1, Math.max(1, Math.ceil(filteredCols.length / 5))) - 1) * 5, Math.min(pageMap[tp.tableName] || 1, Math.max(1, Math.ceil(filteredCols.length / 5))) * 5).map((col, cIdx) => {
                                         const numStats = computeNumericStats(col.name, tp);
                                         const topVals = getTopValues(col.name, tp);
                                         const isNumeric = ['INTEGER', 'DECIMAL', 'CURRENCY', 'PERCENT'].includes(col.inferredType);

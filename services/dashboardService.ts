@@ -10,6 +10,13 @@ export const dashboardService = {
         return await response.json();
     },
 
+    async getDashboardById(id: string | number): Promise<SavedDashboard | null> {
+        const response = await fetch(`${API_URL}/dashboards/${id}`);
+        if (response.status === 404) return null;
+        if (!response.ok) throw new Error('Failed to fetch dashboard');
+        return await response.json();
+    },
+
     async saveDashboard(userId: number, dashboard: SavedDashboard): Promise<void> {
         console.log('💾 Saving new dashboard:', { userId, name: dashboard.name, API_URL });
         

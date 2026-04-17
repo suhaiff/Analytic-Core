@@ -482,18 +482,33 @@ function AppContent() {
     }
   };
 
-  const handleLoadDashboard = (dash: SavedDashboard, role?: AccessLevel | null) => {
+  const handleLoadDashboard = async (dash: SavedDashboard, role?: AccessLevel | null) => {
     if (step === Step.ADMIN) {
       setReturnToAdmin(true);
     } else {
       setReturnToAdmin(false);
     }
-    setDataModel(dash.dataModel);
-    setChartConfigs(dash.chartConfigs);
-    setDashboardSections(dash.sections || []);
-    setFilterColumns(dash.filterColumns || []);
-    setCurrentDashboardId(dash.id);
-    setCurrentDashboard(dash);
+
+    // Always fetch the latest dashboard from the server before opening, so any
+    // server-side refresh (scheduled or manual "Refresh Now") is reflected in the UI.
+    let latest = dash;
+    try {
+      if (currentUser) {
+        const freshList = await dashboardService.getUserDashboards(currentUser.id);
+        setSavedDashboards(freshList);
+        const found = freshList.find(d => d.id === dash.id);
+        if (found) latest = found;
+      }
+    } catch (err) {
+      console.warn('Failed to refresh dashboards before load, using cached copy', err);
+    }
+
+    setDataModel(latest.dataModel);
+    setChartConfigs(latest.chartConfigs);
+    setDashboardSections(latest.sections || []);
+    setFilterColumns(latest.filterColumns || []);
+    setCurrentDashboardId(latest.id);
+    setCurrentDashboard(latest);
     setCurrentFolderRole(role || null);
     setStep(Step.DASHBOARD);
   };

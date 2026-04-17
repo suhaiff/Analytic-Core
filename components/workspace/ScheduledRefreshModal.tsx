@@ -58,6 +58,38 @@ const FREQUENCY_OPTIONS = [
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// ── IST <-> UTC time conversion ─────────────────────────────────────────────
+// The backend stores refresh_time_utc and refresh_day in UTC, but the UI
+// surfaces them as IST (UTC+5:30) for the user. These helpers handle the
+// 5h30m offset, wrapping around midnight and shifting the day-of-week when
+// the conversion crosses midnight.
+const IST_OFFSET_MIN = 5 * 60 + 30; // 330 minutes
+
+function shiftHHMM(hhmm: string, deltaMinutes: number, day?: number | null): { time: string; day: number | null } {
+  const [hRaw, mRaw] = (hhmm || '00:00').split(':');
+  const h = parseInt(hRaw, 10) || 0;
+  const m = parseInt(mRaw, 10) || 0;
+  let total = h * 60 + m + deltaMinutes;
+  let dayDelta = 0;
+  while (total >= 1440) { total -= 1440; dayDelta += 1; }
+  while (total < 0)    { total += 1440; dayDelta -= 1; }
+  const hh = String(Math.floor(total / 60)).padStart(2, '0');
+  const mm = String(total % 60).padStart(2, '0');
+  const newDay = (day === null || day === undefined)
+    ? null
+    : ((day + dayDelta) % 7 + 7) % 7;
+  return { time: `${hh}:${mm}`, day: newDay };
+}
+
+const utcToIst = (utcHHMM: string, utcDay?: number | null) => shiftHHMM(utcHHMM, IST_OFFSET_MIN, utcDay ?? null);
+const istToUtc = (istHHMM: string, istDay?: number | null) => shiftHHMM(istHHMM, -IST_OFFSET_MIN, istDay ?? null);
+
+const getCurrentIstHHMM = (): string => {
+  const now = new Date();
+  // Use en-GB for HH:mm and force the IST timezone so this is correct regardless of the user's system timezone.
+  return now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
+};
+
 export const ScheduledRefreshModal: React.FC<ScheduledRefreshModalProps> = ({
   dashboardId,
   dashboardName,
@@ -106,10 +138,10 @@ export const ScheduledRefreshModal: React.FC<ScheduledRefreshModalProps> = ({
   const [spSiteName, setSpSiteName] = useState('');
   const [spListName, setSpListName] = useState('');
 
-  // Schedule config
+  // Schedule config — stored in IST in the UI; converted to UTC when saving.
   const [frequency, setFrequency] = useState('daily');
-  const [timeUtc, setTimeUtc] = useState('00:00');
-  const [dayOfWeek, setDayOfWeek] = useState(1); // Monday
+  const [timeIst, setTimeIst] = useState('00:00');
+  const [dayOfWeek, setDayOfWeek] = useState(1); // Monday (IST)
 
   // Refreshing now
   const [refreshingNow, setRefreshingNow] = useState(false);
@@ -126,12 +158,17 @@ export const ScheduledRefreshModal: React.FC<ScheduledRefreshModalProps> = ({
       if (schedule) {
         setExistingSchedule(schedule);
         setStep('EXISTING');
-        // Pre-populate fields
+        // Pre-populate fields — convert stored UTC values to IST for the UI
         setSelectedSource(schedule.source_type);
         setFrequency(schedule.refresh_frequency);
-        setTimeUtc(schedule.refresh_time_utc?.substring(0, 5) || '00:00');
-        if (schedule.refresh_day !== null && schedule.refresh_day !== undefined) {
-          setDayOfWeek(schedule.refresh_day);
+        const utcTime = schedule.refresh_time_utc?.substring(0, 5) || '00:00';
+        const utcDay = (schedule.refresh_day !== null && schedule.refresh_day !== undefined)
+          ? schedule.refresh_day
+          : null;
+        const istConverted = utcToIst(utcTime, utcDay);
+        setTimeIst(istConverted.time);
+        if (istConverted.day !== null) {
+          setDayOfWeek(istConverted.day);
         }
       }
     } catch (err) {
@@ -246,14 +283,19 @@ export const ScheduledRefreshModal: React.FC<ScheduledRefreshModalProps> = ({
         };
       }
 
+      // Convert IST UI values back to UTC for storage.
+      const utcConverted = istToUtc(
+        timeIst,
+        frequency === 'weekly' ? dayOfWeek : null
+      );
       const schedule = await scheduledRefreshService.createSchedule(
         dashboardId,
         user.id,
         selectedSource!,
         credentials,
         frequency,
-        timeUtc,
-        frequency === 'weekly' ? dayOfWeek : null
+        utcConverted.time,
+        frequency === 'weekly' ? utcConverted.day : null
       );
 
       setExistingSchedule(schedule);
@@ -301,6 +343,9 @@ export const ScheduledRefreshModal: React.FC<ScheduledRefreshModalProps> = ({
       if (result.schedule) {
         setExistingSchedule(result.schedule);
         onScheduleChange?.(result.schedule);
+        // Surface a clear hint that dashboard must be reopened to see new data
+        setError('');
+        alert('Data refreshed successfully. Re-open the dashboard to view the latest data.');
       }
     } catch (err: any) {
       setError(err.message || 'Refresh failed');
@@ -632,16 +677,16 @@ export const ScheduledRefreshModal: React.FC<ScheduledRefreshModalProps> = ({
       {/* Time */}
       <div>
         <label className={`block text-xs font-bold uppercase tracking-wider ${colors.textMuted} mb-2 flex items-center gap-2`}>
-          <Clock className="w-3.5 h-3.5" /> Refresh Time (UTC)
+          <Clock className="w-3.5 h-3.5" /> Refresh Time (IST)
         </label>
         <input
           type="time"
-          value={timeUtc}
-          onChange={e => setTimeUtc(e.target.value)}
+          value={timeIst}
+          onChange={e => setTimeIst(e.target.value)}
           className={`w-full px-4 py-3 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition text-sm`}
         />
         <p className={`text-[10px] ${colors.textMuted} mt-1.5 opacity-60`}>
-          Current UTC time: {new Date().toISOString().substring(11, 16)}
+          Current IST time: {getCurrentIstHHMM()} · stored as UTC {istToUtc(timeIst).time}
         </p>
       </div>
 
@@ -708,23 +753,35 @@ export const ScheduledRefreshModal: React.FC<ScheduledRefreshModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className={`p-3 rounded-xl ${colors.bgPrimary} border ${colors.borderPrimary}`}>
-              <div className={`text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-1`}>Frequency</div>
-              <div className={`text-sm font-bold ${colors.textPrimary}`}>{freq?.label}</div>
-            </div>
-            <div className={`p-3 rounded-xl ${colors.bgPrimary} border ${colors.borderPrimary}`}>
-              <div className={`text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-1`}>Time (UTC)</div>
-              <div className={`text-sm font-bold ${colors.textPrimary}`}>{existingSchedule.refresh_time_utc?.substring(0, 5)}</div>
-            </div>
-          </div>
+          {(() => {
+            const storedUtcTime = existingSchedule.refresh_time_utc?.substring(0, 5) || '00:00';
+            const storedUtcDay = (existingSchedule.refresh_day !== null && existingSchedule.refresh_day !== undefined)
+              ? existingSchedule.refresh_day
+              : null;
+            const istView = utcToIst(storedUtcTime, storedUtcDay);
+            return (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className={`p-3 rounded-xl ${colors.bgPrimary} border ${colors.borderPrimary}`}>
+                    <div className={`text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-1`}>Frequency</div>
+                    <div className={`text-sm font-bold ${colors.textPrimary}`}>{freq?.label}</div>
+                  </div>
+                  <div className={`p-3 rounded-xl ${colors.bgPrimary} border ${colors.borderPrimary}`}>
+                    <div className={`text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-1`}>Time (IST)</div>
+                    <div className={`text-sm font-bold ${colors.textPrimary}`}>{istView.time}</div>
+                    <div className={`text-[9px] ${colors.textMuted} opacity-60 mt-0.5`}>UTC {storedUtcTime}</div>
+                  </div>
+                </div>
 
-          {existingSchedule.refresh_frequency === 'weekly' && existingSchedule.refresh_day !== null && (
-            <div className={`mt-3 p-3 rounded-xl ${colors.bgPrimary} border ${colors.borderPrimary}`}>
-              <div className={`text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-1`}>Day</div>
-              <div className={`text-sm font-bold ${colors.textPrimary}`}>{DAY_NAMES[existingSchedule.refresh_day!]}</div>
-            </div>
-          )}
+                {existingSchedule.refresh_frequency === 'weekly' && istView.day !== null && (
+                  <div className={`mt-3 p-3 rounded-xl ${colors.bgPrimary} border ${colors.borderPrimary}`}>
+                    <div className={`text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-1`}>Day (IST)</div>
+                    <div className={`text-sm font-bold ${colors.textPrimary}`}>{DAY_NAMES[istView.day]}</div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
 
         {/* Last refresh status */}

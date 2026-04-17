@@ -1466,7 +1466,6 @@ const FilterSidebar = React.memo<FilterSidebarProps>(({
     );
 });
 
-// ─── Dashboard ─────────────────────────────────────────────────────────────────
 export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, sections: explicitSections = [], filterColumns = [], onHome, homeTitle, onSave, onRefresh, dashboardId = null, currentDashboard = null, currentUser = null, savedDashboards, workspaceFolders = [], activeRole }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
@@ -1474,14 +1473,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     // Effective Permissions Logic
     const isOwner = currentUser && currentDashboard && String(currentDashboard.user_id) === String(currentUser.id);
     const sharedLevel = currentDashboard?.shared_access_level;
-    
+    // System-level admin/superuser always has full access regardless of the workspace/folder role
+    // or per-dashboard share level (e.g. when viewing another user's dashboard via the Admin Portal).
+    const isSystemAdmin = !!currentUser && (currentUser.role === 'ADMIN' || currentUser.is_superuser === true);
+
     // For workspace folders, the parent component passes activeRole (ADMIN/EDITOR/VIEWER)
     // For individual dashboards, we use shared_access_level (CO_OWNER/EDIT/VIEW)
-    
-    const isViewer = activeRole === AccessLevel.VIEWER || sharedLevel === 'VIEW';
-    const canEdit = !currentDashboard || isOwner || activeRole === AccessLevel.ADMIN || activeRole === AccessLevel.EDITOR || sharedLevel === 'EDIT' || sharedLevel === 'CO_OWNER';
-    const canShare = isOwner || activeRole === AccessLevel.ADMIN || sharedLevel === 'CO_OWNER';
 
+    const isViewer = !isSystemAdmin && !isOwner && (activeRole === AccessLevel.VIEWER || sharedLevel === 'VIEW');
+    const canEdit = !currentDashboard || isOwner || isSystemAdmin || activeRole === AccessLevel.ADMIN || activeRole === AccessLevel.EDITOR || sharedLevel === 'EDIT' || sharedLevel === 'CO_OWNER';
+    const canShare = isOwner || isSystemAdmin || activeRole === AccessLevel.ADMIN || sharedLevel === 'CO_OWNER';
 
     // Local state for charts allows editing/adding charts in-place
     const [currentCharts, setCurrentCharts] = useState<ChartConfig[]>(Array.isArray(chartConfigs) ? chartConfigs : []);
@@ -1509,17 +1510,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         sourceChart: ChartConfig;
         clickedYear: number;
     } | null>(null);
-
-    // UI State
-    const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
-    const [overwriteMatch, setOverwriteMatch] = useState<SavedDashboard | null>(null);
-    const [dashboardName, setDashboardName] = useState(dataModel?.name || "Untitled Dashboard");
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    // Workspace save state
-    const [saveDestination, setSaveDestination] = useState<'personal' | 'workspace'>('personal');
-    const [selectedFolderId, setSelectedFolderId] = useState<string>('');
-
-    // --- NEW: Per-Chart Filter Dropdown State ---
     const [chartFilterMenuOpen, setChartFilterMenuOpen] = useState<string | null>(null);
     const [chartFilterColumn, setChartFilterColumn] = useState<{ [chartId: string]: string | null }>({});
     const [chartFilterSearch, setChartFilterSearch] = useState<{ [chartId: string]: string }>({});
