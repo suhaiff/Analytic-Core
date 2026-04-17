@@ -6,13 +6,15 @@ import { Dashboard } from './components/Dashboard';
 import { DataProfiling } from './components/DataProfiling';
 import { Login } from './components/auth/Login';
 import { Signup } from './components/auth/Signup';
+import { ChangePassword } from './components/auth/ChangePassword';
+import { ForgotPassword } from './components/auth/ForgotPassword';
 import { Welcome } from './components/Welcome';
 import { AdminDashboard } from './components/admin/AdminDashboard';
-import { WorkspacePage } from './components/workspace/WorkspacePage';
+
 import { processFile } from './utils/fileParser';
 import { processRawData, performJoins } from './utils/dataProcessing';
 import { DashboardLoader } from './components/DashboardLoader';
-import { DataModel, ChartConfig, DataTable, SavedDashboard, User, ProcessedRow, DashboardSection, RawData, WorkspaceFolder } from './types';
+import { DataModel, ChartConfig, DataTable, SavedDashboard, User, ProcessedRow, DashboardSection, RawData, WorkspaceFolder, AccessLevel } from './types';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import { getThemeClasses } from './theme';
@@ -25,13 +27,14 @@ enum Step {
   WELCOME = 'WELCOME',
   LOGIN = 'LOGIN',
   SIGNUP = 'SIGNUP',
+  FORGOT_PASSWORD = 'FORGOT_PASSWORD',
+  CHANGE_PASSWORD = 'CHANGE_PASSWORD',
   ADMIN = 'ADMIN',
   LANDING = 0,
   DATA_PROFILING = 'DATA_PROFILING',
   CONFIG = 1,
   BUILDER = 2,
-  DASHBOARD = 3,
-  WORKSPACE = 'WORKSPACE'
+  DASHBOARD = 3
 }
 
 interface ToastState {
@@ -55,6 +58,8 @@ function AppContent() {
   const [filterColumns, setFilterColumns] = useState<string[]>([]);
   const [sourceType, setSourceType] = useState<'file' | 'google_sheet' | 'sharepoint'>('file');
   const [currentDashboardId, setCurrentDashboardId] = useState<string | null>(null);
+  const [currentDashboard, setCurrentDashboard] = useState<SavedDashboard | null>(null);
+  const [currentFolderRole, setCurrentFolderRole] = useState<AccessLevel | null>(null);
 
 
   // UI State
@@ -63,6 +68,9 @@ function AppContent() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [returnToAdmin, setReturnToAdmin] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
+
+  // Auth: temp password for first-time change
+  const [tempPasswordForChange, setTempPasswordForChange] = useState('');
 
   // Saved Dashboards State
   const [savedDashboards, setSavedDashboards] = useState<SavedDashboard[]>([]);
@@ -126,22 +134,51 @@ function AppContent() {
     const user = authService.getCurrentUser();
     if (user) {
       setCurrentUser(user);
+      if (user.must_change_password) {
+        // Redirect to change password
+        setStep(Step.CHANGE_PASSWORD);
+        showToast('Please set a new password to continue');
+      } else if (user.role === 'ADMIN') {
+        setStep(Step.ADMIN);
+        showToast(`Welcome back, ${user.name}!`);
+      } else {
+        setStep(Step.LANDING);
+        showToast(`Welcome back, ${user.name}!`);
+      }
+    }
+  };
+
+  // Store the temp password when user logs in (needed for change password API)
+  const handleLoginSuccessWithPassword = (password: string) => {
+    setTempPasswordForChange(password);
+    handleLoginSuccess();
+  };
+
+  const handlePasswordChanged = () => {
+    const user = authService.getCurrentUser();
+    if (user) {
+      // Update local storage
+      user.must_change_password = false;
+      localStorage.setItem('insightAI_currentUser', JSON.stringify(user));
+      setCurrentUser(user);
       if (user.role === 'ADMIN') {
         setStep(Step.ADMIN);
       } else {
         setStep(Step.LANDING);
       }
-      showToast(`Welcome back, ${user.name}!`);
+      showToast('Password set successfully! Welcome to InsightAI.');
     }
   };
 
+  const handleResetSuccess = () => {
+    setStep(Step.LOGIN);
+    showToast('Password reset successfully! Please login with your new password.');
+  };
+
   const handleSignupSuccess = () => {
-    const user = authService.getCurrentUser();
-    if (user) {
-      setCurrentUser(user);
-      setStep(Step.LANDING);
-      showToast(`Welcome to InsightAI, ${user.name}!`);
-    }
+    // Don't auto-login — user needs to check email for temp password
+    setStep(Step.LOGIN);
+    showToast('Account created! Check your email for the temporary password.');
   };
 
   const handleLogout = () => {
@@ -445,7 +482,7 @@ function AppContent() {
     }
   };
 
-  const handleLoadDashboard = (dash: SavedDashboard) => {
+  const handleLoadDashboard = (dash: SavedDashboard, role?: AccessLevel | null) => {
     if (step === Step.ADMIN) {
       setReturnToAdmin(true);
     } else {
@@ -456,6 +493,8 @@ function AppContent() {
     setDashboardSections(dash.sections || []);
     setFilterColumns(dash.filterColumns || []);
     setCurrentDashboardId(dash.id);
+    setCurrentDashboard(dash);
+    setCurrentFolderRole(role || null);
     setStep(Step.DASHBOARD);
   };
 
@@ -527,8 +566,9 @@ function AppContent() {
 
         {step === Step.LOGIN && (
           <Login
-            onLoginSuccess={handleLoginSuccess}
+            onLoginSuccess={handleLoginSuccessWithPassword}
             onNavigateToSignup={() => setStep(Step.SIGNUP)}
+            onForgotPassword={() => setStep(Step.FORGOT_PASSWORD)}
             onBack={() => setStep(Step.WELCOME)}
           />
         )}
@@ -538,6 +578,22 @@ function AppContent() {
             onSignupSuccess={handleSignupSuccess}
             onNavigateToLogin={() => setStep(Step.LOGIN)}
             onBack={() => setStep(Step.WELCOME)}
+          />
+        )}
+
+        {step === Step.FORGOT_PASSWORD && (
+          <ForgotPassword
+            onBack={() => setStep(Step.LOGIN)}
+            onResetSuccess={handleResetSuccess}
+          />
+        )}
+
+        {step === Step.CHANGE_PASSWORD && currentUser && (
+          <ChangePassword
+            userId={currentUser.id}
+            userName={currentUser.name}
+            tempPassword={tempPasswordForChange}
+            onPasswordChanged={handlePasswordChanged}
           />
         )}
 
@@ -561,20 +617,13 @@ function AppContent() {
             onDeleteDashboard={handleDeleteDashboard}
             onLogout={handleLogout}
             onNavigateToAdmin={() => setStep(Step.ADMIN)}
-            onNavigateToWorkspace={() => setStep(Step.WORKSPACE)}
             user={currentUser}
+            workspaceFolders={workspaceFolders}
+            onFoldersChange={() => { if (currentUser) loadWorkspaceFolders(currentUser.id); }}
           />
         )}
 
-        {step === Step.WORKSPACE && currentUser && (
-          <WorkspacePage
-            user={currentUser}
-            onLogout={handleLogout}
-            onNavigateHome={() => setStep(Step.LANDING)}
-            onNavigateToAdmin={currentUser.role === 'ADMIN' ? () => setStep(Step.ADMIN) : undefined}
-            onLoadDashboard={handleLoadDashboard}
-          />
-        )}
+
 
         {step === Step.CONFIG && initialTables.length > 0 && (
           <DataConfig
@@ -609,9 +658,12 @@ function AppContent() {
             onSave={handleSaveDashboard}
             onRefresh={handleRefresh}
             dashboardId={currentDashboardId}
+            currentDashboard={currentDashboard}
+            currentUser={currentUser}
             savedDashboards={savedDashboards}
             workspaceFolders={workspaceFolders}
             homeTitle={returnToAdmin ? "Admin Portal" : "Home"}
+            activeRole={currentFolderRole}
           />
         )}
       </div>

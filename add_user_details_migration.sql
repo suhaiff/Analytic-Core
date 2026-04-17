@@ -1,0 +1,5 @@
+-- Migration to add details for bulk upload to users table
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS company VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS job_title VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS domain VARCHAR(255);

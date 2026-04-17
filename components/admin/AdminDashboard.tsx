@@ -5,11 +5,12 @@ import { fileService, FileContent } from '../../services/fileService';
 import { apiErrorService, ApiErrorLog } from '../../services/apiErrorService';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
-import { User, SavedDashboard } from '../../types';
-import { Shield, Trash2, LogOut, Search, User as UserIcon, FileText, LayoutDashboard, Upload, Eye, X, Mail, Phone, Building, Briefcase, Users, TrendingUp, BarChart3, PieChart as PieChartIcon, Activity, HardDrive, Database, Clock, Globe, Bell, AlertTriangle, CheckCircle2, XCircle, Zap, Wifi, KeyRound, ChevronRight, Check } from 'lucide-react';
+import { User, SavedDashboard, Organization } from '../../types';
+import { Shield, Trash2, LogOut, Search, User as UserIcon, FileText, LayoutDashboard, Upload, Eye, X, Mail, Phone, Building, Briefcase, Users, UserPlus, TrendingUp, BarChart3, PieChart as PieChartIcon, Activity, HardDrive, Database, Clock, Globe, Bell, AlertTriangle, CheckCircle2, XCircle, Zap, Wifi, KeyRound, ChevronRight, Check, Plus, Building2, Star, ChevronDown } from 'lucide-react';
 import { ProfileMenu } from '../navbar/ProfileMenu';
 import { ThemeToggle } from '../ThemeToggle';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { BulkUserUploadModal } from './BulkUserUploadModal';
 
 interface AdminDashboardProps {
     onLogout: () => void;
@@ -44,8 +45,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
     const bellRef = useRef<HTMLButtonElement>(null);
     const [activeSheet, setActiveSheet] = useState(0);
 
+    // Organization State
+    const [organizations, setOrganizations] = useState<Organization[]>([]);
+    const [newOrgName, setNewOrgName] = useState('');
+    const [creatingOrg, setCreatingOrg] = useState(false);
+    const [orgDropdownUserId, setOrgDropdownUserId] = useState<number | null>(null);
+    const [showBulkModal, setShowBulkModal] = useState(false);
+    const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
+    const [isBulkDeleteMode, setIsBulkDeleteMode] = useState(false);
+    const orgDropdownRef = useRef<HTMLDivElement>(null);
+
     useEffect(() => {
         loadData();
+        setSelectedUsers([]); // Reset selection on tab change
+        setIsBulkDeleteMode(false);
     }, [activeTab]);
 
     // Poll for unresolved API error count every 30s
@@ -173,6 +186,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
             if (activeTab === 'USERS' || activeTab === 'PERFORMANCE') {
                 const data = await authService.getUsers();
                 setUsers(data);
+                const orgs = await authService.getOrganizations();
+                setOrganizations(orgs);
             } 
             
             if (activeTab === 'REPORTS' || activeTab === 'PERFORMANCE') {
@@ -196,9 +211,90 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
             try {
                 await authService.deleteUser(id);
                 setUsers(users.filter(u => u.id !== id));
+                setSelectedUsers(prev => prev.filter(userId => userId !== id));
             } catch (error) {
                 alert('Failed to delete user');
             }
+        }
+    };
+
+    const handleBulkDeleteUsers = async () => {
+        if (selectedUsers.length === 0) return;
+        if (window.confirm(`Are you sure you want to delete ${selectedUsers.length} users?`)) {
+            setLoading(true);
+            try {
+                const results = await Promise.allSettled(selectedUsers.map(id => authService.deleteUser(id)));
+                
+                // Keep users that failed to delete
+                const failedDeletions = selectedUsers.filter((_, index) => results[index].status === 'rejected');
+                
+                if (failedDeletions.length > 0) {
+                    alert(`Failed to delete ${failedDeletions.length} users.`);
+                }
+                
+                const successfullyDeleted = selectedUsers.filter(id => !failedDeletions.includes(id));
+                setUsers(prev => prev.filter(u => !successfullyDeleted.includes(u.id)));
+                setSelectedUsers(failedDeletions);
+                
+                if (failedDeletions.length === 0) {
+                    setIsBulkDeleteMode(false);
+                }
+                
+            } catch (error) {
+                alert('An error occurred during bulk deletion');
+            } finally {
+                setLoading(false);
+            }
+        }
+    };
+
+    const handleCreateOrganization = async () => {
+        if (!newOrgName.trim()) return;
+        setCreatingOrg(true);
+        try {
+            const org = await authService.createOrganization(newOrgName.trim());
+            setOrganizations(prev => [...prev, org].sort((a, b) => a.name.localeCompare(b.name)));
+            setNewOrgName('');
+        } catch (error: any) {
+            alert(error.message || 'Failed to create organization');
+        } finally {
+            setCreatingOrg(false);
+        }
+    };
+
+    const handleDeleteOrganization = async (id: string, name: string) => {
+        if (!window.confirm(`Delete organization "${name}"? All users in this org will be unassigned.`)) return;
+        try {
+            await authService.deleteOrganization(id);
+            setOrganizations(prev => prev.filter(o => o.id !== id));
+            setUsers(prev => prev.map(u => u.organization_id === id ? { ...u, organization_id: undefined, organization_name: undefined, is_superuser: false } : u));
+        } catch (error: any) {
+            alert(error.message || 'Failed to delete organization');
+        }
+    };
+
+    const handleSetUserOrganization = async (userId: number, orgId: string | null) => {
+        try {
+            await authService.updateUserOrganization(userId, orgId);
+            const org = orgId ? organizations.find(o => o.id === orgId) : null;
+            setUsers(prev => prev.map(u => u.id === userId ? { 
+                ...u, 
+                organization_id: orgId || undefined, 
+                organization_name: org?.name || undefined,
+                is_superuser: orgId ? u.is_superuser : false 
+            } : u));
+            setOrgDropdownUserId(null);
+        } catch (error: any) {
+            alert(error.message || 'Failed to update user organization');
+        }
+    };
+
+    const handleToggleSuperuser = async (userId: number, current: boolean) => {
+        try {
+            await authService.updateUserSuperuser(userId, !current);
+            setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_superuser: !current } : u));
+        } catch (error: any) {
+            alert(error.message || 'Failed to update superuser status');
         }
     };
 
@@ -231,15 +327,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
         }
     };
 
-    const filteredUsers = users.filter(user =>
+    const filteredUsers = Array.isArray(users) ? users.filter(user =>
         user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    ) : [];
 
-    const filteredDashboards = dashboards.filter(dash =>
+    const filteredDashboards = Array.isArray(dashboards) ? dashboards.filter(dash =>
         dash.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         dash.user_name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    ) : [];
+
+    const toggleUserSelection = (userId: number) => {
+        setSelectedUsers(prev => 
+            prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+        );
+    };
+
+    const toggleAllUsers = () => {
+        const selectableUsers = filteredUsers.filter(u => u.role !== 'ADMIN');
+        if (selectedUsers.length === selectableUsers.length) {
+            setSelectedUsers([]);
+        } else {
+            setSelectedUsers(selectableUsers.map(u => u.id));
+        }
+    };
 
     const filteredUploads = uploads.filter(file =>
         file.original_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -784,19 +895,110 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                             )}
                         </div>
                         
-                        <div className="relative w-full sm:w-80 group">
-                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <Search className={`w-5 h-5 ${colors.textMuted} group-focus-within:text-indigo-500 transition-colors`} />
+                        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto mt-2 sm:mt-0">
+                            {activeTab === 'USERS' && (
+                                <>
+                                    {isBulkDeleteMode ? (
+                                        <>
+                                            <button
+                                                onClick={() => { setIsBulkDeleteMode(false); setSelectedUsers([]); }}
+                                                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl ${colors.bgTertiary} hover:${colors.bgSecondary} ${colors.textPrimary} text-sm font-black transition-all duration-300 shadow-sm border ${colors.borderPrimary} active:scale-95`}
+                                            >
+                                                <span>Cancel</span>
+                                            </button>
+                                            <button
+                                                onClick={handleBulkDeleteUsers}
+                                                disabled={selectedUsers.length === 0}
+                                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-black transition-all duration-300 shadow-lg shadow-rose-900/30 active:scale-95 group"
+                                            >
+                                                <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
+                                                <span>Delete Selected {selectedUsers.length > 0 ? `(${selectedUsers.length})` : ''}</span>
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button
+                                                onClick={() => setShowBulkModal(true)}
+                                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-black transition-all duration-300 shadow-lg shadow-indigo-900/30 active:scale-95 group"
+                                            >
+                                                <UserPlus className="w-4 h-4 transition-transform group-hover:scale-110" />
+                                                <span>Bulk Upload</span>
+                                            </button>
+                                            <button
+                                                onClick={() => setIsBulkDeleteMode(true)}
+                                                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl ${colors.bgTertiary} hover:${colors.bgSecondary} ${colors.textPrimary} text-sm font-black transition-all duration-300 shadow-sm border ${colors.borderPrimary} hover:border-rose-500/50 hover:text-rose-500 active:scale-95 group`}
+                                            >
+                                                <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
+                                                <span>Bulk Delete</span>
+                                            </button>
+                                        </>
+                                    )}
+                                </>
+                            )}
+                            <div className="relative w-full sm:w-80 group">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <Search className={`w-5 h-5 ${colors.textMuted} group-focus-within:text-indigo-500 transition-colors`} />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder={`Search ${activeTab.toLowerCase()}...`}
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className={`w-full block pl-11 pr-4 py-3 border ${colors.borderSecondary} rounded-2xl text-sm ${colors.textPrimary} ${theme === 'dark' ? 'bg-slate-900/50' : 'bg-white/50'} placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all shadow-sm focus:shadow-md backdrop-blur-sm`}
+                                />
                             </div>
-                            <input
-                                type="text"
-                                placeholder={`Search ${activeTab.toLowerCase()}...`}
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className={`w-full block pl-11 pr-4 py-3 border ${colors.borderSecondary} rounded-2xl text-sm ${colors.textPrimary} ${theme === 'dark' ? 'bg-slate-900/50' : 'bg-white/50'} placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all shadow-sm focus:shadow-md backdrop-blur-sm`}
-                            />
                         </div>
                     </div>
+
+                    {/* Organization Management Bar */}
+                    {activeTab === 'USERS' && (
+                        <div className={`p-4 mb-4 rounded-2xl border ${colors.borderPrimary} ${colors.bgTertiary}`}>
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <Building2 className="w-4 h-4 text-emerald-500" />
+                                    <span className={`text-xs font-bold uppercase tracking-wider ${colors.textMuted}`}>Organizations</span>
+                                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-bold border border-emerald-500/20">{organizations.length}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        value={newOrgName}
+                                        onChange={(e) => setNewOrgName(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleCreateOrganization()}
+                                        placeholder="New org name..."
+                                        className={`px-3 py-1.5 rounded-lg text-xs border ${colors.borderSecondary} ${colors.bgPrimary} ${colors.textPrimary} focus:ring-1 focus:ring-emerald-500 outline-none w-40`}
+                                    />
+                                    <button
+                                        onClick={handleCreateOrganization}
+                                        disabled={creatingOrg || !newOrgName.trim()}
+                                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1 transition"
+                                    >
+                                        <Plus className="w-3 h-3" /> Add
+                                    </button>
+                                </div>
+                            </div>
+                            {organizations.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                    {organizations.map(org => (
+                                        <div key={org.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${colors.borderSecondary} ${colors.bgSecondary} text-xs font-medium ${colors.textPrimary} group`}>
+                                            <Building2 className="w-3 h-3 text-emerald-500" />
+                                            {org.name}
+                                            <span className={`text-[10px] ${colors.textMuted}`}>
+                                                ({users.filter(u => u.organization_id === org.id).length})
+                                            </span>
+                                            <button
+                                                onClick={() => handleDeleteOrganization(org.id, org.name)}
+                                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-all"
+                                                title={`Delete ${org.name}`}
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
@@ -804,8 +1006,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                 <tr>
                                     {activeTab === 'USERS' && (
                                         <>
+                                            {isBulkDeleteMode && (
+                                                <th className="px-6 py-4 w-12 text-center">
+                                                    <div 
+                                                        onClick={toggleAllUsers}
+                                                        className={`w-5 h-5 mx-auto rounded border flex items-center justify-center cursor-pointer transition-all ${
+                                                            selectedUsers.length > 0 && selectedUsers.length === filteredUsers.filter(u => u.role !== 'ADMIN').length
+                                                            ? 'bg-rose-500 border-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.3)]' 
+                                                            : `bg-transparent ${theme === 'dark' ? 'border-slate-600 hover:border-slate-500' : 'border-slate-300 hover:border-slate-400'}`
+                                                        }`}
+                                                    >
+                                                        {selectedUsers.length > 0 && selectedUsers.length === filteredUsers.filter(u => u.role !== 'ADMIN').length && (
+                                                            <Check className="w-3.5 h-3.5 text-white" />
+                                                        )}
+                                                    </div>
+                                                </th>
+                                            )}
                                             <th className="px-6 py-4">User</th>
                                             <th className="px-6 py-4">Role</th>
+                                            <th className="px-6 py-4">Organization</th>
                                             <th className="px-6 py-4">Domain</th>
                                             <th className="px-6 py-4">Joined</th>
                                             <th className="px-6 py-4 text-right">Actions</th>
@@ -833,16 +1052,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                             <tbody className={`divide-y ${colors.borderPrimary}`}>
                                 {loading ? (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-8 text-center text-slate-500">Loading data...</td>
+                                        <td colSpan={6} className="px-6 py-8 text-center text-slate-500">Loading data...</td>
                                     </tr>
                                 ) : (activeTab === 'USERS' ? filteredUsers : activeTab === 'REPORTS' ? filteredDashboards : filteredUploads).length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-8 text-center text-slate-500">No records found matching your search.</td>
+                                        <td colSpan={6} className="px-6 py-8 text-center text-slate-500">No records found matching your search.</td>
                                     </tr>
                                 ) : (
                                     <>
                                         {activeTab === 'USERS' && filteredUsers.map(user => (
-                                            <tr key={user.id} className={`group hover:${colors.bgTertiary} transition-all duration-300 border-b last:border-0 ${colors.borderSecondary} cursor-default`}>
+                                            <tr 
+                                                key={user.id} 
+                                                onClick={() => { if (isBulkDeleteMode && user.role !== 'ADMIN') toggleUserSelection(user.id); }}
+                                                className={`group hover:${colors.bgTertiary} transition-all duration-300 border-b last:border-0 ${colors.borderSecondary} ${isBulkDeleteMode && user.role !== 'ADMIN' ? 'cursor-pointer' : 'cursor-default'} ${selectedUsers.includes(user.id) ? (theme === 'dark' ? 'bg-rose-500/10 hover:bg-rose-500/15' : 'bg-rose-50 hover:bg-rose-100') : ''}`}
+                                            >
+                                                {isBulkDeleteMode && (
+                                                    <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
+                                                        {user.role !== 'ADMIN' && (
+                                                            <div 
+                                                                onClick={() => toggleUserSelection(user.id)}
+                                                                className={`w-5 h-5 mx-auto rounded border flex items-center justify-center cursor-pointer transition-all ${
+                                                                    selectedUsers.includes(user.id)
+                                                                    ? 'bg-rose-500 border-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.3)]' 
+                                                                    : `bg-transparent ${theme === 'dark' ? 'border-slate-600 hover:border-slate-500' : 'border-slate-300 hover:border-slate-400'}`
+                                                                }`}
+                                                            >
+                                                                {selectedUsers.includes(user.id) && (
+                                                                    <Check className="w-3.5 h-3.5 text-white" />
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                )}
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center gap-3">
                                                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-extrabold shadow-md ${theme === 'dark' ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white' : 'bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-700'}`}>
@@ -858,6 +1099,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                                     <span className={`px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest font-black shadow-sm ${user.role === 'ADMIN' ? 'bg-gradient-to-r from-purple-500/20 to-fuchsia-500/20 text-fuchsia-500 border border-fuchsia-500/30' : 'bg-gradient-to-r from-indigo-500/20 to-blue-500/20 text-indigo-500 border border-indigo-500/30'}`}>
                                                         {user.role}
                                                     </span>
+                                                    {user.role !== 'ADMIN' && user.organization_id && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleToggleSuperuser(user.id, !!user.is_superuser); }}
+                                                            className={`ml-2 px-2 py-1 rounded-full text-[9px] uppercase tracking-widest font-black transition-all duration-300 ${user.is_superuser 
+                                                                ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-500 border border-amber-500/30 hover:from-amber-500/30 hover:to-yellow-500/30' 
+                                                                : `${colors.bgTertiary} ${colors.textMuted} border ${colors.borderSecondary} hover:border-amber-500/30 hover:text-amber-500`}`}
+                                                            title={user.is_superuser ? 'Remove superuser' : 'Make superuser'}
+                                                        >
+                                                            <Star className={`w-3 h-3 inline mr-1 ${user.is_superuser ? 'fill-amber-500' : ''}`} />
+                                                            {user.is_superuser ? 'Super' : 'Set Super'}
+                                                        </button>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4 relative">
+                                                    <div className="relative" ref={orgDropdownUserId === user.id ? orgDropdownRef : undefined}>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setOrgDropdownUserId(orgDropdownUserId === user.id ? null : user.id); }}
+                                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${user.organization_name 
+                                                                ? 'bg-gradient-to-r from-emerald-500/10 to-teal-500/10 text-emerald-600 border-emerald-500/30 hover:border-emerald-500/50' 
+                                                                : `${colors.bgTertiary} ${colors.textMuted} ${colors.borderSecondary} hover:border-indigo-500/30`}`}
+                                                        >
+                                                            <Building2 className="w-3 h-3" />
+                                                            {user.organization_name || 'Unassigned'}
+                                                            <ChevronDown className={`w-3 h-3 transition-transform ${orgDropdownUserId === user.id ? 'rotate-180' : ''}`} />
+                                                        </button>
+                                                        {orgDropdownUserId === user.id && (
+                                                            <div className={`absolute top-full left-0 mt-1 z-50 w-56 ${colors.modalBg} border ${colors.borderPrimary} rounded-xl shadow-2xl overflow-hidden animate-fade-in-up`}>
+                                                                <button
+                                                                    onClick={() => handleSetUserOrganization(user.id, null)}
+                                                                    className={`w-full text-left px-4 py-2.5 text-xs font-medium ${colors.textMuted} hover:${colors.bgTertiary} transition flex items-center gap-2 border-b ${colors.borderPrimary}`}
+                                                                >
+                                                                    <X className="w-3 h-3" /> No Organization
+                                                                </button>
+                                                                {organizations.map(org => (
+                                                                    <button
+                                                                        key={org.id}
+                                                                        onClick={() => handleSetUserOrganization(user.id, org.id)}
+                                                                        className={`w-full text-left px-4 py-2.5 text-xs font-medium hover:${colors.bgTertiary} transition flex items-center gap-2 ${user.organization_id === org.id ? 'text-emerald-500 bg-emerald-500/5' : colors.textPrimary}`}
+                                                                    >
+                                                                        <Building2 className="w-3 h-3" />
+                                                                        {org.name}
+                                                                        {user.organization_id === org.id && <Check className="w-3 h-3 ml-auto" />}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-sm font-semibold text-slate-500">
                                                     {user.domain || '-'}
@@ -1348,6 +1636,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Organization & Superuser Info */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                                <div className={`p-4 rounded-2xl ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm hover:shadow-md hover:border-emerald-500/30 transition-all duration-300 group overflow-hidden relative`}>
+                                    <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-full -translate-y-8 translate-x-8"></div>
+                                    <div className="flex items-center gap-3 relative z-10">
+                                        <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-emerald-500/10 rounded-xl text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
+                                            <Building2 className="w-4 h-4" />
+                                        </div>
+                                        <div className="flex-1 overflow-hidden">
+                                            <p className={`text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-0.5`}>Organization</p>
+                                            <p className={`text-sm font-semibold ${colors.textPrimary} truncate`}>{viewingUser.organization_name || 'Not assigned'}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className={`p-4 rounded-2xl ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm hover:shadow-md hover:border-amber-500/30 transition-all duration-300 group overflow-hidden relative`}>
+                                    <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full -translate-y-8 translate-x-8"></div>
+                                    <div className="flex items-center gap-3 relative z-10">
+                                        <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-amber-500/10 rounded-xl text-amber-500 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300">
+                                            <Star className="w-4 h-4" />
+                                        </div>
+                                        <div className="flex-1 overflow-hidden">
+                                            <p className={`text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-0.5`}>Superuser Status</p>
+                                            <p className={`text-sm font-semibold ${viewingUser.is_superuser ? 'text-amber-500' : colors.textPrimary}`}>
+                                                {viewingUser.is_superuser ? '⭐ Superuser' : 'Regular User'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1422,6 +1740,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                         </div>
                     </div>
                 </div>
+            )}
+            {/* Bulk User Upload Modal */}
+            {showBulkModal && (
+                <BulkUserUploadModal 
+                    onClose={() => setShowBulkModal(false)}
+                    onSuccess={() => {
+                        loadData(); // Refresh user list
+                    }}
+                />
             )}
         </div>
     );

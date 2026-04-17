@@ -143,6 +143,23 @@ export interface DashboardSection {
   name: string;
 }
 
+export interface RefreshSchedule {
+  id: string;
+  dashboard_id: number;
+  user_id: number;
+  source_type: 'google_sheet' | 'sql_database' | 'sharepoint';
+  source_credentials: any;
+  refresh_frequency: 'hourly' | 'every_6_hours' | 'daily' | 'weekly';
+  refresh_time_utc: string;
+  refresh_day?: number | null;
+  is_active: boolean;
+  last_refreshed_at?: string | null;
+  last_refresh_status?: 'success' | 'failed' | 'running' | null;
+  last_refresh_error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SavedDashboard {
   id: string;
   name: string;
@@ -153,9 +170,19 @@ export interface SavedDashboard {
   filterColumns?: string[];
   folder_id?: string | null;
   is_workspace?: boolean;
+  user_id?: number;
+  owner_name?: string;
+  shared_access_level?: DashboardAccessLevel;
+  refresh_schedule?: RefreshSchedule | null;
 }
 
 export type UserRole = 'ADMIN' | 'USER';
+
+export enum AccessLevel {
+  VIEWER = 'VIEWER',
+  EDITOR = 'EDITOR',
+  ADMIN = 'ADMIN'
+}
 
 export interface User {
   id: number;
@@ -167,6 +194,29 @@ export interface User {
   company?: string;
   job_title?: string;
   domain?: string;
+  organization_id?: string;
+  organization_name?: string;
+  is_superuser?: boolean;
+  must_change_password?: boolean;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  created_at?: string;
+}
+
+export type DashboardAccessLevel = 'VIEW' | 'EDIT' | 'CO_OWNER';
+
+export interface DashboardAccessEntry {
+  id: string;
+  dashboard_id: string;
+  user_id: number;
+  user_name?: string;
+  user_email?: string;
+  access_level: DashboardAccessLevel;
+  granted_by?: number;
+  created_at?: string;
 }
 
 export interface WorkspaceFolder {
@@ -174,6 +224,17 @@ export interface WorkspaceFolder {
   name: string;
   owner_id: string;
   created_at: string;
-  access_users?: { id: number; name: string; email: string }[];
+  organization_id?: string;
+  access_users?: { id: number; name: string; email: string; level: AccessLevel }[];
+  access_groups?: { id: string; name: string; level: AccessLevel }[];
   is_owner?: boolean;
+  effective_level?: AccessLevel;
+}
+
+export interface WorkspaceGroup {
+  id: string;
+  name: string;
+  owner_id: string;
+  created_at: string;
+  members: { id: number; name: string; email: string }[];
 }

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { authService } from '../../services/authService';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
-import { UserPlus, Mail, Lock, Unlock, User, AlertCircle, X, ArrowRight, Phone, Building, Briefcase, Globe } from 'lucide-react';
+import { UserPlus, Mail, User, AlertCircle, X, ArrowRight, Phone, Building, Briefcase, Globe, CheckCircle2, Send } from 'lucide-react';
 
 interface SignupProps {
     onSignupSuccess: () => void;
@@ -15,14 +15,13 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onNavigateToLog
     const colors = getThemeClasses(theme);
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
     const [phone, setPhone] = useState('');
     const [company, setCompany] = useState('');
     const [domain, setDomain] = useState('');
     const [jobTitle, setJobTitle] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [signupComplete, setSignupComplete] = useState(false);
 
     const isDark = theme === 'dark';
 
@@ -31,14 +30,61 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onNavigateToLog
         setError('');
         setLoading(true);
         try {
-            await authService.signup(name, email, password, phone, company, jobTitle, domain);
-            onSignupSuccess();
+            await authService.signup(name, email, phone, company, jobTitle, domain);
+            setSignupComplete(true);
         } catch (err: any) {
             setError(err.message || 'Signup failed');
         } finally {
             setLoading(false);
         }
     };
+
+    // Success screen after signup
+    if (signupComplete) {
+        return (
+            <div className={`min-h-screen flex items-center justify-center mesh-gradient p-4 relative overflow-hidden font-jakarta w-full`}>
+                <div className="noise-bg"></div>
+                <div className={`absolute top-[-10%] left-[-10%] w-[50%] h-[50%] ${isDark ? 'bg-emerald-600/20' : 'bg-emerald-400/20'} blur-[140px] rounded-full animate-pulse-glow`}></div>
+                <div className={`absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] ${isDark ? 'bg-indigo-600/20' : 'bg-indigo-400/20'} blur-[140px] rounded-full animate-pulse-glow delay-700`}></div>
+
+                <div className={`max-w-[420px] w-full auth-glass-card rounded-[32px] p-8 sm:p-10 relative z-10 animate-fade-in-up mx-4 overflow-hidden text-center`}>
+                    <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/5 to-transparent pointer-events-none"></div>
+                    
+                    <div className="relative inline-block mb-6">
+                        <div className="absolute inset-0 bg-emerald-500 blur-[30px] opacity-30"></div>
+                        <div className="relative bg-gradient-to-br from-emerald-500 to-teal-600 w-16 h-16 rounded-[20px] flex items-center justify-center mx-auto shadow-2xl shadow-emerald-500/40">
+                            <Send className="w-8 h-8 text-white" />
+                        </div>
+                    </div>
+
+                    <h2 className={`text-2xl font-extrabold ${isDark ? 'text-white' : 'text-slate-900'} tracking-tight mb-3 font-poppins`}>
+                        Check Your Email!
+                    </h2>
+                    <p className={`${isDark ? 'text-slate-300' : 'text-slate-600'} text-base font-medium mb-6 leading-relaxed`}>
+                        We've sent a temporary password to<br />
+                        <span className="text-indigo-400 font-bold">{email}</span>
+                    </p>
+
+                    <div className={`p-4 rounded-2xl mb-6 ${isDark ? 'bg-indigo-500/10 border border-indigo-500/20' : 'bg-indigo-50 border border-indigo-100'}`}>
+                        <p className={`text-sm font-medium ${isDark ? 'text-indigo-300' : 'text-indigo-600'} leading-relaxed`}>
+                            Use the temporary password from your email to log in. You'll be prompted to set a new password on first login.
+                        </p>
+                    </div>
+
+                    <button
+                        onClick={onNavigateToLogin}
+                        className="w-full relative group overflow-hidden bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold py-3.5 rounded-2xl transition-all duration-500 shadow-2xl shadow-indigo-500/30 hover:shadow-indigo-500/50 active-press"
+                    >
+                        <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500 pointer-events-none"></div>
+                        <div className="relative flex items-center justify-center gap-3">
+                            <span className="text-base tracking-wide">Go to Login</span>
+                            <ArrowRight className="w-5 h-5 group-hover:translate-x-2 transition-transform duration-500" />
+                        </div>
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className={`min-h-screen flex items-center justify-center mesh-gradient p-4 relative overflow-hidden font-jakarta w-full`}>
@@ -121,33 +167,13 @@ export const Signup: React.FC<SignupProps> = ({ onSignupSuccess, onNavigateToLog
                         </div>
                     </div>
 
-                    <div className="space-y-2.5">
-                        <label className={`block text-[11px] font-bold ${isDark ? 'text-slate-300' : 'text-slate-500'} uppercase tracking-[2px] ml-1 opacity-80`}>
-                            Password
-                        </label>
-                        <div className={`relative input-glossy rounded-2xl group transition-all duration-300`}>
-                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-400 transition-colors duration-300">
-                                <Lock className="w-5 h-5" />
-                            </div>
-                            <input
-                                type={showPassword ? "text" : "password"}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className={`w-full bg-transparent border-none py-5 pl-12 pr-14 ${colors.textPrimary} placeholder-slate-500/40 focus:ring-0 outline-none text-base font-semibold`}
-                                placeholder="••••••••"
-                                required
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-400 transition-all duration-300 p-1.5 rounded-lg hover:bg-white/5"
-                            >
-                                {showPassword ? (
-                                    <Unlock className="w-5 h-5 animate-lock-bounce" />
-                                ) : (
-                                    <Lock className="w-5 h-5" />
-                                )}
-                            </button>
+                    {/* Info: Password will be emailed */}
+                    <div className={`p-3.5 rounded-2xl ${isDark ? 'bg-indigo-500/10 border border-indigo-500/20' : 'bg-indigo-50 border border-indigo-100'}`}>
+                        <div className="flex items-start gap-3">
+                            <CheckCircle2 className="w-4 h-4 text-indigo-400 mt-0.5 shrink-0" />
+                            <p className={`text-xs font-medium ${isDark ? 'text-indigo-300' : 'text-indigo-600'} leading-relaxed`}>
+                                A temporary password will be sent to your email. Use it to log in and set your own password.
+                            </p>
                         </div>
                     </div>
 

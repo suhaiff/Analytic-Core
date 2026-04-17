@@ -52,19 +52,19 @@ export const themeConfig: Record<Theme, ThemeColors> = {
     dark: {
         // Backgrounds
         bgPrimary: 'bg-slate-950',
-        bgSecondary: 'bg-slate-900',
-        bgTertiary: 'bg-slate-800',
+        bgSecondary: 'bg-[#0b0f1a]', // Deep rich Navy/Slate
+        bgTertiary: 'bg-slate-900',
 
         // Borders
-        borderPrimary: 'border-slate-800',
-        borderSecondary: 'border-slate-700',
-        borderHover: 'border-slate-700',
+        borderPrimary: 'border-slate-800/60',
+        borderSecondary: 'border-slate-800',
+        borderHover: 'border-indigo-500/30',
 
         // Text
         textPrimary: 'text-white',
-        textSecondary: 'text-slate-200',
-        textTertiary: 'text-slate-300',
-        textMuted: 'text-slate-400',
+        textSecondary: 'text-slate-300',
+        textTertiary: 'text-slate-400',
+        textMuted: 'text-slate-500',
 
         // Accents
         accentPrimary: 'bg-indigo-600',
@@ -78,9 +78,9 @@ export const themeConfig: Record<Theme, ThemeColors> = {
         errorBorder: 'border-red-500/50',
 
         // Chart specific
-        chartGrid: '#334155',
+        chartGrid: '#1e293b',
         chartAxisText: '#64748b',
-        chartTooltipBg: '#1e293b',
+        chartTooltipBg: '#0f172a',
         chartTooltipBorder: '#334155',
         chartTooltipText: '#f1f5f9',
         chartCursor: '#334155',
@@ -92,8 +92,8 @@ export const themeConfig: Record<Theme, ThemeColors> = {
         modalBg: 'bg-slate-900',
 
         // Gradients
-        gradientTop: 'bg-indigo-900/20',
-        gradientBottom: 'bg-violet-900/20',
+        gradientTop: 'bg-indigo-500/10',
+        gradientBottom: 'bg-violet-500/10',
     },
     light: {
         // Backgrounds
@@ -104,13 +104,13 @@ export const themeConfig: Record<Theme, ThemeColors> = {
         // Borders
         borderPrimary: 'border-slate-200',
         borderSecondary: 'border-slate-300',
-        borderHover: 'border-slate-400',
+        borderHover: 'border-slate-200',
 
         // Text
         textPrimary: 'text-slate-900',
-        textSecondary: 'text-slate-800',
-        textTertiary: 'text-slate-700',
-        textMuted: 'text-slate-500',
+        textSecondary: 'text-slate-600',
+        textTertiary: 'text-slate-500',
+        textMuted: 'text-slate-400',
 
         // Accents
         accentPrimary: 'bg-indigo-600',
@@ -124,22 +124,22 @@ export const themeConfig: Record<Theme, ThemeColors> = {
         errorBorder: 'border-red-600/50',
 
         // Chart specific
-        chartGrid: '#cbd5e1',
-        chartAxisText: '#475569',
+        chartGrid: '#e2e8f0',
+        chartAxisText: '#64748b',
         chartTooltipBg: '#ffffff',
-        chartTooltipBorder: '#cbd5e1',
+        chartTooltipBorder: '#e2e8f0',
         chartTooltipText: '#0f172a',
-        chartCursor: '#e2e8f0',
-        chartLegendText: '#475569',
-        chartLabelText: '#334155',
+        chartCursor: '#f1f5f9',
+        chartLegendText: '#64748b',
+        chartLabelText: '#475569',
 
         // Overlays
-        overlayBg: 'bg-slate-900/20',
+        overlayBg: 'bg-slate-900/10',
         modalBg: 'bg-white',
 
         // Gradients
-        gradientTop: 'bg-indigo-200/30',
-        gradientBottom: 'bg-violet-200/30',
+        gradientTop: 'bg-indigo-50/50',
+        gradientBottom: 'bg-violet-50/50',
     }
 };
 

@@ -5,12 +5,13 @@ import { getThemeClasses } from '../../theme';
 import { LogIn, Mail, Lock, Unlock, AlertCircle, X, ArrowRight } from 'lucide-react';
 
 interface LoginProps {
-    onLoginSuccess: () => void;
+    onLoginSuccess: (password: string) => void;
     onNavigateToSignup: () => void;
+    onForgotPassword: () => void;
     onBack: () => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onNavigateToSignup, onBack }) => {
+export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onNavigateToSignup, onForgotPassword, onBack }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
     const [email, setEmail] = useState('');
@@ -28,7 +29,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onNavigateToSignup
         setLoading(true);
         try {
             await authService.login(email, password);
-            onLoginSuccess();
+            onLoginSuccess(password);
         } catch (err: any) {
             setError(err.message || 'Login failed');
         } finally {
@@ -150,7 +151,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onNavigateToSignup
                                 </span>
                             </label>
 
-                            <button type="button" className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors underline underline-offset-4">
+                            <button type="button" onClick={onForgotPassword} className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors underline underline-offset-4">
                                 Forgot Password?
                             </button>
                         </div>
