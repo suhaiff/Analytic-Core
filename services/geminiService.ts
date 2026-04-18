@@ -105,6 +105,39 @@ You are an expert data analyst and UI engineer.
 Your goal is to analyze dataset schemas and suggest meaningful visualizations (Charts or KPIs).
 Output must be strictly JSON.
 
+CRITICAL: NATURAL LANGUAGE TOLERANCE
+Users may write in informal, unstructured, or grammatically incorrect English. You MUST interpret the user's intent even if:
+- The request contains typos, abbreviations, or slang (e.g., "sals" → "sales", "amt" → "amount", "qty" → "quantity", "rev" → "revenue", "cust" → "customer", "prod" → "product", "cat" → "category", "yr" → "year", "mo" → "month")
+- The sentence structure is broken (e.g., "show me total sales region wise" → "Show total sales grouped by region")
+- The request uses informal phrasing (e.g., "which product sells most" → "Top products by sales, sorted DESC")
+- Words are misspelled (e.g., "revinue" → "revenue", "custmer" → "customer", "prfit" → "profit")
+- The request mixes multiple intents (e.g., "sales and profit by region" → two metrics on one chart)
+ALWAYS attempt the most reasonable interpretation. NEVER return an empty or error result due to unclear language.
+
+INTENT INFERENCE RULES:
+Map user phrases to chart configurations using these patterns:
+- "show me", "display", "give me", "I want", "can you show", "what is", "what are" → The user wants a visualization
+- "how much", "total", "sum of", "grand total" → KPI or BAR with SUM aggregation
+- "how many", "count of", "number of" → KPI or BAR with COUNT aggregation
+- "average", "mean", "avg" → AVERAGE aggregation
+- "trend", "over time", "by month", "by year", "monthly", "yearly", "time series" → LINE or AREA chart with date on x-axis
+- "compare", "comparison", "vs", "versus", "side by side" → GROUPED_BAR or COMBO chart
+- "breakdown", "distribution", "split", "composition", "share", "proportion", "percentage of" → PIE (if few categories) or STACKED_BAR
+- "top", "best", "highest", "most", "largest", "maximum" → sortOrder: DESC, topN: 10 (or specified number)
+- "bottom", "worst", "lowest", "least", "smallest", "minimum" → sortOrder: ASC, topN: 10 (or specified number)
+- "correlation", "relationship", "scatter", "vs" (with two numeric columns) → SCATTER
+- "heatmap", "intensity", "matrix", "cross-tab", "pivot" → HEATMAP or MATRIX
+- "table", "list", "detail", "show all", "breakdown table" → TABLE
+- "by region", "by category", "by product", "region wise", "category wise", "[X] wise" → xAxisKey = that categorical column
+
+FUZZY COLUMN MATCHING:
+The user may not use exact column names. Match user terms to the closest available column:
+- Use semantic similarity: "revenue" could match "Total Revenue", "Sales Revenue", or "Revenue"
+- Use partial matching: "order" could match "Order Date", "Order ID", "Order Amount"
+- Use abbreviation expansion: "qty" → "Quantity", "amt" → "Amount", "cat" → "Category"
+- If unsure, prefer the column that makes most analytical sense given the chart type
+- ALWAYS use the EXACT column name from the available columns list in the output, never the user's informal term
+
 Chart type guidelines:
 - BAR: For comparing values across categories.
 - HORIZONTAL_BAR: When category names are long or many categories exist.
@@ -151,6 +184,15 @@ Drill-through guidelines:
 - drillThrough has: "dateColumn" (the date column name, e.g. "Order Date"), "nextLevel": "month".
 - The xAxisKey for year charts should NOT be the date column itself — instead set xAxisKey to the date column and let the frontend group by year. For such charts where the user wants year-level view, the system will automatically group the date column by year.
 - Only set drillThrough when the chart groups data by a yearly or period-level granularity AND a DATE column is available.
+
+COMPLEX ANALYTICAL QUERIES:
+- "profit margin" or "margin" → calculated as profit/sales, use the profit column as dataKey and suggest with appropriate aggregation
+- "growth", "change", "difference" → suggest a COMBO or LINE chart showing the metric over time
+- "contribution", "share" → PIE or STACKED_BAR showing parts of a whole
+- "performance" → typically comparing a metric across categories, use BAR or HORIZONTAL_BAR
+- "ranking" → sorted BAR chart with topN
+- "outliers" → SCATTER plot or TABLE
+- When the user's request is vague (e.g., "show me something interesting" or "analyze sales"), generate a meaningful, diverse chart that highlights the most impactful insight from the data
 `;
 
 // Schema for the ChartConfig response
@@ -327,25 +369,53 @@ export const analyzeDataAndSuggestKPIs = async (model: DataModel): Promise<Chart
 };
 
 export const generateChartFromPrompt = async (model: DataModel, prompt: string): Promise<ChartConfig | null> => {
+  // Build a unique values summary for categorical columns to help AI match user terms
+  const categoricalValuesSummary = model.categoricalColumns.slice(0, 10).map(col => {
+    const seen = new Set<string>();
+    const values: string[] = [];
+    for (const row of model.data.slice(0, 100)) {
+      const v = String(row[col] ?? '');
+      if (v && !seen.has(v) && values.length < 8) {
+        seen.add(v);
+        values.push(v);
+      }
+    }
+    return `  - ${col}: [${values.join(', ')}]`;
+  }).join('\n');
+
   const context = `
     Dataset Context:
-    Columns: ${model.columns.join(', ')}.
-    Numeric: ${model.numericColumns.join(', ')}.
-    Categorical: ${model.categoricalColumns.join(', ')}.
+    Dataset Name: "${model.name}"
+    All Columns: ${model.columns.join(', ')}.
+    Numeric Columns: ${model.numericColumns.join(', ')}.
+    Categorical Columns: ${model.categoricalColumns.join(', ')}.
+    Total Rows: ${model.data.length}
     Preconfigured Aggregated Metrics:
     ${buildAggregatedMetricsContext(model.aggregatedColumns)}
     
     Column Context (Types & Intents):
     ${JSON.stringify(model.columnMetadata, null, 2)}
+
+    Sample Unique Values (for categorical columns — use these to match user filter terms):
+${categoricalValuesSummary}
+    
+    Sample Data (first 3 rows):
+    ${JSON.stringify(model.data.slice(0, 3))}
     
     User Request: "${prompt}"
     
-    Create a single chart configuration that best satisfies the user request.
-    You may use any chart type: BAR, LINE, AREA, PIE, KPI, HORIZONTAL_BAR, GROUPED_BAR, STACKED_BAR, COMBO, SCATTER, WATERFALL, HEATMAP, TABLE, MATRIX.
-    For GROUPED_BAR, STACKED_BAR, or COMBO, provide both dataKey and dataKey2.
-    For HEATMAP or MATRIX, provide xAxisKey, yAxisKey, and dataKey.
-    For SCATTER, use two numeric columns.
-    If the request matches one of the preconfigured aggregated metric definitions, use that aggregated metric label as the metric field.
+    INSTRUCTIONS:
+    1. Interpret the user's request even if it contains typos, abbreviations, slang, or poor grammar.
+    2. Map informal column references to the EXACT column names from the dataset (e.g., "sales" → "Total Sales", "date" → "Order Date").
+    3. If the user mentions a specific categorical value (like a region name, product name, etc.), match it against the Sample Unique Values above and add it to chartFilters.
+    4. Create a single chart configuration that best satisfies the user request.
+    5. You may use any chart type: BAR, LINE, AREA, PIE, KPI, HORIZONTAL_BAR, GROUPED_BAR, STACKED_BAR, COMBO, SCATTER, WATERFALL, HEATMAP, TABLE, MATRIX.
+    6. For GROUPED_BAR, STACKED_BAR, or COMBO, provide both dataKey and dataKey2.
+    7. For HEATMAP or MATRIX, provide xAxisKey, yAxisKey, and dataKey.
+    8. For SCATTER, use two numeric columns.
+    9. If the request matches one of the preconfigured aggregated metric definitions, use that aggregated metric label as the metric field.
+    10. NEVER return an empty or default result — always find the best possible interpretation of what the user wants.
+    11. Generate a clear, professional title for the chart that describes what it shows.
   `;
 
   // Modified schema for single item return wrapped in object
@@ -474,6 +544,13 @@ STRICT RULES:
     Temperature is 0.1 for high determinism.
     If headers contain 'gold', 'silver', 'bronze', the table_intent is 'LEADERBOARD'.
 11. If a column is named exactly 'TOTAL' and values are integers, prefer INTEGER over CURRENCY unless there is strong 'SALES' or 'FINANCIAL' intent.
+12. PERCENT detection: If values contain '%' suffix, OR column name contains 'rate', 'margin', 'ratio', 'percentage', 'pct', AND values are between 0-100 => PERCENT.
+13. BOOLEAN detection: If a column has only two distinct values like true/false, yes/no, 0/1, Y/N, T/F => BOOLEAN with high confidence.
+14. DECIMAL vs CURRENCY: Numeric columns with decimal points should be DECIMAL unless the column name strongly implies money. Do NOT classify generic decimal numbers as CURRENCY.
+15. DATE detection: Look for value patterns like YYYY-MM-DD, MM/DD/YYYY, DD-Mon-YYYY, ISO 8601 timestamps, or Excel serial dates (large integers 30000-60000). Column names with 'date', 'time', 'created', 'updated', 'timestamp' => DATE.
+16. EMAIL detection: Values containing '@' followed by a domain => TEXT (but note it in confidence context).
+17. PHONE detection: Values matching phone patterns (digits with +, -, spaces, parentheses, 7-15 chars) => TEXT.
+18. Analyze ALL sample rows to find patterns — do not rely on just the first row. If most values match a type but a few are empty or null, still classify by the dominant pattern.
   `;
 
   const inputContext = {
@@ -640,16 +717,41 @@ Rules:
 - For conditional columns, parse the if-then-else logic carefully
 - For filters, determine if it's text-based (contains, equals) or number-based (greater than, less than)
 - Be intelligent about interpreting user intent
+- Use the Column Types information (if provided) to understand which columns are numeric (CURRENCY, INTEGER, DECIMAL, PERCENT) vs text (TEXT) vs date (DATE). This helps you choose correct operations and value types.
+
+CHAIN-OF-THOUGHT REASONING FOR COMPLEX REQUESTS:
+When a user request involves multiple steps, decompose it into individual atomic operations and return them in the correct execution order. Each operation should be self-contained.
+
+Multi-step decomposition rules:
+- If the user says "do X and then Y" or "do X, then Y", return two separate operations in order.
+- If a request combines extraction + filtering (e.g., "extract year from date and filter to 2023"), return a datetime_extract FIRST, then a filter operation.
+- If a request combines formatting + renaming (e.g., "uppercase region and rename to Territory"), return a format operation FIRST, then rename.
+- For compound calculations like "(A / B) * 100", return one calculated_column with columnA=A, columnB=B, operation=divide, then a second calculated_column multiplying the result by 100 with useManualValue=true, manualValue=100.
+- For multi-condition categorizations (e.g., "if sales > 1000 High, if sales > 500 Medium, else Low"), use a single conditional_column with MULTIPLE clauses ordered from most specific to least specific.
+
+DISAMBIGUATION RULES:
+- When the request is ambiguous, ALWAYS attempt the most likely interpretation rather than returning empty operations.
+- If the user mentions a column that doesn't exactly match but is close (e.g., "sales" when column is "Total Sales"), match to the closest available column.
+- If the user asks to "calculate" or "compute" something, default to calculated_column.
+- If the user asks to "categorize", "classify", "bucket", or "group into", default to conditional_column.
+- If the user asks to "show only", "keep only", "remove rows where", default to filter.
 
 Examples:
+Simple:
 - "multiply sales by profit" → calculated_column with columnA=Sales, columnB=Profit, operation=multiply
-- "create column profit_margin by dividing profit by sales and multiply by 100" → calculated_column operations
 - "if sales > 1000 then High else Low" → conditional_column
 - "uppercase the region column" → format with formatType=upper
 - "filter region by North" → filter with text values
 - "sort by order date descending" → sort with direction=desc
 - "extract year from order date" → datetime_extract with extract=year
 - "replace North with Sample in region" → find_replace
+
+Complex (multi-step):
+- "create column profit_margin by dividing profit by sales and multiply by 100" → TWO operations: 1) calculated_column name="Profit Margin" columnA=Profit, columnB=Sales, operation=divide; 2) calculated_column name="Profit Margin" columnA=Profit Margin, useManualValue=true, manualValue=100, operation=multiply
+- "extract year from order date and filter to 2023" → TWO operations: 1) datetime_extract column=Order Date, extract=year; 2) filter column="Order Date - Year", filterType=number, numberOp=equals, numberVal=2023
+- "uppercase region and rename it to Territory" → TWO operations: 1) format column=Region, formatType=upper; 2) rename column=Region, newName=Territory
+- "if sales > 1000 categorize as High, if sales > 500 then Medium, else Low" → ONE conditional_column with clauses [{column=Sales, operator=greater_than, value="1000", output="High"}, {column=Sales, operator=greater_than, value="500", output="Medium"}], elseOutput="Low"
+- "remove all empty rows in customer name and sort by sales descending" → TWO operations: 1) filter column=Customer Name, filterType=text (exclude blanks); 2) sort column=Sales, direction=desc
 `;
 
 const dataPrepSchema = {
@@ -787,21 +889,52 @@ export const parseDataPreparationPrompt = async (
   numericColumns: string[],
   categoricalColumns: string[],
   sampleData: any[],
-  prompt: string
+  prompt: string,
+  columnMetadata?: { [key: string]: { detectedType?: string; finalType?: string; confidence?: number } }
 ): Promise<DataPrepAIResponse> => {
+  // Build column type context from metadata if available
+  const columnTypeContext = columnMetadata
+    ? columns.map(col => {
+        const meta = columnMetadata[col];
+        if (!meta) return `  - ${col}: (no type info)`;
+        return `  - ${col}: ${meta.finalType || meta.detectedType || 'UNKNOWN'} (confidence: ${Math.round((meta.confidence || 0) * 100)}%)`;
+      }).join('\n')
+    : 'No column type information available.';
+
+  // Build unique values summary for categorical columns (top 5 values per column)
+  const uniqueValuesSummary = categoricalColumns.slice(0, 8).map(col => {
+    const seen = new Set<string>();
+    const values: string[] = [];
+    for (const row of sampleData.slice(0, 50)) {
+      const v = String(row[col] ?? '');
+      if (v && !seen.has(v) && values.length < 5) {
+        seen.add(v);
+        values.push(v);
+      }
+    }
+    return `  - ${col}: [${values.join(', ')}]`;
+  }).join('\n');
+
   const context = `
 Available Columns: ${columns.join(', ')}
 Numeric Columns: ${numericColumns.join(', ')}
 Categorical/Text Columns: ${categoricalColumns.join(', ')}
 
-Sample Data (first 3 rows):
-${JSON.stringify(sampleData.slice(0, 3), null, 2)}
+Column Types (AI-detected):
+${columnTypeContext}
+
+Sample Unique Values (Categorical Columns):
+${uniqueValuesSummary}
+
+Sample Data (first 5 rows):
+${JSON.stringify(sampleData.slice(0, 5), null, 2)}
 
 User Request: "${prompt}"
 
 Parse this request and return the appropriate data preparation operations.
 Match column names to the available columns (case-insensitive matching, but return exact column name).
-If multiple operations are needed, return them in order of execution.
+If multiple operations are needed, decompose the request into atomic operations and return them in the correct execution order.
+Do NOT ask for clarification — always attempt the most reasonable interpretation of the request.
   `;
 
   try {

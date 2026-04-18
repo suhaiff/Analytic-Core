@@ -185,7 +185,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
         const runAudit = async () => {
             setIsAuditing(true);
             try {
-                const sampleRows = mergedData.slice(0, 5);
+                const sampleRows = mergedData.slice(0, 10);
                 const result = await performSchemaAudit(
                     dashboardTitle || fileName,
                     mergedColumns,

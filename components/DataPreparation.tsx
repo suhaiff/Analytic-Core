@@ -909,7 +909,8 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                 numericCols,
                 categoricalCols,
                 mergedData,
-                aiPrompt
+                aiPrompt,
+                columnMetadata
             );
             
             setAiResponse(response);
@@ -922,7 +923,7 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
         } finally {
             setAiLoading(false);
         }
-    }, [aiPrompt, aiLoading, mergedColumns, mergedData, detectNumericColumns, detectCategoricalColumns]);
+    }, [aiPrompt, aiLoading, mergedColumns, mergedData, columnMetadata, detectNumericColumns, detectCategoricalColumns]);
 
     const executeAiOperation = useCallback((op: DataPrepOperation) => {
         // Save snapshot before any operation
@@ -1193,11 +1194,248 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
 
     const executeAllAiOperations = useCallback(() => {
         if (!aiResponse?.operations.length) return;
-        aiResponse.operations.forEach(op => executeAiOperation(op));
+
+        // Save a single snapshot before applying all operations
+        setActionHistory(prev => [...prev, {
+            id: String(Date.now()),
+            label: `AI: ${aiResponse.operations.length} operation(s)`,
+            icon: 'ai',
+            data: [...mergedData],
+            columns: [...mergedColumns],
+            addedCols: [...addedColumns]
+        }]);
+
+        // Apply all operations sequentially on an accumulator
+        // This ensures each operation sees the result of the previous one
+        let accData = [...mergedData];
+        let accColumns = [...mergedColumns];
+        let accAdded = [...addedColumns];
+
+        const MONTH_NAMES_AI = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        const DAY_NAMES_AI = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+        for (const op of aiResponse.operations) {
+            switch (op.operationType) {
+                case 'calculated_column': {
+                    const calc = op.calculatedColumn;
+                    if (!calc) break;
+                    let colName = calc.name;
+                    let i = 2;
+                    while (accColumns.includes(colName)) { colName = `${calc.name} (${i})`; i++; }
+                    accData = accData.map(row => {
+                        const cleanA = String(row[calc.columnA] ?? '').replace(/[$€£₹,]/g, '').trim();
+                        const numA = Number(cleanA) || 0;
+                        let numB: number;
+                        if (calc.useManualValue && calc.manualValue !== undefined) {
+                            numB = calc.manualValue;
+                        } else {
+                            const cleanB = String(row[calc.columnB || ''] ?? '').replace(/[$€£₹,]/g, '').trim();
+                            numB = Number(cleanB) || 0;
+                        }
+                        let result: any;
+                        switch (calc.operation) {
+                            case 'add': result = numA + numB; break;
+                            case 'subtract': result = numA - numB; break;
+                            case 'multiply': result = numA * numB; break;
+                            case 'divide': result = numB !== 0 ? numA / numB : 0; break;
+                            case 'concat': result = String(row[calc.columnA] ?? '') + String(calc.useManualValue ? calc.manualValue : row[calc.columnB || ''] ?? ''); break;
+                            default: result = 0;
+                        }
+                        return { ...row, [colName]: result };
+                    });
+                    accColumns = [...accColumns, colName];
+                    accAdded = [...accAdded, colName];
+                    break;
+                }
+                case 'conditional_column': {
+                    const cond = op.conditionalColumn;
+                    if (!cond) break;
+                    let colName = cond.name;
+                    let i = 2;
+                    while (accColumns.includes(colName)) { colName = `${cond.name} (${i})`; i++; }
+                    accData = accData.map(row => {
+                        let result: string | number = cond.elseOutputType === 'number' ? Number(cond.elseOutput) || 0 : cond.elseOutput;
+                        for (const clause of cond.clauses) {
+                            const cellValue = row[clause.column];
+                            const isNumeric = clause.valueType === 'number';
+                            const cellNum = Number(String(cellValue).replace(/[$€£₹,]/g, ''));
+                            const valNum = Number(clause.value);
+                            let matches = false;
+                            switch (clause.operator) {
+                                case 'equals': matches = isNumeric ? cellNum === valNum : String(cellValue) === clause.value; break;
+                                case 'not_equals': matches = isNumeric ? cellNum !== valNum : String(cellValue) !== clause.value; break;
+                                case 'greater_than': matches = cellNum > valNum; break;
+                                case 'less_than': matches = cellNum < valNum; break;
+                                case 'greater_than_or_equal': matches = cellNum >= valNum; break;
+                                case 'less_than_or_equal': matches = cellNum <= valNum; break;
+                                case 'contains': matches = String(cellValue).toLowerCase().includes(clause.value.toLowerCase()); break;
+                                case 'begins_with': matches = String(cellValue).toLowerCase().startsWith(clause.value.toLowerCase()); break;
+                                case 'ends_with': matches = String(cellValue).toLowerCase().endsWith(clause.value.toLowerCase()); break;
+                            }
+                            if (matches) {
+                                result = clause.outputType === 'number' ? Number(clause.output) || 0 : clause.output;
+                                break;
+                            }
+                        }
+                        return { ...row, [colName]: result };
+                    });
+                    accColumns = [...accColumns, colName];
+                    accAdded = [...accAdded, colName];
+                    break;
+                }
+                case 'filter': {
+                    const filter = op.filter;
+                    if (!filter) break;
+                    if (filter.filterType === 'text' && filter.textValues) {
+                        const textSet = new Set(filter.textValues.map(v => v.toLowerCase()));
+                        setActiveFilters(prev => {
+                            const rest = prev.filter(f => f.column !== filter.column);
+                            return [...rest, {
+                                column: filter.column,
+                                type: 'text',
+                                checkedValues: new Set(accData.map(r => String(r[filter.column] ?? '')).filter(v => textSet.has(v.toLowerCase())))
+                            }];
+                        });
+                    } else if (filter.filterType === 'number' && filter.numberOp) {
+                        setActiveFilters(prev => {
+                            const rest = prev.filter(f => f.column !== filter.column);
+                            return [...rest, {
+                                column: filter.column,
+                                type: 'number',
+                                numberOp: filter.numberOp,
+                                numberVal: String(filter.numberVal ?? ''),
+                                numberVal2: String(filter.numberVal2 ?? '')
+                            }];
+                        });
+                    }
+                    break; // filters apply via state, don't modify accData
+                }
+                case 'sort': {
+                    const sort = op.sort;
+                    if (!sort) break;
+                    setSortConfig({ col: sort.column, dir: sort.direction });
+                    break; // sort applies via state
+                }
+                case 'format': {
+                    const fmt = op.format;
+                    if (!fmt) break;
+                    const transform = (v: any): any => {
+                        if (typeof v !== 'string') return v;
+                        switch (fmt.formatType) {
+                            case 'upper': return v.toUpperCase();
+                            case 'lower': return v.toLowerCase();
+                            case 'title': return v.replace(/\b\w/g, c => c.toUpperCase());
+                            case 'capitalize': return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+                            default: return v;
+                        }
+                    };
+                    accData = accData.map(r => ({ ...r, [fmt.column]: transform(r[fmt.column]) }));
+                    break;
+                }
+                case 'find_replace': {
+                    const fr = op.findReplace;
+                    if (!fr) break;
+                    accData = accData.map(r => {
+                        const val = r[fr.column];
+                        if (typeof val === 'string') return { ...r, [fr.column]: val.split(fr.find).join(fr.replace) };
+                        if (val !== null && val !== undefined && String(val) === fr.find) return { ...r, [fr.column]: fr.replace };
+                        return r;
+                    });
+                    break;
+                }
+                case 'split': {
+                    const split = op.split;
+                    if (!split) break;
+                    const maxParts = accData.reduce((max, r) => Math.max(max, String(r[split.column] ?? '').split(split.delimiter).length), 0);
+                    const newColNames = Array.from({ length: maxParts }, (_, i) => `${split.column}.${i + 1}`);
+                    const usedNames = newColNames.map(n => { let name = n; let j = 2; while (accColumns.includes(name)) { name = `${n} (${j})`; j++; } return name; });
+                    accData = accData.map(r => {
+                        const parts = String(r[split.column] ?? '').split(split.delimiter);
+                        const extra: any = {};
+                        usedNames.forEach((name, i) => { extra[name] = parts[i] !== undefined ? parts[i].trim() : ''; });
+                        return { ...r, ...extra };
+                    });
+                    accColumns = [...accColumns, ...usedNames];
+                    accAdded = [...accAdded, ...usedNames];
+                    break;
+                }
+                case 'duplicate': {
+                    const dup = op.duplicate;
+                    if (!dup) break;
+                    let newName = dup.newName || `Copy of ${dup.column}`;
+                    let i = 2;
+                    while (accColumns.includes(newName)) { newName = `${dup.newName || `Copy of ${dup.column}`} (${i})`; i++; }
+                    accData = accData.map(r => ({ ...r, [newName]: r[dup.column] }));
+                    accColumns = [...accColumns, newName];
+                    accAdded = [...accAdded, newName];
+                    break;
+                }
+                case 'datetime_extract': {
+                    const dt = op.datetimeExtract;
+                    if (!dt) break;
+                    const extractLabel = dt.extract.charAt(0).toUpperCase() + dt.extract.slice(1).replace('_', ' ');
+                    let newName = `${dt.column} - ${extractLabel}`;
+                    let i = 2;
+                    while (accColumns.includes(newName)) { newName = `${dt.column} - ${extractLabel} (${i})`; i++; }
+                    accData = accData.map(r => {
+                        const d = new Date(r[dt.column]);
+                        let extracted: any = '';
+                        if (!isNaN(d.getTime())) {
+                            switch (dt.extract) {
+                                case 'year': extracted = d.getFullYear(); break;
+                                case 'quarter': extracted = `Q${Math.ceil((d.getMonth() + 1) / 3)}`; break;
+                                case 'month': extracted = d.getMonth() + 1; break;
+                                case 'month_name': extracted = MONTH_NAMES_AI[d.getMonth()]; break;
+                                case 'day': extracted = d.getDate(); break;
+                                case 'day_name': extracted = DAY_NAMES_AI[d.getDay()]; break;
+                                case 'hour': extracted = d.getHours(); break;
+                            }
+                        }
+                        return { ...r, [newName]: extracted };
+                    });
+                    accColumns = [...accColumns, newName];
+                    accAdded = [...accAdded, newName];
+                    break;
+                }
+                case 'trim': {
+                    const trim = op.trim;
+                    if (!trim) break;
+                    accData = accData.map(r => ({ ...r, [trim.column]: typeof r[trim.column] === 'string' ? r[trim.column].trim() : r[trim.column] }));
+                    break;
+                }
+                case 'rename': {
+                    const rename = op.rename;
+                    if (!rename || accColumns.includes(rename.newName)) break;
+                    accData = accData.map(row => {
+                        const newRow = { ...row };
+                        newRow[rename.newName] = newRow[rename.column];
+                        delete newRow[rename.column];
+                        return newRow;
+                    });
+                    accColumns = accColumns.map(c => c === rename.column ? rename.newName : c);
+                    if (accAdded.includes(rename.column)) {
+                        accAdded = accAdded.map(c => c === rename.column ? rename.newName : c);
+                    }
+                    break;
+                }
+                case 'remove': {
+                    const remove = op.remove;
+                    if (!remove) break;
+                    accColumns = accColumns.filter(c => c !== remove.column);
+                    accData = accData.map(r => { const rr = { ...r }; delete rr[remove.column]; return rr; });
+                    accAdded = accAdded.filter(c => c !== remove.column);
+                    break;
+                }
+            }
+        }
+
+        // Apply all accumulated changes in a single update
+        setAddedColumns(accAdded);
+        onDataChange(accData, accColumns);
         setAiResponse(null);
         setAiPrompt('');
         setShowAiPanel(false);
-    }, [aiResponse, executeAiOperation]);
+    }, [aiResponse, mergedData, mergedColumns, addedColumns, onDataChange]);
 
     // ─── Render ─────────────────────────────────────────────────────────────
 

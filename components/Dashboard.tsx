@@ -1493,6 +1493,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     // Ref to prevent the prop-sync useEffect from overwriting local state after a self-save
     const isSelfSaveRef = useRef(false);
 
+    // --- Save Modal State ---
+    const [dashboardName, setDashboardName] = useState(dataModel?.name || 'Untitled Dashboard');
+    const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+    const [overwriteMatch, setOverwriteMatch] = useState<SavedDashboard | null>(null);
+    const [saveDestination, setSaveDestination] = useState<'personal' | 'workspace'>('personal');
+    const [selectedFolderId, setSelectedFolderId] = useState('');
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
     // --- FONT CUSTOMIZATION STATE ---
     const [showFontToolbar, setShowFontToolbar] = useState(false);
     const [fontFamily, setFontFamily] = useState('Inter');
