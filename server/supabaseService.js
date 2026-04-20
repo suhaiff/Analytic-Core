@@ -1853,7 +1853,7 @@ class SupabaseService {
 
     // ==================== Scheduled Refresh ====================
 
-    async createRefreshSchedule(dashboardId, userId, sourceType, sourceCredentials, refreshFrequency, refreshTimeUtc, refreshDay = null) {
+    async createRefreshSchedule(dashboardId, userId, sourceType, sourceCredentials, refreshFrequency, refreshTimeUtc, refreshDay = null, timezone = 'Asia/Kolkata', refreshMonthDay = null) {
         try {
             const { data, error } = await this.supabase
                 .from('dashboard_refresh_schedules')
@@ -1865,6 +1865,8 @@ class SupabaseService {
                     refresh_frequency: refreshFrequency,
                     refresh_time_utc: refreshTimeUtc,
                     refresh_day: refreshDay,
+                    timezone: timezone,
+                    refresh_month_day: refreshMonthDay,
                     is_active: true,
                     updated_at: new Date().toISOString()
                 }], { onConflict: 'dashboard_id' })

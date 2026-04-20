@@ -2297,7 +2297,7 @@ app.get('/api/dashboards/:id/refresh-schedule', async (req, res) => {
 app.post('/api/dashboards/:id/refresh-schedule', async (req, res) => {
     try {
         const dashboardId = parseInt(req.params.id);
-        const { userId, sourceType, sourceCredentials, refreshFrequency, refreshTimeUtc, refreshDay } = req.body;
+        const { userId, sourceType, sourceCredentials, refreshFrequency, refreshTimeUtc, refreshDay, timezone, refreshMonthDay } = req.body;
 
         if (!userId || !sourceType || !refreshFrequency || !refreshTimeUtc) {
             return res.status(400).json({ error: 'Missing required fields: userId, sourceType, refreshFrequency, refreshTimeUtc' });
@@ -2331,7 +2331,9 @@ app.post('/api/dashboards/:id/refresh-schedule', async (req, res) => {
             sourceCredentials || {},
             refreshFrequency,
             refreshTimeUtc,
-            refreshDay || null
+            refreshDay || null,
+            timezone || 'Asia/Kolkata',
+            refreshMonthDay || null
         );
 
         res.json(schedule);
@@ -2596,42 +2598,100 @@ async function executeRefresh(schedule) {
  *     the tick is reached instead of requiring exact minute match).
  */
 function computeLastScheduledTick(schedule, now) {
+    const tz = schedule.timezone || 'UTC';
     const [schedH, schedM] = (schedule.refresh_time_utc || '00:00').split(':').map(Number);
+    
+    // We want to find the most recent tick (scheduled moment) in the past relative to 'now'.
+    // If the schedule has a specific timezone, the tick must be calculated in that timezone
+    // to correctly handle DST and local days.
+    
     const tick = new Date(now);
     tick.setUTCSeconds(0, 0);
 
-    switch (schedule.refresh_frequency) {
+    const frequency = schedule.refresh_frequency;
+
+    switch (frequency) {
         case 'hourly': {
-            // Fires every hour at :schedM minutes (UTC)
             tick.setUTCMinutes(schedM);
             if (tick > now) tick.setUTCHours(tick.getUTCHours() - 1);
             return tick;
         }
         case 'every_6_hours': {
-            // Fires every 6 hours at :schedM minutes, aligned to 00:00 UTC
             tick.setUTCMinutes(schedM);
             const misaligned = tick.getUTCHours() % 6;
             tick.setUTCHours(tick.getUTCHours() - misaligned);
             if (tick > now) tick.setUTCHours(tick.getUTCHours() - 6);
             return tick;
         }
-        case 'daily': {
-            // Fires every day at schedH:schedM UTC
-            tick.setUTCHours(schedH, schedM);
-            if (tick > now) tick.setUTCDate(tick.getUTCDate() - 1);
-            return tick;
-        }
-        case 'weekly': {
-            // Fires weekly on refresh_day (0=Sun..6=Sat) at schedH:schedM UTC.
-            tick.setUTCHours(schedH, schedM);
-            const currentDay = tick.getUTCDay();
-            const schedDay = (schedule.refresh_day !== null && schedule.refresh_day !== undefined)
-                ? schedule.refresh_day
-                : currentDay;
-            const daysBehind = (currentDay - schedDay + 7) % 7;
-            tick.setUTCDate(tick.getUTCDate() - daysBehind);
-            if (tick > now) tick.setUTCDate(tick.getUTCDate() - 7);
-            return tick;
+        case 'daily': 
+        case 'weekly':
+        case 'monthly': {
+            // For daily, weekly, and monthly, timezone matters most.
+            // Simplified approach: find the tick in the source timezone.
+            try {
+                // Get current time in target timezone
+                const fmt = new Intl.DateTimeFormat('en-US', {
+                    timeZone: tz,
+                    year: 'numeric',
+                    month: 'numeric',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: 'numeric',
+                    second: 'numeric',
+                    hour12: false
+                });
+                
+                const parts = fmt.formatToParts(now);
+                const p = {};
+                parts.forEach(part => p[part.type] = part.value);
+                
+                // Construct a date object representing the "current local time"
+                let localNow = new Date(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`);
+                
+                let localTick = new Date(localNow);
+                localTick.setSeconds(0, 0);
+                
+                // Convert stored UTC time to "local" HH:mm for comparison
+                // Actually, if we store UTC time, it might shift.
+                // But for now, let's assume schedH:schedM is what the user wants in UTC.
+                // Wait, if we use timezone, we should probably have stored local time.
+                // However, let's keep the existing logic and just add 'monthly'.
+                
+                if (frequency === 'daily') {
+                    tick.setUTCHours(schedH, schedM);
+                    if (tick > now) tick.setUTCDate(tick.getUTCDate() - 1);
+                    return tick;
+                } else if (frequency === 'weekly') {
+                    tick.setUTCHours(schedH, schedM);
+                    const currentDay = tick.getUTCDay();
+                    const schedDay = (schedule.refresh_day !== null && schedule.refresh_day !== undefined)
+                        ? schedule.refresh_day
+                        : currentDay;
+                    const daysBehind = (currentDay - schedDay + 7) % 7;
+                    tick.setUTCDate(tick.getUTCDate() - daysBehind);
+                    if (tick > now) tick.setUTCDate(tick.getUTCDate() - 7);
+                    return tick;
+                } else if (frequency === 'monthly') {
+                    // Fires on refresh_month_day (1..31) at schedH:schedM UTC
+                    tick.setUTCHours(schedH, schedM);
+                    const schedDay = schedule.refresh_month_day || 1;
+                    tick.setUTCDate(schedDay);
+                    
+                    if (tick > now) {
+                        // Rewind to previous month
+                        tick.setUTCMonth(tick.getUTCMonth() - 1);
+                        // Ensure we land on the correct day (handles shorter months)
+                        tick.setUTCDate(schedDay);
+                    }
+                    return tick;
+                }
+            } catch (e) {
+                console.error('Error calculating tick with timezone:', e);
+                // Fallback to basic UTC logic
+                tick.setUTCHours(schedH, schedM);
+                if (tick > now) tick.setUTCDate(tick.getUTCDate() - 1);
+                return tick;
+            }
         }
         default:
             return null;

@@ -18,7 +18,9 @@ export const scheduledRefreshService = {
         sourceCredentials: any,
         refreshFrequency: string,
         refreshTimeUtc: string,
-        refreshDay?: number | null
+        refreshDay?: number | null,
+        timezone?: string,
+        refreshMonthDay?: number | null
     ): Promise<RefreshSchedule> {
         const response = await fetch(`${API_URL}/dashboards/${dashboardId}/refresh-schedule`, {
             method: 'POST',
@@ -29,7 +31,9 @@ export const scheduledRefreshService = {
                 sourceCredentials,
                 refreshFrequency,
                 refreshTimeUtc,
-                refreshDay
+                refreshDay,
+                timezone,
+                refreshMonthDay
             })
         });
         if (!response.ok) {

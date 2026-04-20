@@ -635,6 +635,7 @@ function AppContent() {
             user={currentUser}
             workspaceFolders={workspaceFolders}
             onFoldersChange={() => { if (currentUser) loadWorkspaceFolders(currentUser.id); }}
+            onDashboardsChange={() => { if (currentUser) loadUserDashboards(currentUser.id); }}
           />
         )}
 

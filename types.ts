@@ -149,9 +149,11 @@ export interface RefreshSchedule {
   user_id: number;
   source_type: 'google_sheet' | 'sql_database' | 'sharepoint';
   source_credentials: any;
-  refresh_frequency: 'hourly' | 'every_6_hours' | 'daily' | 'weekly';
+  refresh_frequency: 'hourly' | 'every_6_hours' | 'daily' | 'weekly' | 'monthly';
   refresh_time_utc: string;
   refresh_day?: number | null;
+  timezone?: string;
+  refresh_month_day?: number | null;
   is_active: boolean;
   last_refreshed_at?: string | null;
   last_refresh_status?: 'success' | 'failed' | 'running' | null;

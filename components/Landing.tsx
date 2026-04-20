@@ -7,8 +7,73 @@ import { dashboardAccessService } from '../services/dashboardAccessService';
 import { scheduledRefreshService } from '../services/scheduledRefreshService';
 import { FolderModal } from './workspace/FolderModal';
 import { ScheduledRefreshModal } from './workspace/ScheduledRefreshModal';
+import { dashboardService } from '../services/dashboardService';
 
-const DashboardCard = ({ dash, colors, theme, onLoad, onDelete, user, onScheduleClick, scheduleMap }: { dash: SavedDashboard, colors: any, theme: string, onLoad: (d: SavedDashboard, role?: AccessLevel | null) => void, onDelete?: (id: string) => void, key?: string, user?: User | null, onScheduleClick?: (dash: SavedDashboard) => void, scheduleMap?: Record<string, RefreshSchedule> }) => {
+const DashboardCard = ({ dash, colors, theme, onLoad, onDelete, onRename, user, onScheduleClick, scheduleMap }: { 
+  dash: SavedDashboard, 
+  colors: any, 
+  theme: string, 
+  onLoad: (d: SavedDashboard, role?: AccessLevel | null) => void, 
+  onDelete?: (id: string) => void, 
+  onRename?: (id: string, newName: string) => Promise<void>,
+  key?: string, 
+  user?: User | null, 
+  onScheduleClick?: (dash: SavedDashboard) => void, 
+  scheduleMap?: Record<string, RefreshSchedule> 
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(dash.name);
+  const [isSaving, setIsSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const titleClickTimer = useRef<NodeJS.Timeout | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      // Cleanup timer on unmount
+      if (titleClickTimer.current) clearTimeout(titleClickTimer.current);
+    };
+  }, []);
+
+
+  React.useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleRename = async () => {
+    const trimmedName = editName.trim();
+    if (!trimmedName || trimmedName === dash.name) {
+      setIsEditing(false);
+      setEditName(dash.name);
+      return;
+    }
+
+    if (onRename) {
+      setIsSaving(true);
+      try {
+        await onRename(dash.id, trimmedName);
+        setIsEditing(false);
+      } catch (err) {
+        setEditName(dash.name);
+        setIsEditing(false);
+      } finally {
+        setIsSaving(false);
+      }
+    } else {
+      setIsEditing(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleRename();
+    if (e.key === 'Escape') {
+      setIsEditing(false);
+      setEditName(dash.name);
+    }
+  };
+
   const isLiveSource = ['google_sheet', 'sql_database', 'sharepoint'].includes(dash.dataModel?.sourceType || '');
   const canManageSchedule = user && (user.role === 'ADMIN' || user.is_superuser || dash.user_id === user.id);
   const showScheduleBtn = isLiveSource && canManageSchedule;
@@ -71,9 +136,47 @@ const DashboardCard = ({ dash, colors, theme, onLoad, onDelete, user, onSchedule
     </div>
 
     <div className="space-y-1 mb-6">
-      <h3 className={`text-lg font-bold ${colors.textPrimary} group-hover:text-indigo-400 transition-colors duration-300 line-clamp-1`}>
-        {dash.name}
-      </h3>
+      <div 
+        className="relative group/title"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isEditing) return;
+          
+          if (titleClickTimer.current) {
+            clearTimeout(titleClickTimer.current);
+            titleClickTimer.current = null;
+            // This is a double click
+            const canEdit = !dash.shared_access_level || dash.shared_access_level === 'EDIT' || dash.shared_access_level === 'CO_OWNER';
+            if (canEdit) setIsEditing(true);
+          } else {
+            // First click: set timer
+            titleClickTimer.current = setTimeout(() => {
+              onLoad(dash);
+              titleClickTimer.current = null;
+            }, 250);
+          }
+        }}
+      >
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={handleKeyDown}
+            disabled={isSaving}
+            className={`w-full bg-transparent border-b-2 border-indigo-500 text-lg font-bold ${colors.textPrimary} outline-none py-0.5 animate-pulse-subtle`}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <h3 className={`text-lg font-bold ${colors.textPrimary} group-hover:text-indigo-400 transition-colors duration-300 line-clamp-1`}>
+            {dash.name}
+          </h3>
+        )}
+      </div>
+
+
       <div className={`flex items-center gap-2 ${colors.textMuted} text-xs font-medium`}>
         <Clock className="w-3.5 h-3.5" />
         <span>{dash.date}</span>
@@ -127,10 +230,12 @@ interface LandingProps {
   onNavigateToAdmin?: () => void;
   workspaceFolders?: WorkspaceFolder[];
   onFoldersChange?: () => void;
+  onDashboardsChange?: () => void;
   user: User | null;
 }
 
-export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImport, onSharePointImport, onSqlDatabaseImport, savedDashboards, onLoadDashboard, onDeleteDashboard, onLogout, onNavigateToAdmin, workspaceFolders = [], onFoldersChange, user }) => {
+
+export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImport, onSharePointImport, onSqlDatabaseImport, savedDashboards, onLoadDashboard, onDeleteDashboard, onLogout, onNavigateToAdmin, workspaceFolders = [], onFoldersChange, onDashboardsChange, user }) => {
   const { theme } = useTheme();
   const colors = getThemeClasses(theme);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -243,6 +348,25 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
           alert(err.message || 'Failed to delete folder');
       }
   };
+
+  const handleRenameDashboard = async (id: string, newName: string) => {
+    const dash = [...savedDashboards, ...folderDashboards, ...sharedDashboards].find(d => d.id === id);
+    if (!dash) return;
+
+    try {
+      await dashboardService.updateDashboard(id, {
+        ...dash,
+        name: newName
+      });
+      if (onDashboardsChange) onDashboardsChange();
+    } catch (err: any) {
+      console.error('Failed to rename dashboard:', err);
+      // Fallback: if alert is not available, just log it
+      if (typeof alert !== 'undefined') alert(err.message || 'Failed to rename dashboard');
+      throw err;
+    }
+  };
+
 
   // UI State for Grouping
   const [showImportMenu, setShowImportMenu] = useState(false);
@@ -1128,7 +1252,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                     return (
                       <div className="saved-dashboards-grid">
                         {sharedDashboards.map((dash) => (
-                          <DashboardCard key={dash.id} dash={dash} colors={colors} theme={theme} onLoad={onLoadDashboard} user={user} onScheduleClick={(d) => setScheduleModalDash(d)} scheduleMap={dashboardSchedules} />
+                          <DashboardCard key={dash.id} dash={dash} colors={colors} theme={theme} onLoad={onLoadDashboard} onRename={handleRenameDashboard} user={user} onScheduleClick={(d) => setScheduleModalDash(d)} scheduleMap={dashboardSchedules} />
                         ))}
                       </div>
                     );
@@ -1162,7 +1286,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                     return (
                       <div className="saved-dashboards-grid">
                         {rootDashboards.map((dash) => (
-                          <DashboardCard key={dash.id} dash={dash} colors={colors} theme={theme} onLoad={(d) => onLoadDashboard(d, null)} onDelete={onDeleteDashboard} user={user} onScheduleClick={(d) => setScheduleModalDash(d)} scheduleMap={dashboardSchedules} />
+                          <DashboardCard key={dash.id} dash={dash} colors={colors} theme={theme} onLoad={(d) => onLoadDashboard(d, null)} onDelete={onDeleteDashboard} onRename={handleRenameDashboard} user={user} onScheduleClick={(d) => setScheduleModalDash(d)} scheduleMap={dashboardSchedules} />
                         ))}
                       </div>
                     );
@@ -1193,7 +1317,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
                     return (
                       <div className="saved-dashboards-grid">
                         {folderDashboards.map((dash) => (
-                          <DashboardCard key={dash.id} dash={dash} colors={colors} theme={theme} onLoad={(d) => onLoadDashboard(dash, currentFolderRole)} onDelete={canDelete ? onDeleteDashboard : undefined} user={user} onScheduleClick={(d) => setScheduleModalDash(d)} scheduleMap={dashboardSchedules} />
+                          <DashboardCard key={dash.id} dash={dash} colors={colors} theme={theme} onLoad={(d) => onLoadDashboard(dash, currentFolderRole)} onDelete={canDelete ? onDeleteDashboard : undefined} onRename={handleRenameDashboard} user={user} onScheduleClick={(d) => setScheduleModalDash(d)} scheduleMap={dashboardSchedules} />
                         ))}
                       </div>
                     );
