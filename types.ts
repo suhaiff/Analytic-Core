@@ -136,6 +136,39 @@ export interface ChartConfig {
   };
   fontFamily?: string; // Font type for this chart (default: Arial)
   fontSize?: number; // Font size for this chart
+
+  analytics?: AnalyticsLinesConfig; // Line-chart analytics (trendline, min/max/avg, forecast)
+}
+
+// ---- Line-chart analytics (Power BI-style options) ----
+export type AnalyticsLineStyleKind = 'solid' | 'dashed' | 'dotted';
+
+export interface AnalyticsLineStyle {
+  enabled?: boolean;
+  color?: string;          // hex color
+  transparency?: number;   // 0-100 (0 = fully opaque)
+  lineStyle?: AnalyticsLineStyleKind;
+  dataLabels?: boolean;
+}
+
+export type ForecastUnits = 'points' | 'days' | 'months' | 'years';
+
+export interface ForecastOptions extends AnalyticsLineStyle {
+  length?: number;            // how many units to forecast ahead
+  ignoreLast?: number;        // how many trailing points to exclude when fitting
+  units?: ForecastUnits;      // axis units used for forecast labels
+  confidenceLevel?: number;   // 50 / 75 / 85 / 90 / 95
+  bandColor?: string;         // color of the confidence band
+  bandTransparency?: number;  // 0-100 (higher = more transparent)
+  showConfidenceBand?: boolean;
+}
+
+export interface AnalyticsLinesConfig {
+  trendline?: AnalyticsLineStyle;
+  min?: AnalyticsLineStyle;
+  max?: AnalyticsLineStyle;
+  average?: AnalyticsLineStyle;
+  forecast?: ForecastOptions;
 }
 
 export interface DashboardSection {

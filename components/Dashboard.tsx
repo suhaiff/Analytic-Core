@@ -2,9 +2,9 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import {
     BarChart, Bar, LineChart, Line, PieChart, Pie, AreaChart, Area,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, Brush, LabelList,
-    ScatterChart, Scatter, ZAxis, ComposedChart
+    ScatterChart, Scatter, ZAxis, ComposedChart, ReferenceLine
 } from 'recharts';
-import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType, SavedDashboard, AccessLevel } from '../types';
+import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType, SavedDashboard, AccessLevel, AnalyticsLinesConfig } from '../types';
 import { aggregateData } from '../utils/aggregator';
 import {
     LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2,
@@ -22,7 +22,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { formatCurrency, formatCompactCurrency, isCurrencyColumn, isCountColumn, isDateTimeColumn, isExcelSerialDate, excelSerialToDate, smartFormat, formatDateForTick, getYear, getMonth, getDay, getMonthName } from '../utils/formatters';
 import { DashboardLoader } from './DashboardLoader';
 import { DashboardShareModal } from './DashboardShareModal';
-
+import { ChartAnalyticsModal } from './ChartAnalyticsModal';
 
 interface DashboardProps {
     dataModel: DataModel;
@@ -43,6 +43,160 @@ interface DashboardProps {
 
 // Vibrant dark mode palette
 const COLORS = ['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6', '#f97316', '#84cc16'];
+
+// ---- Line-chart analytics helpers (trendline, min/max/avg, forecast, CI) ----
+const ANALYTICS_INTERNAL_KEYS = ['__trend', '__forecast', '__forecastUpper', '__forecastLower'];
+
+const Z_SCORES: { [key: number]: number } = {
+    50: 0.674, 75: 1.150, 85: 1.440, 90: 1.645, 95: 1.960, 99: 2.576,
+};
+
+function linearRegression(points: { x: number; y: number }[]): { m: number; b: number; residualStd: number } {
+    if (points.length < 2) return { m: 0, b: points[0]?.y ?? 0, residualStd: 0 };
+    const n = points.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+    for (const p of points) { sumX += p.x; sumY += p.y; sumXY += p.x * p.y; sumXX += p.x * p.x; }
+    const meanX = sumX / n;
+    const meanY = sumY / n;
+    const denom = sumXX - n * meanX * meanX;
+    const m = denom === 0 ? 0 : (sumXY - n * meanX * meanY) / denom;
+    const b = meanY - m * meanX;
+    let ssr = 0;
+    for (const p of points) {
+        const pred = m * p.x + b;
+        ssr += (p.y - pred) * (p.y - pred);
+    }
+    const residualStd = n > 2 ? Math.sqrt(ssr / (n - 2)) : 0;
+    return { m, b, residualStd };
+}
+
+function tryParseDateValue(val: any): Date | null {
+    if (val === null || val === undefined || val === '') return null;
+    if (typeof val === 'number') {
+        if (val > 20000 && val < 80000) {
+            return new Date(Math.round((val - 25569) * 86400 * 1000));
+        }
+        const d = new Date(val);
+        if (!isNaN(d.getTime())) return d;
+    }
+    if (typeof val === 'string') {
+        const d = new Date(val);
+        if (!isNaN(d.getTime())) return d;
+    }
+    return null;
+}
+
+function computeForecastLabel(lastLabel: any, step: number, units: string): any {
+    if (units === 'points') {
+        return `${lastLabel ?? ''} +${step}`;
+    }
+    const baseDate = tryParseDateValue(lastLabel);
+    if (!baseDate) return `${lastLabel ?? ''} +${step}`;
+    const d = new Date(baseDate.getTime());
+    if (units === 'days') d.setDate(d.getDate() + step);
+    else if (units === 'months') d.setMonth(d.getMonth() + step);
+    else if (units === 'years') d.setFullYear(d.getFullYear() + step);
+    return d.toISOString().slice(0, 10);
+}
+
+export interface LineAnalyticsResult {
+    extendedData: any[];
+    summary: { min?: number; max?: number; average?: number };
+    forecastStartIndex: number | null;
+}
+
+export function computeLineAnalytics(
+    data: any[],
+    config: ChartConfig,
+    analytics: AnalyticsLinesConfig | undefined,
+): LineAnalyticsResult {
+    const xKey = config.xAxisKey;
+    const yKey = config.dataKey;
+    if (!data || data.length === 0) {
+        return { extendedData: data || [], summary: {}, forecastStartIndex: null };
+    }
+
+    // Clone so we can attach analytics fields without mutating upstream data
+    const working = data.map((d) => ({ ...d }));
+
+    // Compute summary stats on numeric y values
+    const numericY: number[] = [];
+    for (const row of working) {
+        const n = Number(row[yKey]);
+        if (!Number.isNaN(n) && Number.isFinite(n)) numericY.push(n);
+    }
+    const summary: { min?: number; max?: number; average?: number } = {};
+    if (numericY.length > 0) {
+        summary.min = Math.min(...numericY);
+        summary.max = Math.max(...numericY);
+        summary.average = numericY.reduce((a, b) => a + b, 0) / numericY.length;
+    }
+
+    // Trendline (linear regression over all original points)
+    let trend: { m: number; b: number; residualStd: number } | null = null;
+    const ignoreLast = Math.max(0, Math.min(working.length - 2, analytics?.forecast?.ignoreLast ?? 0));
+    const fitPoints = working
+        .slice(0, working.length - ignoreLast)
+        .map((row, i) => ({ x: i, y: Number(row[yKey]) }))
+        .filter((p) => !Number.isNaN(p.y) && Number.isFinite(p.y));
+
+    if (analytics?.trendline?.enabled || analytics?.forecast?.enabled) {
+        if (fitPoints.length >= 2) {
+            trend = linearRegression(fitPoints);
+        }
+    }
+
+    if (analytics?.trendline?.enabled && trend) {
+        working.forEach((row, i) => { row.__trend = trend!.m * i + trend!.b; });
+    }
+
+    // Forecast
+    let forecastStartIndex: number | null = null;
+    let extendedData: any[] = working;
+
+    if (analytics?.forecast?.enabled && trend) {
+        const len = Math.max(0, Math.floor(analytics.forecast.length ?? 10));
+        const units = analytics.forecast.units || 'points';
+        const confLevel = analytics.forecast.confidenceLevel ?? 95;
+        const z = Z_SCORES[confLevel] ?? 1.96;
+        const residualStd = trend.residualStd;
+
+        if (len > 0) {
+            const lastIdx = working.length - 1;
+            const lastLabel = working[lastIdx]?.[xKey];
+
+            // Anchor forecast line at the last actual point so visually it continues
+            if (working[lastIdx]) {
+                const lastY = Number(working[lastIdx][yKey]);
+                if (!Number.isNaN(lastY)) {
+                    working[lastIdx].__forecast = lastY;
+                    working[lastIdx].__forecastUpper = lastY;
+                    working[lastIdx].__forecastLower = lastY;
+                }
+            }
+
+            forecastStartIndex = working.length;
+            for (let step = 1; step <= len; step++) {
+                const xIndex = lastIdx + step;
+                const yPred = trend.m * xIndex + trend.b;
+                // Widen CI as we go further from the fit range
+                const widening = residualStd * Math.sqrt(1 + step / Math.max(1, fitPoints.length));
+                const band = z * widening;
+                extendedData.push({
+                    [xKey]: computeForecastLabel(lastLabel, step, units),
+                    [yKey]: null,
+                    __trend: analytics?.trendline?.enabled ? yPred : undefined,
+                    __forecast: yPred,
+                    __forecastUpper: yPred + band,
+                    __forecastLower: yPred - band,
+                    __isForecast: true,
+                });
+            }
+        }
+    }
+
+    return { extendedData, summary, forecastStartIndex };
+}
 
 const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true, columnMetadata, columnCurrencies, isExporting = false, fontSettings }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean, columnMetadata?: any, columnCurrencies?: { [key: string]: string }, isExporting?: boolean, fontSettings?: { fontFamily: string, fontSize: number, isBold: boolean, isItalic: boolean } }) => {
     const colors = getThemeClasses(theme);
@@ -146,6 +300,12 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
     const fsLegendSize = fontSettings ? Math.max(9, fontSettings.fontSize - 3) : undefined;
 
     // Custom Tooltip Content
+    const ANALYTICS_LABELS: { [key: string]: string } = {
+        __trend: 'Trend',
+        __forecast: 'Forecast',
+        __forecastUpper: 'Upper bound',
+        __forecastLower: 'Lower bound',
+    };
     const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
             // For Pie charts, the name is in payload[0].name, while label might be missing
@@ -160,6 +320,12 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                 displayLabel = formatCurrency(displayLabel);
             }
 
+            // For LINE charts with analytics we present readable names and skip nulls
+            const visibleEntries = payload.filter((entry: any) => {
+                if (entry.value === null || entry.value === undefined) return false;
+                return true;
+            });
+
             return (
                 <div style={{
                     backgroundColor: themeColors.chartTooltipBg,
@@ -171,11 +337,15 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                     <p style={{ color: themeColors.chartTooltipText, fontSize: fontSettings ? `${Math.max(10, fontSettings.fontSize - 2)}px` : '12px', fontWeight: fontSettings?.isBold ? 'bold' : 'bold', marginBottom: '4px', fontFamily: fsFontFamily, fontStyle: fsFontStyle }}>
                         {displayLabel}
                     </p>
-                    {payload.map((entry: any, index: number) => (
-                        <p key={index} style={{ color: entry.color, fontSize: fontSettings ? `${Math.max(9, fontSettings.fontSize - 3)}px` : '11px', margin: '2px 0', fontFamily: fsFontFamily, fontStyle: fsFontStyle }}>
-                            {entry.name}: <strong>{formatByColumn(entry.value, entry.dataKey || config.dataKey)}</strong>
-                        </p>
-                    ))}
+                    {visibleEntries.map((entry: any, index: number) => {
+                        const key = entry.dataKey || '';
+                        const prettyName = ANALYTICS_LABELS[key] || entry.name || key || config.dataKey;
+                        return (
+                            <p key={index} style={{ color: entry.color, fontSize: fontSettings ? `${Math.max(9, fontSettings.fontSize - 3)}px` : '11px', margin: '2px 0', fontFamily: fsFontFamily, fontStyle: fsFontStyle }}>
+                                {prettyName}: <strong>{formatByColumn(entry.value, ANALYTICS_INTERNAL_KEYS.includes(key) ? config.dataKey : (key || config.dataKey))}</strong>
+                            </p>
+                        );
+                    })}
                 </div>
             );
         }
@@ -628,12 +798,19 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
         }
 
         case ChartType.LINE: {
-            const minWidth = Math.max(100, data.length * (isExpanded ? 40 : 30));
+            const analytics = config.analytics;
+            const { extendedData, summary, forecastStartIndex } = computeLineAnalytics(data, config, analytics);
+            const minWidth = Math.max(100, extendedData.length * (isExpanded ? 40 : 30));
+
+            const mainColor = config.color || COLORS[1];
+            const styleToDash = (kind?: string) => kind === 'solid' ? '0' : kind === 'dotted' ? '2 4' : '6 4';
+            const styleToOpacity = (t?: number) => Math.max(0, 1 - (Math.max(0, Math.min(100, t ?? 0)) / 100));
+
             return (
-                <div style={{ width: '100%', height: '100%', overflowX: data.length > 20 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
-                    <div style={{ minWidth: data.length > 20 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
+                <div style={{ width: '100%', height: '100%', overflowX: extendedData.length > 20 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
+                    <div style={{ minWidth: extendedData.length > 20 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart {...commonProps}>
+                            <LineChart {...commonProps} data={extendedData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
                                 <XAxis
                                     dataKey={config.xAxisKey}
@@ -642,30 +819,169 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     angle={isXDate ? 0 : -25}
                                     textAnchor={isXDate ? "middle" : "end"}
                                     height={isXDate ? 50 : 90}
-                                    interval={data.length > 30 ? 'preserveStartEnd' : 0}
+                                    interval={extendedData.length > 30 ? 'preserveStartEnd' : 0}
                                 />
                                 <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
                                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                                 <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
+
+                                {/* Reference lines for Min / Max / Average */}
+                                {analytics?.min?.enabled && summary.min !== undefined && (
+                                    <ReferenceLine
+                                        y={summary.min}
+                                        stroke={analytics.min.color || '#22c55e'}
+                                        strokeOpacity={styleToOpacity(analytics.min.transparency)}
+                                        strokeDasharray={styleToDash(analytics.min.lineStyle)}
+                                        strokeWidth={2}
+                                        ifOverflow="extendDomain"
+                                        label={analytics.min.dataLabels ? {
+                                            value: `Min: ${formatByColumn(Number(summary.min.toFixed(2)), config.dataKey)}`,
+                                            position: 'insideBottomRight',
+                                            fill: analytics.min.color || '#22c55e',
+                                            fontSize: fsLabelSize || 10,
+                                            fontWeight: 700
+                                        } : undefined}
+                                    />
+                                )}
+                                {analytics?.max?.enabled && summary.max !== undefined && (
+                                    <ReferenceLine
+                                        y={summary.max}
+                                        stroke={analytics.max.color || '#ef4444'}
+                                        strokeOpacity={styleToOpacity(analytics.max.transparency)}
+                                        strokeDasharray={styleToDash(analytics.max.lineStyle)}
+                                        strokeWidth={2}
+                                        ifOverflow="extendDomain"
+                                        label={analytics.max.dataLabels ? {
+                                            value: `Max: ${formatByColumn(Number(summary.max.toFixed(2)), config.dataKey)}`,
+                                            position: 'insideTopRight',
+                                            fill: analytics.max.color || '#ef4444',
+                                            fontSize: fsLabelSize || 10,
+                                            fontWeight: 700
+                                        } : undefined}
+                                    />
+                                )}
+                                {analytics?.average?.enabled && summary.average !== undefined && (
+                                    <ReferenceLine
+                                        y={summary.average}
+                                        stroke={analytics.average.color || '#f59e0b'}
+                                        strokeOpacity={styleToOpacity(analytics.average.transparency)}
+                                        strokeDasharray={styleToDash(analytics.average.lineStyle)}
+                                        strokeWidth={2}
+                                        ifOverflow="extendDomain"
+                                        label={analytics.average.dataLabels ? {
+                                            value: `Avg: ${formatByColumn(Number(summary.average.toFixed(2)), config.dataKey)}`,
+                                            position: 'insideTopRight',
+                                            fill: analytics.average.color || '#f59e0b',
+                                            fontSize: fsLabelSize || 10,
+                                            fontWeight: 700
+                                        } : undefined}
+                                    />
+                                )}
+
+                                {/* Reference line separating actual vs forecast */}
+                                {analytics?.forecast?.enabled && forecastStartIndex !== null && extendedData[forecastStartIndex] && (
+                                    <ReferenceLine
+                                        x={extendedData[forecastStartIndex][config.xAxisKey]}
+                                        stroke={themeColors.chartAxisText}
+                                        strokeOpacity={0.4}
+                                        strokeDasharray="2 3"
+                                    />
+                                )}
+
+                                {/* Confidence band (shown underneath) */}
+                                {analytics?.forecast?.enabled && analytics.forecast.showConfidenceBand !== false && (
+                                    <Line
+                                        type="monotone"
+                                        dataKey="__forecastUpper"
+                                        stroke={analytics.forecast.bandColor || analytics.forecast.color || '#8b5cf6'}
+                                        strokeOpacity={styleToOpacity(analytics.forecast.bandTransparency ?? 80)}
+                                        strokeWidth={1}
+                                        strokeDasharray="3 3"
+                                        dot={false}
+                                        isAnimationActive={isAnimationActive}
+                                        connectNulls
+                                        name="Upper bound"
+                                        legendType="none"
+                                    />
+                                )}
+                                {analytics?.forecast?.enabled && analytics.forecast.showConfidenceBand !== false && (
+                                    <Line
+                                        type="monotone"
+                                        dataKey="__forecastLower"
+                                        stroke={analytics.forecast.bandColor || analytics.forecast.color || '#8b5cf6'}
+                                        strokeOpacity={styleToOpacity(analytics.forecast.bandTransparency ?? 80)}
+                                        strokeWidth={1}
+                                        strokeDasharray="3 3"
+                                        dot={false}
+                                        isAnimationActive={isAnimationActive}
+                                        connectNulls
+                                        name="Lower bound"
+                                        legendType="none"
+                                    />
+                                )}
+
+                                {/* Trendline */}
+                                {analytics?.trendline?.enabled && (
+                                    <Line
+                                        type="linear"
+                                        dataKey="__trend"
+                                        stroke={analytics.trendline.color || '#6366f1'}
+                                        strokeOpacity={styleToOpacity(analytics.trendline.transparency)}
+                                        strokeWidth={2}
+                                        strokeDasharray={styleToDash(analytics.trendline.lineStyle)}
+                                        dot={false}
+                                        isAnimationActive={isAnimationActive}
+                                        connectNulls
+                                        name="Trend"
+                                    >
+                                        {analytics.trendline.dataLabels && (
+                                            <LabelList dataKey="__trend" position="top" fontSize={fsLabelSize || 10} formatter={(v: any) => v == null ? '' : formatByColumn(Number(Number(v).toFixed(2)), config.dataKey)} />
+                                        )}
+                                    </Line>
+                                )}
+
+                                {/* Primary line */}
                                 <Line
                                     type="monotone"
                                     dataKey={config.dataKey}
-                                    stroke={config.color || COLORS[1]}
+                                    stroke={mainColor}
                                     strokeWidth={2.5}
                                     isAnimationActive={isAnimationActive}
-                                    dot={data.length > (isExpanded ? 100 : 60) ? false : {
+                                    connectNulls={false}
+                                    dot={extendedData.length > (isExpanded ? 100 : 60) ? false : {
                                         fill: theme === 'dark' ? '#0f172a' : '#ffffff',
-                                        stroke: config.color || COLORS[1],
+                                        stroke: mainColor,
                                         strokeWidth: 2,
                                         r: 3,
                                         cursor: 'pointer'
                                     }}
-                                    activeDot={{ r: 5, fill: config.color || COLORS[1], stroke: '#fff', strokeWidth: 2, cursor: 'pointer' }}
+                                    activeDot={{ r: 5, fill: mainColor, stroke: '#fff', strokeWidth: 2, cursor: 'pointer' }}
                                     onClick={(d: any) => {
                                         const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
                                         if (value !== undefined && onItemClick) onItemClick(value);
                                     }}
                                 />
+
+                                {/* Forecast line */}
+                                {analytics?.forecast?.enabled && (
+                                    <Line
+                                        type="monotone"
+                                        dataKey="__forecast"
+                                        stroke={analytics.forecast.color || '#8b5cf6'}
+                                        strokeOpacity={styleToOpacity(analytics.forecast.transparency)}
+                                        strokeWidth={2.5}
+                                        strokeDasharray={styleToDash(analytics.forecast.lineStyle)}
+                                        isAnimationActive={isAnimationActive}
+                                        connectNulls
+                                        name="Forecast"
+                                        dot={{ fill: theme === 'dark' ? '#0f172a' : '#ffffff', stroke: analytics.forecast.color || '#8b5cf6', strokeWidth: 2, r: 3 }}
+                                    >
+                                        {analytics.forecast.dataLabels && (
+                                            <LabelList dataKey="__forecast" position="top" fontSize={fsLabelSize || 10} formatter={(v: any) => v == null ? '' : formatByColumn(Number(Number(v).toFixed(2)), config.dataKey)} />
+                                        )}
+                                    </Line>
+                                )}
+
                                 {showBrush && !isExpanded && (
                                     <Brush
                                         dataKey={config.xAxisKey}
@@ -1931,6 +2247,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
     const [isExporting, setIsExporting] = useState(false);
     const [expandedChartId, setExpandedChartId] = useState<string | null>(null);
+    const [analyticsChartId, setAnalyticsChartId] = useState<string | null>(null);
+
+    const updateChartAnalytics = useCallback((chartId: string, analytics: AnalyticsLinesConfig) => {
+        setCurrentCharts(prev => prev.map(c => c.id === chartId ? { ...c, analytics } : c));
+    }, []);
+
+    const analyticsChart = useMemo(
+        () => (analyticsChartId ? currentCharts.find(c => c.id === analyticsChartId) || null : null),
+        [analyticsChartId, currentCharts]
+    );
 
     // --- Section-based Tabs ---
     const CHARTS_PER_TAB = 6;
@@ -2629,6 +2955,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                     />
                 )}
 
+                {analyticsChart && (
+                    <ChartAnalyticsModal
+                        chart={analyticsChart}
+                        onClose={() => setAnalyticsChartId(null)}
+                        onSave={(analytics) => updateChartAnalytics(analyticsChart.id, analytics)}
+                    />
+                )}
+
                 <div id="dashboard-container" className={`min-h-screen ${theme === 'dark' ? 'bg-[#0b0f1a]' : 'bg-slate-50'} flex flex-col ${colors.textSecondary} print:${theme === 'dark' ? 'bg-slate-950' : 'bg-white'} relative overflow-hidden`}>
                     {/* Background Ambiance Blobs */}
                     <div className="absolute top-0 right-0 -mr-40 -mt-40 w-[600px] h-[600px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none animate-blob" />
@@ -3204,6 +3538,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                             title="Flip Layout"
                                                         >
                                                             <RefreshCw className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    {chart.type === ChartType.LINE && (
+                                                        <button
+                                                            onClick={() => setAnalyticsChartId(chart.id)}
+                                                            className={`p-2 rounded-xl transition-all duration-300 active:scale-90 ${chart.analytics && (chart.analytics.trendline?.enabled || chart.analytics.min?.enabled || chart.analytics.max?.enabled || chart.analytics.average?.enabled || chart.analytics.forecast?.enabled) ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' : `${colors.bgTertiary} ${colors.textMuted} hover:text-white hover:bg-indigo-500/70`}`}
+                                                            title="Analytics (trend / forecast / reference lines)"
+                                                        >
+                                                            <Search className="w-4 h-4" />
                                                         </button>
                                                     )}
                                                     <button
