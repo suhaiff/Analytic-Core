@@ -1211,6 +1211,13 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
         let accColumns = [...mergedColumns];
         let accAdded = [...addedColumns];
 
+        // Track columns added by calculated_column ops in this AI run.
+        // If any are later consumed as inputs by a subsequent calculated_column,
+        // they are intermediates and should be dropped at the end so the user
+        // only sees the final result column (e.g. "(sales*qty)/100" → one col).
+        const inRunCalcCols = new Set<string>();
+        const consumedIntermediates = new Set<string>();
+
         const MONTH_NAMES_AI = ['January','February','March','April','May','June','July','August','September','October','November','December'];
         const DAY_NAMES_AI = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
@@ -1219,6 +1226,10 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                 case 'calculated_column': {
                     const calc = op.calculatedColumn;
                     if (!calc) break;
+                    // If this op consumes a column produced earlier in this run,
+                    // mark that column as an intermediate to be dropped at the end.
+                    if (inRunCalcCols.has(calc.columnA)) consumedIntermediates.add(calc.columnA);
+                    if (calc.columnB && inRunCalcCols.has(calc.columnB)) consumedIntermediates.add(calc.columnB);
                     let colName = calc.name;
                     let i = 2;
                     while (accColumns.includes(colName)) { colName = `${calc.name} (${i})`; i++; }
@@ -1245,6 +1256,7 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                     });
                     accColumns = [...accColumns, colName];
                     accAdded = [...accAdded, colName];
+                    inRunCalcCols.add(colName);
                     break;
                 }
                 case 'conditional_column': {
@@ -1427,6 +1439,20 @@ export const DataPreparation: React.FC<DataPreparationProps> = ({
                     break;
                 }
             }
+        }
+
+        // Drop intermediate calculated columns that were only used as inputs
+        // to subsequent calculated columns in this same AI run. This ensures
+        // chained prompts like "multiply sales by quantity and divide by 100"
+        // produce a single final result column instead of one per step.
+        if (consumedIntermediates.size > 0) {
+            accColumns = accColumns.filter(c => !consumedIntermediates.has(c));
+            accAdded = accAdded.filter(c => !consumedIntermediates.has(c));
+            accData = accData.map(row => {
+                const cleaned: any = { ...row };
+                consumedIntermediates.forEach(c => { delete cleaned[c]; });
+                return cleaned;
+            });
         }
 
         // Apply all accumulated changes in a single update
