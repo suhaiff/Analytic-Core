@@ -3005,12 +3005,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                             </div>
 
                             <div className="flex items-center gap-2 sm:gap-4 no-export">
-                                <div className="hidden lg:flex items-center gap-1.5 mr-2">
+                                <div className="flex items-center gap-1.5 mr-0 sm:mr-2">
                                     {dashboardId && canShare && (
                                         <button
                                             onClick={() => setShowShareModal(true)}
                                             className={`p-2.5 rounded-xl ${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} hover:text-indigo-400 transition-all duration-300 shadow-sm border border-transparent hover:border-indigo-500/30 active:scale-95`}
-                                            title="Access Control"
+                                            title="Share Dashboard"
                                         >
                                             <Users className="w-5 h-5" />
                                         </button>
