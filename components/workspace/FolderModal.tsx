@@ -92,8 +92,9 @@ export const FolderModal: React.FC<FolderModalProps> = ({
     u.organization_id === currentUser.organization_id
   );
   const filteredUsers = otherUsers.filter(u =>
-    u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
-    u.email.toLowerCase().includes(userSearch.toLowerCase())
+    !selectedUserIds.includes(u.id) &&
+    (u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
+    u.email.toLowerCase().includes(userSearch.toLowerCase()))
   );
 
   const toggleUser = (userId: number) => {
