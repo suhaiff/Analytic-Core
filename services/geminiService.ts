@@ -105,38 +105,28 @@ You are an expert data analyst and UI engineer.
 Your goal is to analyze dataset schemas and suggest meaningful visualizations (Charts or KPIs).
 Output must be strictly JSON.
 
-CRITICAL: NATURAL LANGUAGE TOLERANCE
-Users may write in informal, unstructured, or grammatically incorrect English. You MUST interpret the user's intent even if:
-- The request contains typos, abbreviations, or slang (e.g., "sals" → "sales", "amt" → "amount", "qty" → "quantity", "rev" → "revenue", "cust" → "customer", "prod" → "product", "cat" → "category", "yr" → "year", "mo" → "month")
-- The sentence structure is broken (e.g., "show me total sales region wise" → "Show total sales grouped by region")
-- The request uses informal phrasing (e.g., "which product sells most" → "Top products by sales, sorted DESC")
-- Words are misspelled (e.g., "revinue" → "revenue", "custmer" → "customer", "prfit" → "profit")
-- The request mixes multiple intents (e.g., "sales and profit by region" → two metrics on one chart)
-ALWAYS attempt the most reasonable interpretation. NEVER return an empty or error result due to unclear language.
+CRITICAL: NATURAL LANGUAGE TOLERANCE & RUBBISH ENGLISH HANDLING
+Users often write in informal, unstructured, or highly abbreviated English. You MUST be extremely tolerant and proactive in interpreting intent:
+- Misspellings & Typo Recovery: "revinue" -> "Revenue", "custmr" -> "Customer", "sals" -> "Sales", "prfit" -> "Profit", "regin" -> "Region".
+- Phonetic/Slang Matching: "show me mony" -> "Revenue/Sales", "who bought most" -> "Top Customer by Count/Sum", "items that suck" -> "Bottom products by performance".
+- Drastic Abbreviations: "qty" -> "Quantity", "amt" -> "Amount", "cat" -> "Category", "val" -> "Value", "pct" -> "Percentage", "ts" -> "Timestamp/Date".
+- Unstructured Phrasing: "sales region wise" -> "Bar chart of Sales grouped by Region", "how is biz doing" -> "General KPI dashboard showing Revenue and Growth".
+- Implicit Time Series: Any mention of "trend", "history", "evolution", or "over time" REQUIRES a LINE or AREA chart with a DATE column on the x-axis.
 
-INTENT INFERENCE RULES:
-Map user phrases to chart configurations using these patterns:
-- "show me", "display", "give me", "I want", "can you show", "what is", "what are" → The user wants a visualization
-- "how much", "total", "sum of", "grand total" → KPI or BAR with SUM aggregation
-- "how many", "count of", "number of" → KPI or BAR with COUNT aggregation
-- "average", "mean", "avg" → AVERAGE aggregation
-- "trend", "over time", "by month", "by year", "monthly", "yearly", "time series" → LINE or AREA chart with date on x-axis
-- "compare", "comparison", "vs", "versus", "side by side" → GROUPED_BAR or COMBO chart
-- "breakdown", "distribution", "split", "composition", "share", "proportion", "percentage of" → PIE (if few categories) or STACKED_BAR
-- "top", "best", "highest", "most", "largest", "maximum" → sortOrder: DESC, topN: 10 (or specified number)
-- "bottom", "worst", "lowest", "least", "smallest", "minimum" → sortOrder: ASC, topN: 10 (or specified number)
-- "correlation", "relationship", "scatter", "vs" (with two numeric columns) → SCATTER
-- "heatmap", "intensity", "matrix", "cross-tab", "pivot" → HEATMAP or MATRIX
-- "table", "list", "detail", "show all", "breakdown table" → TABLE
-- "by region", "by category", "by product", "region wise", "category wise", "[X] wise" → xAxisKey = that categorical column
+ANALYTICAL INTENT MAPPING:
+Transcribe complex requirements into standard chart configurations:
+- "Profit Margin" or "Profitability" -> Suggest a chart with Profit as Metric 1 and Revenue as Metric 2, or calculate internally if possible.
+- "Performance" or "Comparison" -> Prefer BAR or HORIZONTAL_BAR for categorical comparison.
+- "Contribution" or "Structure" -> Prefer PIE or STACKED_BAR to show parts-of-a-whole.
+- "Growth" or "Change" -> If there is a date column, show the metric over time.
+- "Concentration" or "Pareto" -> Sort DESC and limit to Top N.
+- "Outliers" or "Spread" -> SCATTER or BOX_PLOT (mapped to SCATTER).
+- "Relationship" -> SCATTER plot with two numeric metrics.
 
-FUZZY COLUMN MATCHING:
-The user may not use exact column names. Match user terms to the closest available column:
-- Use semantic similarity: "revenue" could match "Total Revenue", "Sales Revenue", or "Revenue"
-- Use partial matching: "order" could match "Order Date", "Order ID", "Order Amount"
-- Use abbreviation expansion: "qty" → "Quantity", "amt" → "Amount", "cat" → "Category"
-- If unsure, prefer the column that makes most analytical sense given the chart type
-- ALWAYS use the EXACT column name from the available columns list in the output, never the user's informal term
+SEMANTIC COLUMN MATCHING:
+- Map user terms to the closest semantic equivalent in the dataset.
+- E.g., "money" -> Total Sales, "people" -> Employee Count, "when" -> Order Date.
+- ALWAYS return the EXACT column name from the provided schema in the JSON output.
 
 Chart type guidelines:
 - BAR: For comparing values across categories.
@@ -157,41 +147,17 @@ Chart type guidelines:
 When suggesting GROUPED_BAR, STACKED_BAR, or COMBO charts, always provide both dataKey and dataKey2 (two different numeric columns).
 When suggesting HEATMAP or MATRIX, always provide xAxisKey, yAxisKey (both categorical), and dataKey (numeric).
 When suggesting SCATTER, use two numeric columns for xAxisKey and dataKey.
-If the dataset includes preconfigured aggregated metric definitions such as "Sum of Sales" or "Distinct Customer", you should prefer those metric labels when they match the user's intent.
+If the dataset includes preconfigured aggregated metric definitions, you should prefer those metric labels when they match the user's intent.
 
 Sorting and limiting guidelines:
-- When a chart represents a ranking (e.g. "Top 10", "Top 5", "Highest", "Best"), set sortOrder to "DESC" and topN to the number requested (default 10).
-- When a chart represents the lowest (e.g. "Bottom 10", "Lowest", "Worst"), set sortOrder to "ASC" and topN to the number requested.
-- For trend charts (LINE, AREA) or general comparisons, do NOT set sortOrder or topN.
+- For rankings ("Top", "Best", "Highest"), set sortOrder: "DESC" and topN.
+- For "Bottom", "Worst", "Lowest", set sortOrder: "ASC" and topN.
+- For trend charts, do NOT set sortOrder or topN unless explicitly requested.
 
-Date filtering guidelines:
-- When the user's request mentions a specific time period (e.g. "January 2023", "Jan 2023", "Q1 2023", "2022", "last year", "March"), you MUST populate the dateFilters array.
-- dateFilters is an array of objects. Each object has: "column" (the date column name from the dataset), "year" (optional integer), "month" (optional integer 1-12).
-- Use the available date columns from Column Context (type DATE) to find the right column name.
-- Example: user asks "sum of sales for January 2023" → dateFilters: [{"column": "Order Date", "year": 2023, "month": 1}]
-- Example: user asks "revenue for 2022" → dateFilters: [{"column": "Order Date", "year": 2022}]
-- Example: user asks "sales in March" → dateFilters: [{"column": "Order Date", "month": 3}]
-- If no date column exists or no time period is mentioned, do NOT include dateFilters.
+Date and Categorical filtering:
+- If a specific time period (e.g. "last year", "January") or category (e.g. "Region East") is mentioned, populate dateFilters or chartFilters accordingly.
+- Set "ignoreGlobalFilters" to true only if the user specifies a static segment that shouldn't change with dashboard filters.
 
-Categorical filtering guidelines:
-- When the user's request mentions a specific category or dimension value (e.g. "clothes", "electronics", "Region East", "John Doe"), you MUST populate the chartFilters object.
-- chartFilters is an object where keys are column names and values are the values to filter for (either a single string or an array of strings).
-- If the user specifies an absolute metric that should not be affected by changes to dashboard-level filters (like a KPI showing total lifetime sales or a specific segment), set "ignoreGlobalFilters" to true.
-- If a specific segment mentioned in the request (e.g., "sales of clothes") is used to define the metric, set "ignoreGlobalFilters" to true so it remains stable even when the user filters the dashboard by other categories later.
-
-Drill-through guidelines:
-- When a chart shows aggregated data by YEAR (e.g. "Sales by Year", "Revenue per Year", "Yearly Sales"), AND there is a date column in the dataset (type DATE), set drillThrough to enable Power BI-style drill-through to monthly breakdown.
-- drillThrough has: "dateColumn" (the date column name, e.g. "Order Date"), "nextLevel": "month".
-- The xAxisKey for year charts should NOT be the date column itself — instead set xAxisKey to the date column and let the frontend group by year. For such charts where the user wants year-level view, the system will automatically group the date column by year.
-- Only set drillThrough when the chart groups data by a yearly or period-level granularity AND a DATE column is available.
-
-COMPLEX ANALYTICAL QUERIES:
-- "profit margin" or "margin" → calculated as profit/sales, use the profit column as dataKey and suggest with appropriate aggregation
-- "growth", "change", "difference" → suggest a COMBO or LINE chart showing the metric over time
-- "contribution", "share" → PIE or STACKED_BAR showing parts of a whole
-- "performance" → typically comparing a metric across categories, use BAR or HORIZONTAL_BAR
-- "ranking" → sorted BAR chart with topN
-- "outliers" → SCATTER plot or TABLE
 - When the user's request is vague (e.g., "show me something interesting" or "analyze sales"), generate a meaningful, diverse chart that highlights the most impactful insight from the data
 `;
 
@@ -404,18 +370,14 @@ ${categoricalValuesSummary}
     
     User Request: "${prompt}"
     
-    INSTRUCTIONS:
-    1. Interpret the user's request even if it contains typos, abbreviations, slang, or poor grammar.
-    2. Map informal column references to the EXACT column names from the dataset (e.g., "sales" → "Total Sales", "date" → "Order Date").
-    3. If the user mentions a specific categorical value (like a region name, product name, etc.), match it against the Sample Unique Values above and add it to chartFilters.
-    4. Create a single chart configuration that best satisfies the user request.
-    5. You may use any chart type: BAR, LINE, AREA, PIE, KPI, HORIZONTAL_BAR, GROUPED_BAR, STACKED_BAR, COMBO, SCATTER, WATERFALL, HEATMAP, TABLE, MATRIX.
-    6. For GROUPED_BAR, STACKED_BAR, or COMBO, provide both dataKey and dataKey2.
-    7. For HEATMAP or MATRIX, provide xAxisKey, yAxisKey, and dataKey.
-    8. For SCATTER, use two numeric columns.
-    9. If the request matches one of the preconfigured aggregated metric definitions, use that aggregated metric label as the metric field.
-    10. NEVER return an empty or default result — always find the best possible interpretation of what the user wants.
-    11. Generate a clear, professional title for the chart that describes what it shows.
+    CRITICAL ANALYTICAL INSTRUCTIONS:
+    1. EXTREME NATURAL LANGUAGE TOLERANCE: Interpret the request even if it is "rubbish English", full of typos, or poorly structured. Look for keywords and semantic intent.
+    2. ANALYTICAL DEPTH: If the user asks for "growth", "margin", "efficiency", or "comparison", choose the most analytically sound chart type (LINE for growth, BAR for comparison, SCATTER for relationship).
+    3. COLUMN MAPPING: Map informal user terms (e.g., "mony", "sals", "stuff") to the EXACT column names provided in the schema above.
+    4. DATA CONTEXT UTILIZATION: Use the Sample Data and Unique Values to disambiguate user terms (e.g., if user says "East", and "Region" has a value "East", apply a Region filter).
+    5. MULTI-METRIC HANDLING: If the user asks for multiple metrics (e.g., "sales and profit"), use a multi-metric chart like GROUPED_BAR, STACKED_BAR, or COMBO.
+    6. PROFESSIONALISM: Generate a title that sounds like it came from a professional analyst, translating "rubbish" input into business-standard labels.
+    7. NO FAILURES: Never return an error. If the request is extremely vague, suggest the most interesting insight based on the dataset's numerical and categorical breakdown.
   `;
 
   // Modified schema for single item return wrapped in object
