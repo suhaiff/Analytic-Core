@@ -1108,7 +1108,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
 
               <div className="flex flex-col flex-1">
                 <div className="flex items-center justify-between px-2 mb-4">
-                  <h4 className={`text-[10px] font-black uppercase tracking-[0.2em] ${colors.textMuted} opacity-60`}>Collections</h4>
+                  <h4 className={`text-[10px] font-black uppercase tracking-[0.2em] ${colors.textMuted} opacity-60`}>Workspaces</h4>
                   {user?.is_superuser && (
                     <button
                       onClick={() => { setEditingFolder(undefined); setShowFolderModal(true); }}
