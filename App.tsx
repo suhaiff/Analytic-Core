@@ -10,6 +10,7 @@ import { ChangePassword } from './components/auth/ChangePassword';
 import { ForgotPassword } from './components/auth/ForgotPassword';
 import { Welcome } from './components/Welcome';
 import { AdminDashboard } from './components/admin/AdminDashboard';
+import { MLModelHub } from './components/ml/MLModelHub';
 
 import { processFile } from './utils/fileParser';
 import { processRawData, performJoins } from './utils/dataProcessing';
@@ -34,7 +35,8 @@ enum Step {
   DATA_PROFILING = 'DATA_PROFILING',
   CONFIG = 1,
   BUILDER = 2,
-  DASHBOARD = 3
+  DASHBOARD = 3,
+  ML_MODELS = 'ML_MODELS'
 }
 
 interface ToastState {
@@ -632,6 +634,7 @@ function AppContent() {
             onDeleteDashboard={handleDeleteDashboard}
             onLogout={handleLogout}
             onNavigateToAdmin={() => setStep(Step.ADMIN)}
+            onNavigateToMLModels={() => setStep(Step.ML_MODELS)}
             user={currentUser}
             workspaceFolders={workspaceFolders}
             onFoldersChange={() => { if (currentUser) loadWorkspaceFolders(currentUser.id); }}
@@ -639,7 +642,12 @@ function AppContent() {
           />
         )}
 
-
+        {step === Step.ML_MODELS && currentUser && (
+          <MLModelHub
+            user={currentUser}
+            onHome={() => setStep(Step.LANDING)}
+          />
+        )}
 
         {step === Step.CONFIG && initialTables.length > 0 && (
           <DataConfig

@@ -273,3 +273,63 @@ export interface WorkspaceGroup {
   created_at: string;
   members: { id: number; name: string; email: string }[];
 }
+
+// ── ML Prediction Modelling ─────────────────────────────────────────────
+export type MLProblemType = 'classification' | 'regression';
+
+export type MLAlgorithm =
+  | 'random_forest_classifier'
+  | 'random_forest_regressor'
+  | 'logistic_regression'
+  | 'linear_regression'
+  | 'decision_tree_classifier'
+  | 'decision_tree_regressor';
+
+export interface MLModel {
+  id: string;
+  user_id: number;
+  name: string;
+  description?: string | null;
+  algorithm: MLAlgorithm;
+  problem_type: MLProblemType;
+  target_column: string;
+  feature_columns: string[];
+  metrics: Record<string, number>;
+  sample_size: number;
+  source_file_id?: number | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface MLTrainResponse {
+  model: MLModel;
+  training: {
+    model_id: string;
+    algorithm: MLAlgorithm;
+    problem_type: MLProblemType;
+    target_column: string;
+    feature_columns: string[];
+    metrics: Record<string, number>;
+    sample_size: number;
+    created_at: string;
+  };
+}
+
+export interface MLPredictionResponse {
+  model_id: string;
+  row_count: number;
+  predictions: (string | number | boolean)[];
+  probabilities?: number[][] | null;
+}
+
+export interface MLPredictionJob {
+  id: number;
+  model_id: string;
+  user_id: number;
+  input_filename: string | null;
+  row_count: number;
+  status: 'pending' | 'completed' | 'failed';
+  error_message?: string | null;
+  predictions?: any;
+  created_at: string;
+}
