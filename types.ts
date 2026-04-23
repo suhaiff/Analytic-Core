@@ -138,6 +138,12 @@ export interface ChartConfig {
   fontSize?: number; // Font size for this chart
 
   analytics?: AnalyticsLinesConfig; // Line-chart analytics (trendline, min/max/avg, forecast)
+
+  // Forecast chart fields (spawned from analytics modal)
+  isForecastChart?: boolean;                          // Marks this as a spawned forecast chart
+  forecastSourceChartId?: string;                     // Links back to the original chart
+  forecastGranularity?: 'date' | 'month' | 'year';   // Current granularity level for the slider
+  forecastDateColumn?: string;                        // The date column used for time-based aggregation
 }
 
 // ---- Line-chart analytics (Power BI-style options) ----

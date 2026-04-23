@@ -4,7 +4,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, Brush, LabelList,
     ScatterChart, Scatter, ZAxis, ComposedChart, ReferenceLine
 } from 'recharts';
-import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType, SavedDashboard, AccessLevel, AnalyticsLinesConfig } from '../types';
+import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType, SavedDashboard, AccessLevel, AnalyticsLinesConfig, ForecastUnits } from '../types';
 import { aggregateData } from '../utils/aggregator';
 import {
     LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2,
@@ -192,6 +192,226 @@ export function computeLineAnalytics(
                     __isForecast: true,
                 });
             }
+        }
+    }
+
+    return { extendedData, summary, forecastStartIndex };
+}
+
+// ---- Multi-granularity forecast chart data computation ----
+function aggregateByGranularity(
+    data: any[],
+    dateCol: string,
+    metricCol: string,
+    metricCol2: string | undefined,
+    aggregation: AggregationType,
+    granularity: 'date' | 'month' | 'year',
+): any[] {
+    const groups: { [key: string]: { count: number; sum: number; sum2: number; min: number; max: number; min2: number; max2: number } } = {};
+
+    data.forEach(row => {
+        const rawDate = row[dateCol];
+        const parsed = tryParseDateValue(rawDate);
+        if (!parsed) return;
+
+        let key: string;
+        if (granularity === 'year') {
+            key = String(parsed.getFullYear());
+        } else if (granularity === 'month') {
+            const y = parsed.getFullYear();
+            const m = String(parsed.getMonth() + 1).padStart(2, '0');
+            key = `${y}-${m}`;
+        } else {
+            key = parsed.toISOString().slice(0, 10);
+        }
+
+        const val = Number(row[metricCol]) || 0;
+        const val2 = metricCol2 ? (Number(row[metricCol2]) || 0) : 0;
+
+        if (!groups[key]) groups[key] = { count: 0, sum: 0, sum2: 0, min: val, max: val, min2: val2, max2: val2 };
+        groups[key].count++;
+        groups[key].sum += val;
+        groups[key].sum2 += val2;
+        if (val < groups[key].min) groups[key].min = val;
+        if (val > groups[key].max) groups[key].max = val;
+        if (val2 < groups[key].min2) groups[key].min2 = val2;
+        if (val2 > groups[key].max2) groups[key].max2 = val2;
+    });
+
+    return Object.keys(groups)
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+        .map(key => {
+            let primaryVal = 0;
+            const g = groups[key];
+            if (aggregation === AggregationType.COUNT) primaryVal = g.count;
+            else if (aggregation === AggregationType.AVERAGE) primaryVal = g.sum / g.count;
+            else if (aggregation === AggregationType.MINIMUM) primaryVal = g.min;
+            else if (aggregation === AggregationType.MAXIMUM) primaryVal = g.max;
+            else primaryVal = g.sum;
+
+            const result: any = { [dateCol]: key, [metricCol]: parseFloat(primaryVal.toFixed(2)) };
+            if (metricCol2) {
+                let secondaryVal = 0;
+                if (aggregation === AggregationType.COUNT) secondaryVal = g.count;
+                else if (aggregation === AggregationType.AVERAGE) secondaryVal = g.sum2 / g.count;
+                else if (aggregation === AggregationType.MINIMUM) secondaryVal = g.min2;
+                else if (aggregation === AggregationType.MAXIMUM) secondaryVal = g.max2;
+                else secondaryVal = g.sum2;
+                result[metricCol2] = parseFloat(secondaryVal.toFixed(2));
+            }
+            return result;
+        });
+}
+
+function computeForecastStepsForGranularity(
+    forecastLength: number,
+    forecastUnits: ForecastUnits,
+    granularity: 'date' | 'month' | 'year',
+): number {
+    // Convert the user-specified forecast length to steps at the target granularity
+    if (forecastUnits === 'points') return forecastLength;
+    if (forecastUnits === 'years') {
+        if (granularity === 'year') return forecastLength;
+        if (granularity === 'month') return forecastLength * 12;
+        return forecastLength * 365;
+    }
+    if (forecastUnits === 'months') {
+        if (granularity === 'year') return Math.max(1, Math.ceil(forecastLength / 12));
+        if (granularity === 'month') return forecastLength;
+        return forecastLength * 30;
+    }
+    if (forecastUnits === 'days') {
+        if (granularity === 'year') return Math.max(1, Math.ceil(forecastLength / 365));
+        if (granularity === 'month') return Math.max(1, Math.ceil(forecastLength / 30));
+        return forecastLength;
+    }
+    return forecastLength;
+}
+
+function generateForecastLabel(
+    lastLabel: string,
+    step: number,
+    granularity: 'date' | 'month' | 'year',
+): string {
+    // Parse the last label based on granularity format
+    if (granularity === 'year') {
+        const baseYear = parseInt(lastLabel, 10);
+        if (!isNaN(baseYear)) return String(baseYear + step);
+        return `${lastLabel} +${step}`;
+    }
+    if (granularity === 'month') {
+        // Format: YYYY-MM
+        const parts = lastLabel.split('-');
+        if (parts.length >= 2) {
+            const baseDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 1);
+            baseDate.setMonth(baseDate.getMonth() + step);
+            const y = baseDate.getFullYear();
+            const m = String(baseDate.getMonth() + 1).padStart(2, '0');
+            return `${y}-${m}`;
+        }
+        return `${lastLabel} +${step}`;
+    }
+    // date: YYYY-MM-DD
+    const d = new Date(lastLabel);
+    if (!isNaN(d.getTime())) {
+        d.setDate(d.getDate() + step);
+        return d.toISOString().slice(0, 10);
+    }
+    return `${lastLabel} +${step}`;
+}
+
+export function computeForecastChartData(
+    data: any[],
+    config: ChartConfig,
+    granularity: 'date' | 'month' | 'year',
+): LineAnalyticsResult {
+    const dateCol = config.forecastDateColumn || config.xAxisKey;
+    const yKey = config.dataKey;
+    const analytics = config.analytics;
+
+    if (!data || data.length === 0 || !analytics?.forecast?.enabled) {
+        return { extendedData: data || [], summary: {}, forecastStartIndex: null };
+    }
+
+    // Step 1: Aggregate historical data at the requested granularity
+    const historical = aggregateByGranularity(
+        data, dateCol, yKey, config.dataKey2, config.aggregation, granularity
+    );
+
+    if (historical.length < 2) {
+        return { extendedData: historical, summary: {}, forecastStartIndex: null };
+    }
+
+    // Clone so we can attach analytics fields
+    const working = historical.map(d => ({ ...d }));
+
+    // Compute summary stats
+    const numericY = working.map(r => Number(r[yKey])).filter(n => !isNaN(n) && isFinite(n));
+    const summary: { min?: number; max?: number; average?: number } = {};
+    if (numericY.length > 0) {
+        summary.min = Math.min(...numericY);
+        summary.max = Math.max(...numericY);
+        summary.average = numericY.reduce((a, b) => a + b, 0) / numericY.length;
+    }
+
+    // Step 2: Linear regression on aggregated points
+    const ignoreLast = Math.max(0, Math.min(working.length - 2, analytics.forecast.ignoreLast ?? 0));
+    const fitPoints = working
+        .slice(0, working.length - ignoreLast)
+        .map((row, i) => ({ x: i, y: Number(row[yKey]) }))
+        .filter(p => !isNaN(p.y) && isFinite(p.y));
+
+    if (fitPoints.length < 2) {
+        return { extendedData: working, summary, forecastStartIndex: null };
+    }
+
+    const trend = linearRegression(fitPoints);
+
+    // Optionally add trendline
+    if (analytics.trendline?.enabled) {
+        working.forEach((row, i) => { row.__trend = trend.m * i + trend.b; });
+    }
+
+    // Step 3: Generate forecast points
+    const forecastLen = analytics.forecast.length ?? 10;
+    const forecastUnits = analytics.forecast.units || 'points';
+    const steps = computeForecastStepsForGranularity(forecastLen, forecastUnits, granularity);
+    const confLevel = analytics.forecast.confidenceLevel ?? 95;
+    const z = Z_SCORES[confLevel] ?? 1.96;
+    const residualStd = trend.residualStd;
+
+    let forecastStartIndex: number | null = null;
+    let extendedData: any[] = working;
+
+    if (steps > 0) {
+        const lastIdx = working.length - 1;
+        const lastLabel = String(working[lastIdx]?.[dateCol] ?? '');
+        const lastY = Number(working[lastIdx][yKey]);
+
+        // Anchor forecast at last actual point
+        if (!isNaN(lastY)) {
+            working[lastIdx].__forecast = lastY;
+            working[lastIdx].__forecastUpper = lastY;
+            working[lastIdx].__forecastLower = lastY;
+        }
+
+        forecastStartIndex = working.length;
+        // Cap steps to prevent browser hang
+        const cappedSteps = Math.min(steps, 500);
+        for (let step = 1; step <= cappedSteps; step++) {
+            const xIndex = lastIdx + step;
+            const yPred = trend.m * xIndex + trend.b;
+            const widening = residualStd * Math.sqrt(1 + step / Math.max(1, fitPoints.length));
+            const band = z * widening;
+            extendedData.push({
+                [dateCol]: generateForecastLabel(lastLabel, step, granularity),
+                [yKey]: null,
+                __trend: analytics.trendline?.enabled ? yPred : undefined,
+                __forecast: yPred,
+                __forecastUpper: yPred + band,
+                __forecastLower: yPred - band,
+                __isForecast: true,
+            });
         }
     }
 
@@ -2249,14 +2469,74 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     const [expandedChartId, setExpandedChartId] = useState<string | null>(null);
     const [analyticsChartId, setAnalyticsChartId] = useState<string | null>(null);
 
-    const updateChartAnalytics = useCallback((chartId: string, analytics: AnalyticsLinesConfig) => {
-        setCurrentCharts(prev => prev.map(c => c.id === chartId ? { ...c, analytics } : c));
-    }, []);
+    const updateChartAnalytics = useCallback((chartId: string, analytics: AnalyticsLinesConfig, shouldSpawnForecastChart: boolean = false) => {
+        setCurrentCharts(prev => {
+            let updated = prev.map(c => c.id === chartId ? { ...c, analytics } : c);
+
+            if (shouldSpawnForecastChart && analytics.forecast?.enabled) {
+                const sourceChart = prev.find(c => c.id === chartId);
+                if (sourceChart) {
+                    // Check if a forecast chart already exists for this source
+                    const existingForecast = prev.find(c => c.forecastSourceChartId === chartId);
+                    if (!existingForecast) {
+                        // Determine if the x-axis is a date column
+                        const isXDate = dataModel.columnMetadata?.[sourceChart.xAxisKey]
+                            ? (dataModel.columnMetadata[sourceChart.xAxisKey].finalType || dataModel.columnMetadata[sourceChart.xAxisKey].detectedType) === 'DATE'
+                            : isDateTimeColumn(sourceChart.xAxisKey);
+
+                        const forecastChart: ChartConfig = {
+                            ...sourceChart,
+                            id: `forecast-${chartId}-${Date.now()}`,
+                            title: `Forecasting of ${sourceChart.title}`,
+                            description: `Multi-granularity forecast based on ${sourceChart.title}`,
+                            isForecastChart: true,
+                            forecastSourceChartId: chartId,
+                            forecastGranularity: 'date',
+                            forecastDateColumn: sourceChart.xAxisKey,
+                            analytics: {
+                                ...analytics,
+                                forecast: { ...analytics.forecast!, enabled: true },
+                            },
+                        };
+
+                        // If x-axis is not a date, don't add granularity slider (points-based)
+                        if (!isXDate) {
+                            forecastChart.forecastGranularity = undefined;
+                        }
+
+                        // Disable forecast on the original chart so it doesn't render inline
+                        updated = updated.map(c =>
+                            c.id === chartId
+                                ? { ...c, analytics: { ...analytics, forecast: { ...analytics.forecast!, enabled: false } } }
+                                : c
+                        );
+
+                        // Insert forecast chart right after the source chart
+                        const sourceIdx = updated.findIndex(c => c.id === chartId);
+                        if (sourceIdx !== -1) {
+                            updated.splice(sourceIdx + 1, 0, forecastChart);
+                        } else {
+                            updated.push(forecastChart);
+                        }
+                    }
+                }
+            }
+
+            return updated;
+        });
+    }, [dataModel.columnMetadata]);
 
     const analyticsChart = useMemo(
         () => (analyticsChartId ? currentCharts.find(c => c.id === analyticsChartId) || null : null),
         [analyticsChartId, currentCharts]
     );
+
+    // Granularity update for forecast charts
+    const updateForecastGranularity = useCallback((chartId: string, granularity: 'date' | 'month' | 'year') => {
+        setCurrentCharts(prev => prev.map(c =>
+            c.id === chartId ? { ...c, forecastGranularity: granularity } : c
+        ));
+    }, []);
 
     // --- Section-based Tabs ---
     const CHARTS_PER_TAB = 6;
@@ -2910,6 +3190,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                 <div>
                                     <h2 className={`text-2xl font-bold ${colors.textPrimary}`}>{expandedChartConfig.title}</h2>
                                     <p className={`${colors.textMuted} mt-1`}>{expandedChartConfig.description}</p>
+                                    {/* Granularity slider in expanded view for forecast charts */}
+                                    {expandedChartConfig.isForecastChart && expandedChartConfig.forecastGranularity && (
+                                        <div className="forecast-granularity-slider mt-3">
+                                            <div className="flex items-center gap-3">
+                                                <Sparkles className="w-4 h-4 text-violet-400 shrink-0" />
+                                                <div className={`flex items-center gap-0 p-0.5 rounded-xl ${theme === 'dark' ? 'bg-slate-800/80' : 'bg-slate-200/80'} border ${colors.borderPrimary}`}>
+                                                    {(['date', 'month', 'year'] as const).map((level) => (
+                                                        <button
+                                                            key={level}
+                                                            onClick={() => updateForecastGranularity(expandedChartConfig.id, level)}
+                                                            className={`px-4 py-1.5 text-xs font-black uppercase tracking-widest rounded-lg transition-all duration-300 ${
+                                                                expandedChartConfig.forecastGranularity === level
+                                                                    ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-900/30 scale-105'
+                                                                    : `${colors.textMuted} hover:${colors.textPrimary} hover:bg-white/5`
+                                                            }`}
+                                                        >
+                                                            {level === 'date' ? 'Day' : level === 'month' ? 'Month' : 'Year'}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <span className={`text-xs font-semibold ${colors.textMuted} uppercase tracking-wider`}>
+                                                    {expandedChartConfig.forecastGranularity === 'date' ? 'Daily view' : expandedChartConfig.forecastGranularity === 'month' ? 'Monthly view' : 'Yearly view'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                                 <button
                                     onClick={() => setExpandedChartId(null)}
@@ -2923,16 +3229,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                     config={expandedChartConfig}
                                     data={(() => {
                                         const baseData = expandedChartConfig.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                        const chartData = applyChartFilters(baseData, expandedChartConfig.id);
+                                        if (expandedChartConfig.isForecastChart) {
+                                            return computeForecastChartData(
+                                                chartData,
+                                                expandedChartConfig,
+                                                expandedChartConfig.forecastGranularity || 'date'
+                                            ).extendedData;
+                                        }
                                         return isDateTimeColumn(expandedChartConfig.xAxisKey) 
-                                            ? getDrillDownData(expandedChartConfig, applyChartFilters(baseData, expandedChartConfig.id))
-                                            : aggregateData(applyChartFilters(baseData, expandedChartConfig.id), expandedChartConfig);
+                                            ? getDrillDownData(expandedChartConfig, chartData)
+                                            : aggregateData(chartData, expandedChartConfig);
                                     })()}
                                     isExpanded={true}
                                     theme={theme}
                                     isAnimationActive={!isExporting}
                                     onItemClick={(val) => {
-                                        const drilled = handleDrillDown(expandedChartConfig.id, expandedChartConfig, val);
-                                        if (!drilled) toggleFilter(expandedChartConfig.xAxisKey, val);
+                                        if (!expandedChartConfig.isForecastChart) {
+                                            const drilled = handleDrillDown(expandedChartConfig.id, expandedChartConfig, val);
+                                            if (!drilled) toggleFilter(expandedChartConfig.xAxisKey, val);
+                                        }
                                     }}
                                     activeFilterValue={activeFilters[expandedChartConfig.xAxisKey]}
                                     columnMetadata={dataModel.columnMetadata}
@@ -2941,7 +3257,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                 />
                             </div>
                             <div className={`p-4 ${colors.bgSecondary} border-t ${colors.borderPrimary} text-center`}>
-                                <p className={`text-xs ${colors.textMuted}`}>Use the slider below the chart to zoom into specific time periods or categories.</p>
+                                <p className={`text-xs ${colors.textMuted}`}>
+                                    {expandedChartConfig.isForecastChart
+                                        ? 'Use the Day / Month / Year toggle to switch between forecast granularities.'
+                                        : 'Use the slider below the chart to zoom into specific time periods or categories.'}
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -2959,7 +3279,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                     <ChartAnalyticsModal
                         chart={analyticsChart}
                         onClose={() => setAnalyticsChartId(null)}
-                        onSave={(analytics) => updateChartAnalytics(analyticsChart.id, analytics)}
+                        onSave={(analytics, shouldSpawn) => updateChartAnalytics(analyticsChart.id, analytics, shouldSpawn)}
                     />
                 )}
 
@@ -3444,9 +3764,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
                                     // Apply per-chart filters BEFORE aggregation for proper filtering
                                     const chartPreFilteredData = applyChartFilters(pageFilteredData, chart.id);
-                                    const aggregatedData = isXDate 
-                                        ? getDrillDownData(chart, chartPreFilteredData)
-                                        : aggregateData(chartPreFilteredData, chart);
+                                    // For forecast charts, use the multi-granularity forecast pipeline
+                                    const aggregatedData = chart.isForecastChart
+                                        ? computeForecastChartData(
+                                            chartPreFilteredData,
+                                            chart,
+                                            chart.forecastGranularity || 'date'
+                                          ).extendedData
+                                        : (isXDate 
+                                            ? getDrillDownData(chart, chartPreFilteredData)
+                                            : aggregateData(chartPreFilteredData, chart));
                                     const hasChartFilters = chartFilters[chart.id] && Object.keys(chartFilters[chart.id]).length > 0;
                                     const drillState = chartDrillStates[chart.id];
                                     const isDrilled = drillState && drillState.level !== 'year' && (drillState.level !== 'month' || drillState.year !== null);
@@ -3463,6 +3790,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
                                                 </div>
                                                 <p className={`text-[11px] font-medium ${colors.textMuted} mt-1.5 truncate opacity-70`} style={{ fontFamily: fontSettings.fontFamily, fontStyle: fontSettings.isItalic ? 'italic' : undefined }}>{chart.description || "Analytical insight visualized for your data model"}</p>
+                                                
+                                                {/* Forecast Granularity Slider — only for forecast charts with date columns */}
+                                                {chart.isForecastChart && chart.forecastGranularity && (
+                                                    <div className="forecast-granularity-slider mt-3 mb-1">
+                                                        <div className="flex items-center gap-3">
+                                                            <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                                                            <div className={`flex items-center gap-0 p-0.5 rounded-xl ${theme === 'dark' ? 'bg-slate-800/80' : 'bg-slate-200/80'} border ${colors.borderPrimary}`}>
+                                                                {(['date', 'month', 'year'] as const).map((level) => (
+                                                                    <button
+                                                                        key={level}
+                                                                        onClick={() => updateForecastGranularity(chart.id, level)}
+                                                                        className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all duration-300 ${
+                                                                            chart.forecastGranularity === level
+                                                                                ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-900/30 scale-105'
+                                                                                : `${colors.textMuted} hover:${colors.textPrimary} hover:bg-white/5`
+                                                                        }`}
+                                                                    >
+                                                                        {level === 'date' ? 'Day' : level === 'month' ? 'Month' : 'Year'}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                            <span className={`text-[9px] font-semibold ${colors.textMuted} uppercase tracking-wider`}>
+                                                                {chart.forecastGranularity === 'date' ? 'Daily view' : chart.forecastGranularity === 'month' ? 'Monthly view' : 'Yearly view'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 
                                                 <div className="flex items-center gap-2 mt-4 flex-wrap">
                                                     {isDrilled && (
@@ -3834,9 +4188,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     config={chart}
                                                     data={(() => {
                                                         const baseData = chart.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                                        const chartData = applyChartFilters(baseData, chart.id);
+                                                        if (chart.isForecastChart) {
+                                                            return computeForecastChartData(chartData, chart, chart.forecastGranularity || 'date').extendedData;
+                                                        }
                                                         return isDateTimeColumn(chart.xAxisKey)
-                                                            ? getDrillDownData(chart, applyChartFilters(baseData, chart.id))
-                                                            : aggregateData(applyChartFilters(baseData, chart.id), chart);
+                                                            ? getDrillDownData(chart, chartData)
+                                                            : aggregateData(chartData, chart);
                                                     })()}
                                                     theme={theme}
                                                     isAnimationActive={false}

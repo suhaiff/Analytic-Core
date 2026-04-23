@@ -14,7 +14,7 @@ import { getThemeClasses } from '../theme';
 interface Props {
     chart: ChartConfig;
     onClose: () => void;
-    onSave: (analytics: AnalyticsLinesConfig) => void;
+    onSave: (analytics: AnalyticsLinesConfig, shouldSpawnForecastChart: boolean) => void;
 }
 
 const DEFAULTS: Required<AnalyticsLinesConfig> = {
@@ -73,8 +73,13 @@ export const ChartAnalyticsModal: React.FC<Props> = ({ chart, onClose, onSave })
         setState(prev => ({ ...prev, forecast: { ...prev.forecast, ...patch } }));
     };
 
+    // Detect if forecast is being newly enabled (wasn't enabled before, now is)
+    const wasForecastEnabled = !!chart.analytics?.forecast?.enabled;
+
     const handleApply = () => {
-        onSave(state);
+        const isNowEnabled = !!state.forecast.enabled;
+        const shouldSpawn = isNowEnabled && !wasForecastEnabled && !chart.isForecastChart;
+        onSave(state, shouldSpawn);
         onClose();
     };
 
