@@ -117,7 +117,28 @@ export function computeLineAnalytics(
     }
 
     // Clone so we can attach analytics fields without mutating upstream data
-    const working = data.map((d) => ({ ...d }));
+    let working = data.map((d) => ({ ...d }));
+
+    // OLD DATA FILTER: Filter out early years if configured
+    const oldDataFilterYears = analytics?.forecast?.oldDataFilterYears ?? 0;
+    if (oldDataFilterYears > 0) {
+        const yearsSet = new Set<number>();
+        working.forEach(row => {
+            const date = tryParseDateValue(row[xKey]);
+            if (date) yearsSet.add(date.getFullYear());
+        });
+        
+        if (yearsSet.size > oldDataFilterYears) {
+            const sortedYears = Array.from(yearsSet).sort((a, b) => a - b);
+            const yearsToRemove = sortedYears.slice(0, oldDataFilterYears);
+            const yearsToRemoveSet = new Set(yearsToRemove);
+            
+            working = working.filter(row => {
+                const date = tryParseDateValue(row[xKey]);
+                return !date || !yearsToRemoveSet.has(date.getFullYear());
+            });
+        }
+    }
 
     // Compute summary stats on numeric y values
     const numericY: number[] = [];
@@ -134,9 +155,7 @@ export function computeLineAnalytics(
 
     // Trendline (linear regression over all original points)
     let trend: { m: number; b: number; residualStd: number } | null = null;
-    const ignoreLast = Math.max(0, Math.min(working.length - 2, analytics?.forecast?.ignoreLast ?? 0));
     const fitPoints = working
-        .slice(0, working.length - ignoreLast)
         .map((row, i) => ({ x: i, y: Number(row[yKey]) }))
         .filter((p) => !Number.isNaN(p.y) && Number.isFinite(p.y));
 
@@ -172,6 +191,7 @@ export function computeLineAnalytics(
                     working[lastIdx].__forecast = lastY;
                     working[lastIdx].__forecastUpper = lastY;
                     working[lastIdx].__forecastLower = lastY;
+                    working[lastIdx].__forecastRange = [lastY, lastY];
                 }
             }
 
@@ -189,6 +209,7 @@ export function computeLineAnalytics(
                     __forecast: yPred,
                     __forecastUpper: yPred + band,
                     __forecastLower: yPred - band,
+                    __forecastRange: [yPred - band, yPred + band],
                     __isForecast: true,
                 });
             }
@@ -418,6 +439,268 @@ export function computeForecastChartData(
     return { extendedData, summary, forecastStartIndex };
 }
 
+// ---- Date Range Filter for Forecast Charts ----
+function filterDataByDateRange(
+    data: any[],
+    dateCol: string,
+    range: { start: string; end: string } | undefined,
+): any[] {
+    if (!range || !range.start || !range.end) return data;
+    const startDate = new Date(range.start);
+    const endDate = new Date(range.end);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return data;
+    // Set end date to end of day
+    endDate.setHours(23, 59, 59, 999);
+    return data.filter(row => {
+        const parsed = tryParseDateValue(row[dateCol]);
+        if (!parsed) return false;
+        return parsed >= startDate && parsed <= endDate;
+    });
+}
+
+function getDateBounds(data: any[], dateCol: string): { min: string; max: string } | null {
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
+    for (const row of data) {
+        const parsed = tryParseDateValue(row[dateCol]);
+        if (!parsed) continue;
+        if (!minDate || parsed < minDate) minDate = parsed;
+        if (!maxDate || parsed > maxDate) maxDate = parsed;
+    }
+    if (!minDate || !maxDate) return null;
+    return {
+        min: minDate.toISOString().slice(0, 10),
+        max: maxDate.toISOString().slice(0, 10),
+    };
+}
+
+const DateFilterSlider = React.memo(({
+    data,
+    dateCol,
+    currentRange,
+    onChange,
+    theme,
+    compact = false,
+}: {
+    data: any[];
+    dateCol: string;
+    currentRange?: { start: string; end: string };
+    onChange: (range: { start: string; end: string } | undefined) => void;
+    theme: Theme;
+    compact?: boolean;
+}) => {
+    const colors = getThemeClasses(theme);
+    const bounds = useMemo(() => getDateBounds(data, dateCol), [data, dateCol]);
+    const trackRef = useRef<HTMLDivElement>(null);
+
+    const [localStart, setLocalStart] = useState<string | null>(null);
+    const [localEnd, setLocalEnd] = useState<string | null>(null);
+    const [isDragging, setIsDragging] = useState<'start' | 'end' | null>(null);
+
+    // Sync from props
+    useEffect(() => {
+        if (!isDragging && bounds) {
+            setLocalStart(currentRange?.start || bounds.min);
+            setLocalEnd(currentRange?.end || bounds.max);
+        }
+    }, [currentRange, bounds, isDragging]);
+
+    // Handle drag
+    useEffect(() => {
+        if (!isDragging || !bounds || !trackRef.current) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const rect = trackRef.current!.getBoundingClientRect();
+            let pct = (e.clientX - rect.left) / rect.width;
+            pct = Math.max(0, Math.min(1, pct));
+
+            const totalMs = new Date(bounds.max).getTime() - new Date(bounds.min).getTime();
+            const newDateMs = new Date(bounds.min).getTime() + (pct * totalMs);
+            const newDateStr = new Date(newDateMs).toISOString().slice(0, 10);
+
+            if (isDragging === 'start') {
+                if (newDateStr <= (localEnd || bounds.max)) {
+                    setLocalStart(newDateStr);
+                } else {
+                    setLocalStart(localEnd || bounds.max);
+                }
+            } else {
+                if (newDateStr >= (localStart || bounds.min)) {
+                    setLocalEnd(newDateStr);
+                } else {
+                    setLocalEnd(localStart || bounds.min);
+                }
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsDragging(null);
+            // Apply filter only when drag stops
+            if (localStart && localEnd) {
+                if (localStart === bounds.min && localEnd === bounds.max) {
+                    onChange(undefined);
+                } else {
+                    onChange({ start: localStart, end: localEnd });
+                }
+            }
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDragging, bounds, localStart, localEnd, onChange]);
+
+    if (!bounds || !localStart || !localEnd) return null;
+
+    const startVal = localStart;
+    const endVal = localEnd;
+    const isFiltered = startVal !== bounds.min || endVal !== bounds.max;
+
+    const totalMs = new Date(bounds.max).getTime() - new Date(bounds.min).getTime();
+    const startPct = totalMs > 0 ? ((new Date(startVal).getTime() - new Date(bounds.min).getTime()) / totalMs) * 100 : 0;
+    const endPct = totalMs > 0 ? ((new Date(endVal).getTime() - new Date(bounds.min).getTime()) / totalMs) * 100 : 100;
+
+    const formatLabel = (dateStr: string) => {
+        const d = new Date(dateStr);
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    };
+
+    return (
+        <div className={`forecast-date-slider ${compact ? 'mt-1 mb-0' : 'mt-1 mb-1 w-full max-w-5xl mx-auto'}`}>
+            <div className={`flex items-center justify-between gap-2 ${compact ? 'mb-1' : 'mb-3'}`}>
+                <div className="flex items-center gap-2">
+                    <div className={`p-1.5 rounded-lg ${theme === 'dark' ? 'bg-violet-500/20' : 'bg-violet-500/10'}`}>
+                        <Sparkles className={`${compact ? 'w-3 h-3' : 'w-4 h-4'} text-violet-400 shrink-0`} />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className={`${compact ? 'text-[8px]' : 'text-[10px]'} font-black uppercase tracking-[0.2em] ${colors.textMuted}`}>
+                            Time Horizon
+                        </span>
+                        {!compact && (
+                            <span className={`text-[11px] font-bold ${colors.textPrimary}`}>
+                                Date Range Filter
+                            </span>
+                        )}
+                    </div>
+                </div>
+                {isFiltered && (
+                    <button
+                        onClick={() => onChange(undefined)}
+                        className={`${compact ? 'text-[8px] px-1.5 py-0.5' : 'text-[10px] px-3 py-1'} font-bold rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 uppercase tracking-wider flex items-center gap-1`}
+                    >
+                        <RefreshCw className="w-2.5 h-2.5" />
+                        Reset Range
+                    </button>
+                )}
+            </div>
+            
+            <div className={`flex ${compact ? 'items-center' : 'items-center gap-4'} gap-2`}>
+                <div className="relative group">
+                    <input
+                        type="date"
+                        value={startVal}
+                        min={bounds.min}
+                        max={endVal}
+                        onChange={e => {
+                            const newStart = e.target.value;
+                            if (newStart && newStart <= endVal) {
+                                setLocalStart(newStart);
+                                onChange({ start: newStart, end: endVal });
+                            }
+                        }}
+                        className={`forecast-date-input ${compact ? 'text-[9px] px-1.5 py-1' : 'text-[11px] px-3 py-2 min-w-[130px]'} rounded-xl ${theme === 'dark' ? 'bg-slate-900/50 hover:bg-slate-800' : 'bg-white hover:bg-slate-50'} border ${colors.borderSecondary} ${colors.textPrimary} outline-none focus:ring-2 focus:ring-violet-500/50 transition-all font-bold cursor-pointer shadow-sm`}
+                    />
+                </div>
+
+                <div className={`flex-1 relative ${compact ? 'h-5' : 'h-8'} flex items-center group cursor-pointer`} ref={trackRef}>
+                    {/* Track Background */}
+                    <div className={`absolute inset-x-0 ${compact ? 'h-1.5' : 'h-2'} rounded-full ${theme === 'dark' ? 'bg-slate-800' : 'bg-slate-100'} border ${theme === 'dark' ? 'border-slate-700' : 'border-slate-200'}`} />
+                    
+                    {/* Active Range Fill */}
+                    <div
+                        className={`absolute ${compact ? 'h-1.5' : 'h-2'} rounded-full bg-gradient-to-r from-violet-600 via-indigo-500 to-blue-500 shadow-[0_0_10px_rgba(139,92,246,0.3)] transition-none pointer-events-none`}
+                        style={{ left: `${startPct}%`, width: `${Math.max(2, endPct - startPct)}%` }}
+                    />
+                    
+                    {/* Start Handle */}
+                    <div
+                        onMouseDown={() => setIsDragging('start')}
+                        className={`absolute ${compact ? 'w-3.5 h-3.5 border-[2px]' : 'w-5 h-5 border-[3px]'} rounded-full bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-violet-500 transition-transform hover:scale-125 hover:border-violet-400 cursor-grab active:cursor-grabbing z-20 flex items-center justify-center ${isDragging === 'start' ? 'scale-125 cursor-grabbing ring-4 ring-violet-500/20' : ''}`}
+                        style={{ left: `calc(${startPct}% - ${compact ? '7px' : '10px'})` }}
+                    >
+                        <div className={`${compact ? 'w-1 h-1' : 'w-1.5 h-1.5'} rounded-full bg-violet-500`} />
+                    </div>
+
+                    {/* End Handle */}
+                    <div
+                        onMouseDown={() => setIsDragging('end')}
+                        className={`absolute ${compact ? 'w-3.5 h-3.5 border-[2px]' : 'w-5 h-5 border-[3px]'} rounded-full bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-blue-500 transition-transform hover:scale-125 hover:border-blue-400 cursor-grab active:cursor-grabbing z-20 flex items-center justify-center ${isDragging === 'end' ? 'scale-125 cursor-grabbing ring-4 ring-blue-500/20' : ''}`}
+                        style={{ left: `calc(${endPct}% - ${compact ? '7px' : '10px'})` }}
+                    >
+                        <div className={`${compact ? 'w-1 h-1' : 'w-1.5 h-1.5'} rounded-full bg-blue-500`} />
+                    </div>
+
+                    {/* Value Tooltips (only when dragging) */}
+                    {isDragging && !compact && (
+                        <>
+                            <div className={`absolute -top-7 px-2 py-0.5 rounded bg-slate-800 text-white text-[10px] font-bold pointer-events-none transition-opacity ${isDragging === 'start' ? 'opacity-100' : 'opacity-0'}`} style={{ left: `calc(${startPct}% - 35px)` }}>
+                                {formatLabel(startVal)}
+                            </div>
+                            <div className={`absolute -top-7 px-2 py-0.5 rounded bg-slate-800 text-white text-[10px] font-bold pointer-events-none transition-opacity ${isDragging === 'end' ? 'opacity-100' : 'opacity-0'}`} style={{ left: `calc(${endPct}% - 35px)` }}>
+                                {formatLabel(endVal)}
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                <div className="relative group">
+                    <input
+                        type="date"
+                        value={endVal}
+                        min={startVal}
+                        max={bounds.max}
+                        onChange={e => {
+                            const newEnd = e.target.value;
+                            if (newEnd && newEnd >= startVal) {
+                                setLocalEnd(newEnd);
+                                onChange({ start: startVal, end: newEnd });
+                            }
+                        }}
+                        className={`forecast-date-input ${compact ? 'text-[9px] px-1.5 py-1' : 'text-[11px] px-3 py-2 min-w-[130px]'} rounded-xl ${theme === 'dark' ? 'bg-slate-900/50 hover:bg-slate-800' : 'bg-white hover:bg-slate-50'} border ${colors.borderSecondary} ${colors.textPrimary} outline-none focus:ring-2 focus:ring-violet-500/50 transition-all font-bold cursor-pointer shadow-sm`}
+                    />
+                </div>
+            </div>
+
+            <div className={`flex flex-wrap justify-between items-center ${compact ? 'mt-1 gap-1' : 'mt-3 gap-2 px-1'}`}>
+                <div className="flex items-center gap-1.5">
+                    <div className="w-1 h-1 rounded-full bg-violet-400 opacity-50" />
+                    <span className={`text-[10px] ${colors.textMuted} font-semibold uppercase tracking-wider`}>{formatLabel(startVal)}</span>
+                </div>
+                
+                <div className={`px-2.5 py-0.5 rounded-full ${isFiltered ? 'bg-violet-500/10 text-violet-400' : 'bg-slate-500/5 text-slate-500'} flex items-center gap-2 border ${isFiltered ? 'border-violet-500/20' : 'border-transparent'}`}>
+                    {isFiltered ? (
+                        <>
+                            <Filter className="w-2.5 h-2.5" />
+                            <span className="text-[9px] font-black uppercase tracking-tighter">Custom Range Active</span>
+                        </>
+                    ) : (
+                        <span className="text-[9px] font-bold uppercase tracking-tighter opacity-60">Full Dataset Coverage</span>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] ${colors.textMuted} font-semibold uppercase tracking-wider`}>{formatLabel(endVal)}</span>
+                    <div className="w-1 h-1 rounded-full bg-blue-400 opacity-50" />
+                </div>
+            </div>
+        </div>
+    );
+});
+
 const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true, columnMetadata, columnCurrencies, isExporting = false, fontSettings }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean, columnMetadata?: any, columnCurrencies?: { [key: string]: string }, isExporting?: boolean, fontSettings?: { fontFamily: string, fontSize: number, isBold: boolean, isItalic: boolean } }) => {
     const colors = getThemeClasses(theme);
     if (!data || data.length === 0) return <div className={`flex items-center justify-center h-full ${colors.textMuted} text-sm`}>No Data Available</div>;
@@ -459,7 +742,9 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
         data: data,
         margin: isExporting
             ? { top: 5, right: 30, left: 25, bottom: 65 } // Minimized top margin for PDF export
-            : { top: 30, right: 40, left: 20, bottom: 25 }
+            : isExpanded
+                ? { top: 30, right: 40, left: 20, bottom: 60 } // More space for labels in expanded view
+                : { top: 30, right: 40, left: 20, bottom: 25 }
     };
 
     const themeColors = getThemeClasses(theme);
@@ -1016,13 +1301,13 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                 </div>
             );
         }
-
         case ChartType.LINE: {
             const analytics = config.analytics;
             const { extendedData, summary, forecastStartIndex } = computeLineAnalytics(data, config, analytics);
-            const minWidth = Math.max(100, extendedData.length * (isExpanded ? 40 : 30));
+            const minWidth = Math.max(100, extendedData.length * (isExpanded ? 45 : 35));
 
             const mainColor = config.color || COLORS[1];
+            const secondaryColor = config.color2 || COLORS[2];
             const styleToDash = (kind?: string) => kind === 'solid' ? '0' : kind === 'dotted' ? '2 4' : '6 4';
             const styleToOpacity = (t?: number) => Math.max(0, 1 - (Math.max(0, Math.min(100, t ?? 0)) / 100));
 
@@ -1030,22 +1315,45 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                 <div style={{ width: '100%', height: '100%', overflowX: extendedData.length > 20 ? 'auto' : 'hidden', overflowY: 'hidden' }} className="custom-chart-scrollbar">
                     <div style={{ minWidth: extendedData.length > 20 ? `${minWidth}px` : '100%', width: '100%', height: '100%' }}>
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart {...commonProps} data={extendedData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} />
+                            <ComposedChart {...commonProps} data={extendedData}>
+                                <defs>
+                                    <linearGradient id={`areaGradient-${config.id}`} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor={mainColor} stopOpacity={0.3}/>
+                                        <stop offset="95%" stopColor={mainColor} stopOpacity={0}/>
+                                    </linearGradient>
+                                    {config.dataKey2 && (
+                                        <linearGradient id={`areaGradient2-${config.id}`} x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor={secondaryColor} stopOpacity={0.2}/>
+                                            <stop offset="95%" stopColor={secondaryColor} stopOpacity={0}/>
+                                        </linearGradient>
+                                    )}
+                                    <filter id="shadow" height="200%">
+                                        <feGaussianBlur in="SourceAlpha" stdDeviation="3" />
+                                        <feOffset dx="0" dy="4" result="offsetblur" />
+                                        <feComponentTransfer>
+                                            <feFuncA type="linear" slope="0.3" />
+                                        </feComponentTransfer>
+                                        <feMerge>
+                                            <feMergeNode />
+                                            <feMergeNode in="SourceGraphic" />
+                                        </feMerge>
+                                    </filter>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={themeColors.chartGrid} strokeOpacity={0.5} />
                                 <XAxis
                                     dataKey={config.xAxisKey}
                                     {...AxisProps}
                                     tick={<InteractiveTick tickFormatter={xAxisFormatter} isDate={isXDate} />}
                                     angle={isXDate ? 0 : -25}
                                     textAnchor={isXDate ? "middle" : "end"}
-                                    height={isXDate ? 50 : 90}
+                                    height={isXDate ? (isExporting ? 40 : 50) : (isExporting ? 75 : 90)}
                                     interval={extendedData.length > 30 ? 'preserveStartEnd' : 0}
                                 />
-                                <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} />
-                                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
+                                <YAxis {...AxisProps} width={70} tickFormatter={yAxisFormatter} domain={['auto', 'auto']} />
+                                <Tooltip content={<CustomTooltip />} cursor={{ stroke: themeColors.chartCursor, strokeWidth: 1 }} />
                                 <Legend verticalAlign="top" height={36} content={<ChartLegend />} />
 
-                                {/* Reference lines for Min / Max / Average */}
+                                {/* Reference lines */}
                                 {analytics?.min?.enabled && summary.min !== undefined && (
                                     <ReferenceLine
                                         y={summary.min}
@@ -1098,7 +1406,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     />
                                 )}
 
-                                {/* Reference line separating actual vs forecast */}
+                                {/* Forecast line separating actual vs forecast */}
                                 {analytics?.forecast?.enabled && forecastStartIndex !== null && extendedData[forecastStartIndex] && (
                                     <ReferenceLine
                                         x={extendedData[forecastStartIndex][config.xAxisKey]}
@@ -1108,37 +1416,50 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     />
                                 )}
 
-                                {/* Confidence band (shown underneath) */}
+                                {/* Confidence band (Range fill) */}
                                 {analytics?.forecast?.enabled && analytics.forecast.showConfidenceBand !== false && (
-                                    <Line
+                                    <Area
                                         type="monotone"
-                                        dataKey="__forecastUpper"
+                                        dataKey="__forecastRange"
                                         stroke={analytics.forecast.bandColor || analytics.forecast.color || '#8b5cf6'}
-                                        strokeOpacity={styleToOpacity(analytics.forecast.bandTransparency ?? 80)}
-                                        strokeWidth={1}
-                                        strokeDasharray="3 3"
-                                        dot={false}
+                                        strokeWidth={0.5}
+                                        strokeOpacity={theme === 'dark' ? 0.4 : 0.2}
+                                        fill={analytics.forecast.bandColor || analytics.forecast.color || '#8b5cf6'}
+                                        fillOpacity={theme === 'dark' ? 0.25 : 0.15}
                                         isAnimationActive={isAnimationActive}
                                         connectNulls
-                                        name="Upper bound"
+                                        name="Confidence Band"
                                         legendType="none"
                                     />
                                 )}
-                                {analytics?.forecast?.enabled && analytics.forecast.showConfidenceBand !== false && (
-                                    <Line
+
+                                {/* Areas for main and secondary data keys */}
+                                {config.dataKey2 && (
+                                    <Area
                                         type="monotone"
-                                        dataKey="__forecastLower"
-                                        stroke={analytics.forecast.bandColor || analytics.forecast.color || '#8b5cf6'}
-                                        strokeOpacity={styleToOpacity(analytics.forecast.bandTransparency ?? 80)}
-                                        strokeWidth={1}
-                                        strokeDasharray="3 3"
-                                        dot={false}
+                                        dataKey={config.dataKey2}
+                                        stroke={secondaryColor}
+                                        strokeWidth={isExpanded ? 4 : 3}
+                                        fill={`url(#areaGradient2-${config.id})`}
+                                        dot={extendedData.length < 50 ? { r: isExpanded ? 4 : 3, fill: theme === 'dark' ? '#0b0f1a' : '#fff', strokeWidth: 2, stroke: secondaryColor } : false}
+                                        activeDot={{ r: 6, strokeWidth: 0, fill: secondaryColor }}
                                         isAnimationActive={isAnimationActive}
                                         connectNulls
-                                        name="Lower bound"
-                                        legendType="none"
                                     />
                                 )}
+
+                                <Area
+                                    type="monotone"
+                                    dataKey={config.dataKey}
+                                    stroke={mainColor}
+                                    strokeWidth={isExpanded ? 4 : 3}
+                                    fill={`url(#areaGradient-${config.id})`}
+                                    dot={extendedData.length < 50 ? { r: isExpanded ? 4 : 3, fill: theme === 'dark' ? '#0b0f1a' : '#fff', strokeWidth: 2, stroke: mainColor } : false}
+                                    activeDot={{ r: 6, strokeWidth: 0, fill: mainColor }}
+                                    isAnimationActive={isAnimationActive}
+                                    connectNulls
+                                    style={{ filter: isExpanded ? 'url(#shadow)' : 'none' }}
+                                />
 
                                 {/* Trendline */}
                                 {analytics?.trendline?.enabled && (
@@ -1160,41 +1481,18 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                     </Line>
                                 )}
 
-                                {/* Primary line */}
-                                <Line
-                                    type="monotone"
-                                    dataKey={config.dataKey}
-                                    stroke={mainColor}
-                                    strokeWidth={2.5}
-                                    isAnimationActive={isAnimationActive}
-                                    connectNulls={false}
-                                    dot={extendedData.length > (isExpanded ? 100 : 60) ? false : {
-                                        fill: theme === 'dark' ? '#0f172a' : '#ffffff',
-                                        stroke: mainColor,
-                                        strokeWidth: 2,
-                                        r: 3,
-                                        cursor: 'pointer'
-                                    }}
-                                    activeDot={{ r: 5, fill: mainColor, stroke: '#fff', strokeWidth: 2, cursor: 'pointer' }}
-                                    onClick={(d: any) => {
-                                        const value = d?.activeLabel || d?.[config.xAxisKey] || (d?.payload && d.payload[config.xAxisKey]);
-                                        if (value !== undefined && onItemClick) onItemClick(value);
-                                    }}
-                                />
-
-                                {/* Forecast line */}
+                                {/* Forecast line (plotted on top) */}
                                 {analytics?.forecast?.enabled && (
                                     <Line
                                         type="monotone"
                                         dataKey="__forecast"
-                                        stroke={analytics.forecast.color || '#8b5cf6'}
-                                        strokeOpacity={styleToOpacity(analytics.forecast.transparency)}
-                                        strokeWidth={2.5}
-                                        strokeDasharray={styleToDash(analytics.forecast.lineStyle)}
+                                        stroke={analytics.forecast.color || mainColor}
+                                        strokeWidth={isExpanded ? 4 : 3}
+                                        strokeDasharray="5 5"
+                                        dot={extendedData.length < 50 ? { r: 3, fill: theme === 'dark' ? '#0b0f1a' : '#fff', strokeWidth: 2, stroke: analytics.forecast.color || mainColor } : false}
                                         isAnimationActive={isAnimationActive}
                                         connectNulls
                                         name="Forecast"
-                                        dot={{ fill: theme === 'dark' ? '#0f172a' : '#ffffff', stroke: analytics.forecast.color || '#8b5cf6', strokeWidth: 2, r: 3 }}
                                     >
                                         {analytics.forecast.dataLabels && (
                                             <LabelList dataKey="__forecast" position="top" fontSize={fsLabelSize || 10} formatter={(v: any) => v == null ? '' : formatByColumn(Number(Number(v).toFixed(2)), config.dataKey)} />
@@ -1211,7 +1509,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                         tickFormatter={() => ''}
                                     />
                                 )}
-                            </LineChart>
+                            </ComposedChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
@@ -2538,6 +2836,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         ));
     }, []);
 
+    // Date slider range update for forecast charts
+    const updateDateSliderRange = useCallback((chartId: string, range: { start: string; end: string } | undefined) => {
+        setCurrentCharts(prev => prev.map(c => {
+            if (c.id !== chartId) return c;
+            // When range is set, use 'date' granularity; when cleared, use 'month' for hierarchy
+            return {
+                ...c,
+                dateSliderRange: range,
+                forecastGranularity: range ? 'date' : 'month',
+            };
+        }));
+    }, []);
+
     // --- Section-based Tabs ---
     const CHARTS_PER_TAB = 6;
 
@@ -3185,54 +3496,47 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                 {/* Expanded Chart Modal */}
                 {expandedChartConfig && (
                     <div className={`fixed inset-0 z-50 ${colors.overlayBg} glass-effect flex items-center justify-center p-4 lg:p-8 animate-fade-in no-print`}>
-                        <div className={`${colors.bgSecondary} w-full h-full max-w-7xl max-h-[90vh] rounded-2xl border ${colors.borderPrimary} shadow-2xl elevation-lg flex flex-col relative`}>
-                            <div className={`p-6 border-b ${colors.borderPrimary} flex justify-between items-start`}>
-                                <div>
-                                    <h2 className={`text-2xl font-bold ${colors.textPrimary}`}>{expandedChartConfig.title}</h2>
-                                    <p className={`${colors.textMuted} mt-1`}>{expandedChartConfig.description}</p>
-                                    {/* Granularity slider in expanded view for forecast charts */}
-                                    {expandedChartConfig.isForecastChart && expandedChartConfig.forecastGranularity && (
-                                        <div className="forecast-granularity-slider mt-3">
-                                            <div className="flex items-center gap-3">
-                                                <Sparkles className="w-4 h-4 text-violet-400 shrink-0" />
-                                                <div className={`flex items-center gap-0 p-0.5 rounded-xl ${theme === 'dark' ? 'bg-slate-800/80' : 'bg-slate-200/80'} border ${colors.borderPrimary}`}>
-                                                    {(['date', 'month', 'year'] as const).map((level) => (
-                                                        <button
-                                                            key={level}
-                                                            onClick={() => updateForecastGranularity(expandedChartConfig.id, level)}
-                                                            className={`px-4 py-1.5 text-xs font-black uppercase tracking-widest rounded-lg transition-all duration-300 ${
-                                                                expandedChartConfig.forecastGranularity === level
-                                                                    ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-900/30 scale-105'
-                                                                    : `${colors.textMuted} hover:${colors.textPrimary} hover:bg-white/5`
-                                                            }`}
-                                                        >
-                                                            {level === 'date' ? 'Day' : level === 'month' ? 'Month' : 'Year'}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                                <span className={`text-xs font-semibold ${colors.textMuted} uppercase tracking-wider`}>
-                                                    {expandedChartConfig.forecastGranularity === 'date' ? 'Daily view' : expandedChartConfig.forecastGranularity === 'month' ? 'Monthly view' : 'Yearly view'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
+                        <div className={`${colors.bgSecondary} w-full h-full max-w-7xl max-h-[95vh] min-h-[80vh] rounded-2xl border ${colors.borderPrimary} shadow-2xl elevation-lg flex flex-col relative overflow-hidden`}>
+                            <div className={`px-6 py-5 border-b ${colors.borderPrimary} flex justify-between items-center bg-gradient-to-r ${theme === 'dark' ? 'from-slate-900/50 to-transparent' : 'from-slate-50/50 to-transparent'}`}>
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-3 rounded-2xl ${theme === 'dark' ? 'bg-indigo-500/10' : 'bg-indigo-500/5'} border ${theme === 'dark' ? 'border-indigo-500/20' : 'border-indigo-500/10'}`}>
+                                        <TrendingUp className="w-7 h-7 text-indigo-500" />
+                                    </div>
+                                    <div>
+                                        <h2 className={`text-2xl font-black tracking-tight ${colors.textPrimary}`}>{expandedChartConfig.title}</h2>
+                                        <p className={`text-sm ${colors.textMuted} font-medium mt-0.5`}>{expandedChartConfig.description || 'Forecast Analysis & Trend Projection'}</p>
+                                    </div>
                                 </div>
                                 <button
                                     onClick={() => setExpandedChartId(null)}
-                                    className={`p-2 ${colors.bgTertiary} hover:bg-red-500/20 hover:text-red-500 rounded-lg transition-colors ${colors.textMuted}`}
+                                    className={`p-2.5 ${colors.bgTertiary} hover:bg-red-500/20 hover:text-red-500 rounded-xl transition-all ${colors.textMuted} border border-transparent hover:border-red-500/30 shadow-sm`}
                                 >
                                     <X className="w-6 h-6" />
                                 </button>
                             </div>
-                            <div className="flex-1 p-6 min-h-0">
+
+                            {/* Control Bar for Forecast Charts */}
+                            {expandedChartConfig.isForecastChart && (expandedChartConfig.forecastDateColumn || expandedChartConfig.xAxisKey) && (
+                                <div className={`px-8 py-4 border-b ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-900/20' : 'bg-slate-50/30'}`}>
+                                    <DateFilterSlider
+                                        data={expandedChartConfig.ignoreGlobalFilters ? dataModel.data : filteredData}
+                                        dateCol={expandedChartConfig.forecastDateColumn || expandedChartConfig.xAxisKey}
+                                        currentRange={expandedChartConfig.dateSliderRange}
+                                        onChange={(range) => updateDateSliderRange(expandedChartConfig.id, range)}
+                                        theme={theme}
+                                    />
+                                </div>
+                            )}
+                            <div className="flex-1 px-8 py-6 min-h-0 relative">
                                 <RenderChart
                                     config={expandedChartConfig}
                                     data={(() => {
                                         const baseData = expandedChartConfig.ignoreGlobalFilters ? dataModel.data : filteredData;
                                         const chartData = applyChartFilters(baseData, expandedChartConfig.id);
                                         if (expandedChartConfig.isForecastChart) {
+                                            const filteredForForecast = filterDataByDateRange(chartData, expandedChartConfig.forecastDateColumn || expandedChartConfig.xAxisKey, expandedChartConfig.dateSliderRange);
                                             return computeForecastChartData(
-                                                chartData,
+                                                filteredForForecast,
                                                 expandedChartConfig,
                                                 expandedChartConfig.forecastGranularity || 'date'
                                             ).extendedData;
@@ -3767,7 +4071,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                     // For forecast charts, use the multi-granularity forecast pipeline
                                     const aggregatedData = chart.isForecastChart
                                         ? computeForecastChartData(
-                                            chartPreFilteredData,
+                                            filterDataByDateRange(chartPreFilteredData, chart.forecastDateColumn || chart.xAxisKey, chart.dateSliderRange),
                                             chart,
                                             chart.forecastGranularity || 'date'
                                           ).extendedData
@@ -3782,40 +4086,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             key={chart.id}
                                             onMouseEnter={() => { hoveredChartRef.current = chart.id; }}
                                             onMouseLeave={() => { hoveredChartRef.current = null; }}
-                                            className={`glass-panel premium-box rounded-[32px] border ${colors.borderPrimary} p-8 h-[460px] flex flex-col hover:border-indigo-500/30 transition-all duration-500 group relative overflow-hidden`}>
+                                            className={`glass-panel premium-box rounded-[32px] border ${colors.borderPrimary} p-8 h-[500px] flex flex-col hover:border-indigo-500/30 transition-all duration-500 group relative overflow-hidden`}>
                                             
-                                            <div className="mb-6 relative z-10">
+                                            <div className="mb-2 relative z-10">
                                                 <div className="flex items-center gap-3">
                                                     <h3 className={`font-black text-xl ${colors.textPrimary} truncate tracking-tight`} style={{ fontFamily: fontSettings.fontFamily, fontWeight: fontSettings.isBold ? 'bold' : 'black', fontStyle: fontSettings.isItalic ? 'italic' : undefined }}>{chart.title}</h3>
                                                     <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0" />
                                                 </div>
                                                 <p className={`text-[11px] font-medium ${colors.textMuted} mt-1.5 truncate opacity-70`} style={{ fontFamily: fontSettings.fontFamily, fontStyle: fontSettings.isItalic ? 'italic' : undefined }}>{chart.description || "Analytical insight visualized for your data model"}</p>
                                                 
-                                                {/* Forecast Granularity Slider — only for forecast charts with date columns */}
-                                                {chart.isForecastChart && chart.forecastGranularity && (
-                                                    <div className="forecast-granularity-slider mt-3 mb-1">
-                                                        <div className="flex items-center gap-3">
-                                                            <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                                                            <div className={`flex items-center gap-0 p-0.5 rounded-xl ${theme === 'dark' ? 'bg-slate-800/80' : 'bg-slate-200/80'} border ${colors.borderPrimary}`}>
-                                                                {(['date', 'month', 'year'] as const).map((level) => (
-                                                                    <button
-                                                                        key={level}
-                                                                        onClick={() => updateForecastGranularity(chart.id, level)}
-                                                                        className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all duration-300 ${
-                                                                            chart.forecastGranularity === level
-                                                                                ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-900/30 scale-105'
-                                                                                : `${colors.textMuted} hover:${colors.textPrimary} hover:bg-white/5`
-                                                                        }`}
-                                                                    >
-                                                                        {level === 'date' ? 'Day' : level === 'month' ? 'Month' : 'Year'}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                            <span className={`text-[9px] font-semibold ${colors.textMuted} uppercase tracking-wider`}>
-                                                                {chart.forecastGranularity === 'date' ? 'Daily view' : chart.forecastGranularity === 'month' ? 'Monthly view' : 'Yearly view'}
-                                                            </span>
-                                                        </div>
-                                                    </div>
+                                                {/* Forecast Date Filter Slider */}
+                                                {chart.isForecastChart && (chart.forecastDateColumn || chart.xAxisKey) && (
+                                                    <DateFilterSlider
+                                                        data={chart.ignoreGlobalFilters ? dataModel.data : filteredData}
+                                                        dateCol={chart.forecastDateColumn || chart.xAxisKey}
+                                                        currentRange={chart.dateSliderRange}
+                                                        onChange={(range) => updateDateSliderRange(chart.id, range)}
+                                                        theme={theme}
+                                                        compact={true}
+                                                    />
                                                 )}
                                                 
                                                 <div className="flex items-center gap-2 mt-4 flex-wrap">
@@ -3894,7 +4183,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                             <RefreshCw className="w-4 h-4" />
                                                         </button>
                                                     )}
-                                                    {chart.type === ChartType.LINE && (
+                                                    {chart.isForecastChart && (
                                                         <button
                                                             onClick={() => setAnalyticsChartId(chart.id)}
                                                             className={`p-2 rounded-xl transition-all duration-300 active:scale-90 ${chart.analytics && (chart.analytics.trendline?.enabled || chart.analytics.min?.enabled || chart.analytics.max?.enabled || chart.analytics.average?.enabled || chart.analytics.forecast?.enabled) ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' : `${colors.bgTertiary} ${colors.textMuted} hover:text-white hover:bg-indigo-500/70`}`}
@@ -4190,7 +4479,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                         const baseData = chart.ignoreGlobalFilters ? dataModel.data : filteredData;
                                                         const chartData = applyChartFilters(baseData, chart.id);
                                                         if (chart.isForecastChart) {
-                                                            return computeForecastChartData(chartData, chart, chart.forecastGranularity || 'date').extendedData;
+                                                            const filteredForForecast = filterDataByDateRange(chartData, chart.forecastDateColumn || chart.xAxisKey, chart.dateSliderRange);
+                                                            return computeForecastChartData(filteredForForecast, chart, chart.forecastGranularity || 'date').extendedData;
                                                         }
                                                         return isDateTimeColumn(chart.xAxisKey)
                                                             ? getDrillDownData(chart, chartData)

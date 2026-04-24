@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DataModel, ChartConfig, DashboardSection, ChartType, AggregationType } from '../types';
+import { DataModel, ChartConfig, DashboardSection, ChartType, AggregationType, AnalyticsLinesConfig } from '../types';
 import { analyzeDataAndSuggestKPIs, generateChartFromPrompt } from '../services/geminiService';
-import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, RefreshCw, Filter, Check, ChevronDown, Palette, GitBranch, Layers, BarChartHorizontal, ScatterChart as ScatterChartIcon, Droplets, Grid3x3, Edit2, Settings2 } from 'lucide-react';
+import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, RefreshCw, Filter, Check, ChevronDown, Palette, GitBranch, Layers, BarChartHorizontal, ScatterChart as ScatterChartIcon, Droplets, Grid3x3, Edit2, Settings2, TrendingUp } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
@@ -36,6 +36,7 @@ const ALL_CHART_TYPES: { type: ChartType; label: string }[] = [
     { type: ChartType.HEATMAP, label: 'Heatmap' },
     { type: ChartType.TABLE, label: 'Table' },
     { type: ChartType.MATRIX, label: 'Matrix' },
+    { type: ChartType.FORECASTING, label: 'Forecasting' },
 ];
 
 const getChartIcon = (type: string) => {
@@ -54,6 +55,7 @@ const getChartIcon = (type: string) => {
         case 'MATRIX': return <Grid3x3 className="w-5 h-5" />;
         case 'TABLE': return <TableIcon className="w-5 h-5" />;
         case 'KPI': return <div className="text-xs font-bold border border-current px-1 rounded leading-none min-w-[20px] text-center">123</div>;
+        case 'FORECASTING': return <TrendingUp className="w-5 h-5" />;
         default: return <BarChart3 className="w-5 h-5" />;
     }
 };
@@ -819,13 +821,40 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         setBucket(prev => prev.map(c => c.id === id ? { ...c, fontSize } : c));
     };
 
+    // Keywords that indicate a forecast/prediction intent
+    const FORECAST_KEYWORDS = /\b(forecast|predict|projection|future|trend\s*forward|extrapolat|foresee|anticipat)\b/i;
+
     const handleCustomChart = async () => {
         if (!customPrompt.trim()) return;
         setIsGeneratingCustom(true);
         const newChart = await generateChartFromPrompt(dataModel, customPrompt);
         if (newChart) {
             const sectionId = sections.length > 0 ? sections[0].id : undefined;
-            setBucket([{ ...newChart, sectionId }, ...bucket]);
+            let chartToAdd = { ...newChart, sectionId };
+
+            // Auto-detect forecast intent from user prompt — if the AI returned a LINE chart
+            // and the prompt contains forecast-related keywords, mark it as a forecast chart
+            const isForecastIntent = FORECAST_KEYWORDS.test(customPrompt);
+            if (isForecastIntent && (chartToAdd.type === ChartType.LINE || chartToAdd.type === ChartType.AREA)) {
+                const dateCol = chartToAdd.xAxisKey;
+                chartToAdd = {
+                    ...chartToAdd,
+                    type: ChartType.LINE,
+                    isForecastChart: true,
+                    forecastDateColumn: dateCol,
+                    forecastGranularity: 'date',
+                    analytics: {
+                        trendline: { enabled: true, color: '#6366f1', transparency: 0, lineStyle: 'dashed', dataLabels: false },
+                        forecast: {
+                            enabled: true, color: '#8b5cf6', transparency: 0, lineStyle: 'dashed',
+                            dataLabels: false, length: 10, ignoreLast: 0, units: 'points',
+                            confidenceLevel: 95, bandColor: '#8b5cf6', bandTransparency: 80, showConfidenceBand: true,
+                        },
+                    },
+                };
+            }
+
+            setBucket([chartToAdd, ...bucket]);
             setCustomPrompt('');
         }
         setIsGeneratingCustom(false);
@@ -869,10 +898,31 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     const handleAddManualChart = () => {
         if (!manualConfig.title || !manualConfig.dataKey) return;
         
-        const chartToAdd = {
+        let chartToAdd: ChartConfig = {
             ...manualConfig,
             id: `custom-manual-${Date.now()}`
         };
+
+        // If FORECASTING type, transform to a forecast-enabled LINE chart
+        if (manualConfig.type === ChartType.FORECASTING) {
+            const dateCol = manualConfig.forecastDateColumn || manualConfig.xAxisKey;
+            chartToAdd = {
+                ...chartToAdd,
+                type: ChartType.LINE,
+                isForecastChart: true,
+                forecastDateColumn: dateCol,
+                forecastGranularity: 'date',
+                analytics: {
+                    trendline: { enabled: true, color: '#6366f1', transparency: 0, lineStyle: 'dashed', dataLabels: false },
+                    forecast: {
+                        enabled: true, color: '#8b5cf6', transparency: 0, lineStyle: 'dashed',
+                        dataLabels: false, length: 10, ignoreLast: 0, units: 'points',
+                        confidenceLevel: 95, bandColor: '#8b5cf6', bandTransparency: 80, showConfidenceBand: true,
+                    },
+                },
+            };
+        }
+
         addToBucket(chartToAdd);
         setIsManualOpen(false);
         // Reset for next use
@@ -893,6 +943,8 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         if (!manualConfig.title.trim() || !manualConfig.dataKey) return false;
         if (manualConfig.type !== ChartType.KPI && !manualConfig.xAxisKey) return false;
         if ((manualConfig.type === ChartType.HEATMAP || manualConfig.type === ChartType.MATRIX) && !manualConfig.yAxisKey) return false;
+        // Forecasting requires a date column
+        if (manualConfig.type === ChartType.FORECASTING && !manualConfig.forecastDateColumn) return false;
         return true;
     };
 
@@ -1091,6 +1143,25 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                             </select>
                                             <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
                                         </div>
+                                    </div>
+                                )}
+
+                                {/* Forecasting Date Column Selector */}
+                                {manualConfig.type === ChartType.FORECASTING && (
+                                    <div>
+                                        <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Date Column (for forecasting)</label>
+                                        <div className="relative">
+                                            <select
+                                                value={manualConfig.forecastDateColumn || ''}
+                                                onChange={e => setManualConfig({...manualConfig, forecastDateColumn: e.target.value, xAxisKey: e.target.value})}
+                                                className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
+                                            >
+                                                <option value="">Select a date column...</option>
+                                                {allColumns.map(col => <option key={col} value={col}>{col}</option>)}
+                                            </select>
+                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                                        </div>
+                                        <p className={`text-[9px] ${colors.textMuted} mt-1.5 opacity-70`}>Select the date/time column to use for trend forecasting</p>
                                     </div>
                                 )}
                             </div>

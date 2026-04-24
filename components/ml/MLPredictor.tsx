@@ -51,13 +51,38 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
 
     const downloadResults = () => {
         if (!result) return;
-        const rows = ['prediction'];
-        for (const p of result.predictions) rows.push(String(p));
+        
+        const rows: string[] = [];
+        const hasInputData = result.input_data && result.input_data.length > 0;
+        const inputKeys = hasInputData ? Object.keys(result.input_data![0]) : [];
+        
+        // Header
+        const header = [...inputKeys, `Predicted ${model.target_column}`];
+        if (result.probabilities) header.push('Confidence');
+        rows.push(header.join(','));
+
+        // Rows
+        for (let i = 0; i < result.predictions.length; i++) {
+            const row: string[] = [];
+            if (hasInputData) {
+                for (const key of inputKeys) {
+                    const val = String(result.input_data![i][key]);
+                    // Simple escape for CSV
+                    row.push(val.includes(',') ? `"${val}"` : val);
+                }
+            }
+            row.push(String(result.predictions[i]));
+            if (result.probabilities) {
+                row.push((Math.max(...(result.probabilities[i] || [0])) * 100).toFixed(1) + '%');
+            }
+            rows.push(row.join(','));
+        }
+
         const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${model.name.replace(/\W+/g, '_')}_predictions.csv`;
+        a.download = `${model.name.replace(/\\W+/g, '_')}_predictions.csv`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -148,7 +173,10 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
                     </button>
                 </div>
 
-                {result && (
+                {result && (() => {
+                    const input_data = result.input_data || [];
+                    const inputKeys = input_data.length > 0 ? Object.keys(input_data[0]) : [];
+                    return (
                     <div className={`${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl p-5`}>
                         <div className="flex items-center justify-between mb-4">
                             <div>
@@ -169,10 +197,13 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
                             <table className="w-full text-sm">
                                 <thead className={colors.bgTertiary}>
                                     <tr>
-                                        <th className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold`}>#</th>
-                                        <th className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold`}>Prediction</th>
+                                        <th className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold whitespace-nowrap`}>#</th>
+                                        {inputKeys.map(k => (
+                                            <th key={k} className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold whitespace-nowrap`}>{k}</th>
+                                        ))}
+                                        <th className={`px-4 py-2 text-left text-emerald-400 font-bold whitespace-nowrap`}>Predicted {model.target_column}</th>
                                         {result.probabilities && (
-                                            <th className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold`}>Confidence</th>
+                                            <th className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold whitespace-nowrap`}>Confidence</th>
                                         )}
                                     </tr>
                                 </thead>
@@ -180,9 +211,12 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
                                     {result.predictions.slice(0, 20).map((p, i) => (
                                         <tr key={i} className={i % 2 ? colors.bgSecondary : ''}>
                                             <td className={`px-4 py-2 ${colors.textMuted}`}>{i + 1}</td>
-                                            <td className={`px-4 py-2 ${colors.textPrimary} font-semibold`}>{String(p)}</td>
+                                            {inputKeys.map(k => (
+                                                <td key={k} className={`px-4 py-2 ${colors.textMuted} whitespace-nowrap`}>{String(result.input_data![i][k])}</td>
+                                            ))}
+                                            <td className={`px-4 py-2 text-emerald-400 font-bold bg-emerald-500/10 whitespace-nowrap`}>{String(p)}</td>
                                             {result.probabilities && (
-                                                <td className={`px-4 py-2 ${colors.textSecondary}`}>
+                                                <td className={`px-4 py-2 ${colors.textSecondary} whitespace-nowrap`}>
                                                     {(Math.max(...(result.probabilities[i] || [0])) * 100).toFixed(1)}%
                                                 </td>
                                             )}
@@ -192,7 +226,7 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
                             </table>
                         </div>
                     </div>
-                )}
+                );})()}
             </div>
         </div>
     );

@@ -291,14 +291,6 @@ const ForecastSection: React.FC<ForecastSectionProps> = ({ forecast, onChange, c
                             onChange={(v) => onChange({ length: v })}
                             colors={colors}
                         />
-                        <NumberField
-                            label="Ignore the last"
-                            value={forecast.ignoreLast ?? 0}
-                            min={0}
-                            max={500}
-                            onChange={(v) => onChange({ ignoreLast: v })}
-                            colors={colors}
-                        />
                         <SelectField
                             label="Confidence interval"
                             value={String(forecast.confidenceLevel ?? 95)}
@@ -377,6 +369,20 @@ const ForecastSection: React.FC<ForecastSectionProps> = ({ forecast, onChange, c
                                 />
                             </div>
                         )}
+                    </div>
+
+                    <div className={`border-t ${colors.borderPrimary} pt-3`}>
+                        <p className={`text-[10px] font-bold uppercase tracking-widest ${colors.textMuted} mb-2`}>Data Filtering</p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <NumberField
+                                label="Old data filter (Years)"
+                                value={forecast.oldDataFilterYears ?? 0}
+                                min={0}
+                                max={50}
+                                onChange={(v) => onChange({ oldDataFilterYears: v })}
+                                colors={colors}
+                            />
+                        </div>
                     </div>
                 </div>
             )}

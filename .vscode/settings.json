@@ -1,0 +1,6 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/server/ml-service/.venv/bin/python",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/server/ml-service/.venv/lib/python3.12/site-packages"
+    ]
+}

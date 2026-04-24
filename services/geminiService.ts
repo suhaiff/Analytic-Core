@@ -159,6 +159,13 @@ Date and Categorical filtering:
 - Set "ignoreGlobalFilters" to true only if the user specifies a static segment that shouldn't change with dashboard filters.
 
 - When the user's request is vague (e.g., "show me something interesting" or "analyze sales"), generate a meaningful, diverse chart that highlights the most impactful insight from the data
+
+FORECAST / PREDICTION INTENT:
+- If the user asks for "forecast", "predict", "projection", "future trend", "extrapolate", or similar predictive language, ALWAYS:
+  1. Return type = "LINE"
+  2. Use a DATE column on the x-axis
+  3. Set isForecastIntent = true
+  This will enable the forecasting pipeline on the resulting chart.
 `;
 
 // Schema for the ChartConfig response
@@ -280,6 +287,23 @@ const normalizeChartSuggestion = (suggestion: any, model: DataModel, id: string,
   if (suggestion.chartFilters) result.chartFilters = suggestion.chartFilters;
   if (suggestion.ignoreGlobalFilters !== undefined) result.ignoreGlobalFilters = suggestion.ignoreGlobalFilters;
   if (suggestion.drillThrough?.dateColumn) result.drillThrough = suggestion.drillThrough;
+
+  // If the AI detected a forecast intent, attach forecast analytics config
+  if (suggestion.isForecastIntent) {
+    result.isForecastChart = true;
+    result.forecastDateColumn = result.xAxisKey;
+    result.forecastGranularity = 'date';
+    result.type = 'LINE';
+    result.analytics = {
+      trendline: { enabled: true, color: '#6366f1', transparency: 0, lineStyle: 'dashed', dataLabels: false },
+      forecast: {
+        enabled: true, color: '#8b5cf6', transparency: 0, lineStyle: 'dashed',
+        dataLabels: false, length: 10, ignoreLast: 0, units: 'points',
+        confidenceLevel: 95, bandColor: '#8b5cf6', bandTransparency: 80, showConfidenceBand: true,
+      },
+    };
+  }
+
   return result;
 };
 
@@ -415,6 +439,10 @@ ${categoricalValuesSummary}
       ignoreGlobalFilters: {
         type: Type.BOOLEAN,
         description: "If true, this chart will ignore dashboard-level filters."
+      },
+      isForecastIntent: {
+        type: Type.BOOLEAN,
+        description: "Set to true if the user's request involves forecasting, prediction, projection, or future trend analysis."
       },
       drillThrough: {
         type: Type.OBJECT,

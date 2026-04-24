@@ -49,7 +49,8 @@ export enum ChartType {
   WATERFALL = 'WATERFALL',
   HEATMAP = 'HEATMAP',
   TABLE = 'TABLE',
-  MATRIX = 'MATRIX'
+  MATRIX = 'MATRIX',
+  FORECASTING = 'FORECASTING'
 }
 
 export enum ColumnType {
@@ -139,11 +140,14 @@ export interface ChartConfig {
 
   analytics?: AnalyticsLinesConfig; // Line-chart analytics (trendline, min/max/avg, forecast)
 
-  // Forecast chart fields (spawned from analytics modal)
+  // Forecast chart fields (spawned from analytics modal or chart builder)
   isForecastChart?: boolean;                          // Marks this as a spawned forecast chart
   forecastSourceChartId?: string;                     // Links back to the original chart
   forecastGranularity?: 'date' | 'month' | 'year';   // Current granularity level for the slider
   forecastDateColumn?: string;                        // The date column used for time-based aggregation
+
+  // Date filter slider range for forecast charts (Power BI-style)
+  dateSliderRange?: { start: string; end: string };   // User-selected date range from the slider
 }
 
 // ---- Line-chart analytics (Power BI-style options) ----
@@ -167,6 +171,7 @@ export interface ForecastOptions extends AnalyticsLineStyle {
   bandColor?: string;         // color of the confidence band
   bandTransparency?: number;  // 0-100 (higher = more transparent)
   showConfidenceBand?: boolean;
+  oldDataFilterYears?: number; // How many early years of data to filter out
 }
 
 export interface AnalyticsLinesConfig {
@@ -326,6 +331,7 @@ export interface MLPredictionResponse {
   row_count: number;
   predictions: (string | number | boolean)[];
   probabilities?: number[][] | null;
+  input_data?: Record<string, any>[];
 }
 
 export interface MLPredictionJob {

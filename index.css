@@ -1457,3 +1457,34 @@ button:focus-visible {
   color: #7c3aed;
   border-color: rgba(139, 92, 246, 0.15);
 }
+
+/* ===============================================
+   FORECAST DATE SLIDER
+   =============================================== */
+.forecast-date-slider {
+  animation: fade-in-up 0.3s ease-out;
+}
+
+.forecast-date-input {
+  background: transparent;
+  color: inherit;
+}
+
+/* Hide standard date picker icon if possible, relying on clicking the field */
+.forecast-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+  transition: 0.2s;
+}
+
+.forecast-date-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.light-theme .forecast-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.5);
+}
+
+.dark-theme .forecast-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
