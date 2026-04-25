@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
     Brain, Plus, Sparkles, Trash2, Play, Loader2, AlertCircle,
     ArrowLeft, BarChart3, Calendar, Target as TargetIcon,
+    RefreshCw, CheckCircle2, Upload, TrendingUp,
 } from 'lucide-react';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
@@ -62,6 +63,29 @@ export const MLModelHub: React.FC<Props> = ({ user, onHome }) => {
             setModels(prev => prev.filter(m => m.id !== model.id));
         } catch (e: any) {
             alert(e?.response?.data?.error || e.message || 'Delete failed.');
+        }
+    };
+
+    const handleRetrain = async (model: MLModel, file: File) => {
+        try {
+            await mlService.retrainModel({
+                userId: user.id,
+                modelId: model.id,
+                name: model.name,
+                description: model.description || undefined,
+                targetColumn: model.target_column,
+                algorithm: model.algorithm,
+                featureColumns: model.feature_columns,
+                problemType: model.problem_type,
+                file,
+            });
+            await loadModels();
+        } catch (e: any) {
+            const detail = e?.response?.data?.detail;
+            const msg = typeof detail === 'object'
+                ? (detail.message || JSON.stringify(detail))
+                : (detail || e.message);
+            alert(msg || 'Retraining failed.');
         }
     };
 
@@ -163,6 +187,7 @@ export const MLModelHub: React.FC<Props> = ({ user, onHome }) => {
                                 colors={colors}
                                 onPredict={() => { setActiveModel(m); setMode('predict'); }}
                                 onDelete={() => handleDelete(m)}
+                                onRetrain={handleRetrain}
                             />
                         ))}
                     </div>
@@ -177,10 +202,34 @@ interface ModelCardProps {
     colors: any;
     onPredict: () => void;
     onDelete: () => void;
+    onRetrain: (model: MLModel, file: File) => Promise<void>;
 }
 
-const ModelCard: React.FC<ModelCardProps> = ({ model, colors, onPredict, onDelete }) => {
+const ModelCard: React.FC<ModelCardProps> = ({ model, colors, onPredict, onDelete, onRetrain }) => {
     const main = pickMainMetric(model);
+    const accuracy = getAccuracyPercent(model);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isRetraining, setIsRetraining] = useState(false);
+
+    const handleRetrainClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsRetraining(true);
+        try {
+            await onRetrain(model, file);
+        } finally {
+            setIsRetraining(false);
+            // Reset file input so the same file can be reselected
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    const lastTrainedDate = model.updated_at || model.created_at;
+
     return (
         <div className={`${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl p-5 flex flex-col gap-3 hover:border-indigo-500/40 transition`}>
             <div className="flex items-start justify-between gap-2">
@@ -197,10 +246,34 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, colors, onPredict, onDelet
                 <p className={`text-xs ${colors.textMuted} line-clamp-2`}>{model.description}</p>
             )}
 
+            {/* Accuracy Bar */}
+            {accuracy !== null && (
+                <div className="mt-1">
+                    <div className="flex items-center justify-between mb-1">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} flex items-center gap-1`}>
+                            <TrendingUp className="w-3 h-3" />
+                            Model Accuracy
+                        </span>
+                        <span className={`text-xs font-bold ${accuracy >= 80 ? 'text-emerald-400' : accuracy >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
+                            {accuracy.toFixed(1)}%
+                        </span>
+                    </div>
+                    <div className={`w-full h-2 rounded-full ${colors.bgTertiary} overflow-hidden`}>
+                        <div
+                            className={`h-full rounded-full transition-all duration-500 ${accuracy >= 80 ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' : accuracy >= 60 ? 'bg-gradient-to-r from-amber-500 to-amber-400' : 'bg-gradient-to-r from-red-500 to-red-400'}`}
+                            style={{ width: `${Math.min(accuracy, 100)}%` }}
+                        />
+                    </div>
+                    <p className={`text-[9px] ${colors.textMuted} mt-1`}>
+                        Trained on {model.sample_size.toLocaleString()} rows · Feed more data to improve accuracy
+                    </p>
+                </div>
+            )}
+
             <div className="grid grid-cols-3 gap-2 text-[11px]">
                 <Stat colors={colors} icon={<TargetIcon className="w-3 h-3" />} label="Target" value={model.target_column} />
                 <Stat colors={colors} icon={<BarChart3 className="w-3 h-3" />} label={main.label} value={main.value} />
-                <Stat colors={colors} icon={<Calendar className="w-3 h-3" />} label="Trained" value={formatDate(model.created_at)} />
+                <Stat colors={colors} icon={<Calendar className="w-3 h-3" />} label="Last Trained" value={formatDate(lastTrainedDate)} />
             </div>
 
             <div className="flex items-center gap-2 mt-2">
@@ -211,6 +284,15 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, colors, onPredict, onDelet
                     <Play className="w-3.5 h-3.5" /> Predict
                 </button>
                 <button
+                    onClick={handleRetrainClick}
+                    disabled={isRetraining}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition border ${isRetraining ? 'opacity-50 cursor-not-allowed' : 'hover:bg-emerald-500/20'} bg-emerald-500/10 text-emerald-400 border-emerald-500/30`}
+                    title="Retrain with additional data"
+                >
+                    {isRetraining ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    {isRetraining ? 'Training…' : 'Retrain'}
+                </button>
+                <button
                     onClick={onDelete}
                     className={`p-2 rounded-xl ${colors.bgTertiary} ${colors.textMuted} hover:text-red-400 transition`}
                     title="Delete model"
@@ -218,6 +300,15 @@ const ModelCard: React.FC<ModelCardProps> = ({ model, colors, onPredict, onDelet
                     <Trash2 className="w-4 h-4" />
                 </button>
             </div>
+
+            {/* Hidden file input for retrain */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                className="hidden"
+                onChange={handleFileSelected}
+            />
         </div>
     );
 };
@@ -231,6 +322,18 @@ function Stat({ colors, icon, label, value }: { colors: any; icon: React.ReactNo
             <p className={`truncate font-semibold ${colors.textPrimary}`}>{value}</p>
         </div>
     );
+}
+
+function getAccuracyPercent(model: MLModel): number | null {
+    const m = model.metrics || {};
+    if (model.problem_type === 'classification') {
+        if (typeof m.accuracy === 'number') return m.accuracy * 100;
+        if (typeof m.f1_weighted === 'number') return m.f1_weighted * 100;
+    } else {
+        // For regression, R² can be used as accuracy (clamped to 0-100%)
+        if (typeof m.r2 === 'number') return Math.max(0, m.r2) * 100;
+    }
+    return null;
 }
 
 function pickMainMetric(model: MLModel): { label: string; value: string } {

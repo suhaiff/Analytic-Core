@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     ArrowLeft, Loader2, Upload, AlertCircle, Download, Sparkles, Target,
+    Table, BarChart3,
 } from 'lucide-react';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
@@ -24,6 +25,7 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
     const [isRunning, setIsRunning] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [result, setResult] = useState<MLPredictionResponse | null>(null);
+    const [viewMode, setViewMode] = useState<'table' | 'candlestick'>('table');
 
     const handleRun = async () => {
         if (!file) return setError('Please upload a file first.');
@@ -48,6 +50,44 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
             setIsRunning(false);
         }
     };
+
+    // Detect if data has stock/OHLC-like columns
+    const ohlcInfo = useMemo(() => {
+        if (!result || !result.input_data || result.input_data.length === 0) return null;
+        const keys = Object.keys(result.input_data[0]).map(k => k.toLowerCase());
+        const allKeys = Object.keys(result.input_data[0]);
+
+        const findCol = (candidates: string[]) => {
+            for (const c of candidates) {
+                const idx = keys.findIndex(k => k === c || k.includes(c));
+                if (idx >= 0) return allKeys[idx];
+            }
+            return null;
+        };
+
+        const openCol = findCol(['open']);
+        const highCol = findCol(['high']);
+        const lowCol = findCol(['low']);
+        const closeCol = findCol(['close']);
+        const dateCol = findCol(['date', 'time', 'timestamp', 'datetime', 'period']);
+
+        // Also check if the predicted column is price-like
+        const targetLower = model.target_column.toLowerCase();
+        const isStockTarget = ['price', 'close', 'open', 'high', 'low', 'value', 'stock'].some(k => targetLower.includes(k));
+
+        if ((openCol && highCol && lowCol && closeCol) || isStockTarget) {
+            return {
+                open: openCol || 'Open',
+                high: highCol || 'High',
+                low: lowCol || 'Low',
+                close: closeCol || 'Close',
+                date: dateCol,
+                hasOHLC: !!(openCol && highCol && lowCol && closeCol),
+                isStockLike: isStockTarget,
+            };
+        }
+        return null;
+    }, [result, model.target_column]);
 
     const downloadResults = () => {
         if (!result) return;
@@ -116,12 +156,12 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
                         <Info colors={colors} label="Algorithm" value={prettyAlgorithm(model.algorithm)} />
                         <Info colors={colors} label="Problem" value={model.problem_type} />
-                        <Info colors={colors} label="Features" value={`${model.feature_columns.length} columns`} />
+                        <Info colors={colors} label="Features" value={`${(model.raw_feature_columns || model.feature_columns).length} columns`} />
                         <Info colors={colors} label="Trained on" value={`${model.sample_size.toLocaleString()} rows`} />
                     </div>
-                    {model.feature_columns.length > 0 && (
+                    {(model.raw_feature_columns || model.feature_columns).length > 0 && (
                         <p className={`mt-3 text-[11px] ${colors.textMuted}`}>
-                            <Target className="w-3 h-3 inline mr-1" /> Required columns: {model.feature_columns.join(', ')}
+                            <Target className="w-3 h-3 inline mr-1" /> Required columns: {(model.raw_feature_columns || model.feature_columns).join(', ')}
                         </p>
                     )}
                 </div>
@@ -178,55 +218,370 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
                     const inputKeys = input_data.length > 0 ? Object.keys(input_data[0]) : [];
                     return (
                     <div className={`${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl p-5`}>
-                        <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                             <div>
                                 <h2 className={`text-lg font-bold ${colors.textPrimary}`}>
                                     {result.row_count} predictions generated
                                 </h2>
                                 <p className={`text-xs ${colors.textMuted}`}>Showing first 20 rows</p>
                             </div>
-                            <button
-                                onClick={downloadResults}
-                                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold flex items-center gap-2 shadow-lg shadow-emerald-900/20"
-                            >
-                                <Download className="w-4 h-4" /> Download CSV
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {/* View toggle - only show if stock-like data detected */}
+                                {ohlcInfo && (
+                                    <div className={`flex rounded-xl overflow-hidden border ${colors.borderPrimary}`}>
+                                        <button
+                                            onClick={() => setViewMode('table')}
+                                            className={`px-3 py-2 text-xs font-bold flex items-center gap-1.5 transition ${viewMode === 'table' ? 'bg-indigo-600 text-white' : `${colors.bgTertiary} ${colors.textMuted}`}`}
+                                        >
+                                            <Table className="w-3.5 h-3.5" /> Table
+                                        </button>
+                                        <button
+                                            onClick={() => setViewMode('candlestick')}
+                                            className={`px-3 py-2 text-xs font-bold flex items-center gap-1.5 transition ${viewMode === 'candlestick' ? 'bg-indigo-600 text-white' : `${colors.bgTertiary} ${colors.textMuted}`}`}
+                                        >
+                                            <BarChart3 className="w-3.5 h-3.5" /> Candlestick
+                                        </button>
+                                    </div>
+                                )}
+                                <button
+                                    onClick={downloadResults}
+                                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold flex items-center gap-2 shadow-lg shadow-emerald-900/20"
+                                >
+                                    <Download className="w-4 h-4" /> Download CSV
+                                </button>
+                            </div>
                         </div>
 
-                        <div className={`overflow-x-auto rounded-xl border ${colors.borderPrimary}`}>
-                            <table className="w-full text-sm">
-                                <thead className={colors.bgTertiary}>
-                                    <tr>
-                                        <th className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold whitespace-nowrap`}>#</th>
-                                        {inputKeys.map(k => (
-                                            <th key={k} className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold whitespace-nowrap`}>{k}</th>
-                                        ))}
-                                        <th className={`px-4 py-2 text-left text-emerald-400 font-bold whitespace-nowrap`}>Predicted {model.target_column}</th>
-                                        {result.probabilities && (
-                                            <th className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold whitespace-nowrap`}>Confidence</th>
-                                        )}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {result.predictions.slice(0, 20).map((p, i) => (
-                                        <tr key={i} className={i % 2 ? colors.bgSecondary : ''}>
-                                            <td className={`px-4 py-2 ${colors.textMuted}`}>{i + 1}</td>
+                        {viewMode === 'candlestick' && ohlcInfo ? (
+                            <CandlestickChart
+                                data={input_data}
+                                predictions={result.predictions}
+                                ohlcInfo={ohlcInfo}
+                                targetColumn={model.target_column}
+                                colors={colors}
+                            />
+                        ) : (
+                            <div className={`overflow-x-auto rounded-xl border ${colors.borderPrimary}`}>
+                                <table className="w-full text-sm">
+                                    <thead className={colors.bgTertiary}>
+                                        <tr>
+                                            <th className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold whitespace-nowrap`}>#</th>
                                             {inputKeys.map(k => (
-                                                <td key={k} className={`px-4 py-2 ${colors.textMuted} whitespace-nowrap`}>{String(result.input_data![i][k])}</td>
+                                                <th key={k} className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold whitespace-nowrap`}>{k}</th>
                                             ))}
-                                            <td className={`px-4 py-2 text-emerald-400 font-bold bg-emerald-500/10 whitespace-nowrap`}>{String(p)}</td>
+                                            <th className={`px-4 py-2 text-left text-emerald-400 font-bold whitespace-nowrap`}>Predicted {model.target_column}</th>
                                             {result.probabilities && (
-                                                <td className={`px-4 py-2 ${colors.textSecondary} whitespace-nowrap`}>
-                                                    {(Math.max(...(result.probabilities[i] || [0])) * 100).toFixed(1)}%
-                                                </td>
+                                                <th className={`px-4 py-2 text-left ${colors.textPrimary} font-semibold whitespace-nowrap`}>Confidence</th>
                                             )}
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                    </thead>
+                                    <tbody>
+                                        {result.predictions.slice(0, 20).map((p, i) => (
+                                            <tr key={i} className={i % 2 ? colors.bgSecondary : ''}>
+                                                <td className={`px-4 py-2 ${colors.textMuted}`}>{i + 1}</td>
+                                                {inputKeys.map(k => (
+                                                    <td key={k} className={`px-4 py-2 ${colors.textMuted} whitespace-nowrap`}>{String(result.input_data![i][k])}</td>
+                                                ))}
+                                                <td className={`px-4 py-2 text-emerald-400 font-bold bg-emerald-500/10 whitespace-nowrap`}>{String(p)}</td>
+                                                {result.probabilities && (
+                                                    <td className={`px-4 py-2 ${colors.textSecondary} whitespace-nowrap`}>
+                                                        {(Math.max(...(result.probabilities[i] || [0])) * 100).toFixed(1)}%
+                                                    </td>
+                                                )}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 );})()}
+            </div>
+        </div>
+    );
+};
+
+// ─── Candlestick Chart Component ──────────────────────────────────────────────
+
+interface OHLCInfo {
+    open: string;
+    high: string;
+    low: string;
+    close: string;
+    date: string | null;
+    hasOHLC: boolean;
+    isStockLike: boolean;
+}
+
+interface CandlestickChartProps {
+    data: Record<string, any>[];
+    predictions: (string | number | boolean)[];
+    ohlcInfo: OHLCInfo;
+    targetColumn: string;
+    colors: any;
+}
+
+const CandlestickChart: React.FC<CandlestickChartProps> = ({
+    data, predictions, ohlcInfo, targetColumn, colors
+}) => {
+    const chartData = useMemo(() => {
+        const items: {
+            idx: number;
+            label: string;
+            open: number;
+            high: number;
+            low: number;
+            close: number;
+            predicted: number;
+            isBullish: boolean;
+        }[] = [];
+
+        const limit = Math.min(data.length, 40); // show max 40 candles
+
+        for (let i = 0; i < limit; i++) {
+            const row = data[i];
+            const predicted = Number(predictions[i]) || 0;
+
+            let open: number, high: number, low: number, close: number;
+
+            if (ohlcInfo.hasOHLC) {
+                open = Number(row[ohlcInfo.open]) || 0;
+                high = Number(row[ohlcInfo.high]) || 0;
+                low = Number(row[ohlcInfo.low]) || 0;
+                close = Number(row[ohlcInfo.close]) || 0;
+            } else {
+                // If we don't have OHLC columns, synthesize from predicted values
+                const prev = i > 0 ? Number(predictions[i - 1]) || predicted : predicted * 0.98;
+                open = prev;
+                close = predicted;
+                high = Math.max(open, close) * (1 + Math.random() * 0.02);
+                low = Math.min(open, close) * (1 - Math.random() * 0.02);
+            }
+
+            const label = ohlcInfo.date && row[ohlcInfo.date]
+                ? String(row[ohlcInfo.date])
+                : `#${i + 1}`;
+
+            items.push({
+                idx: i,
+                label,
+                open,
+                high,
+                low,
+                close,
+                predicted,
+                isBullish: close >= open,
+            });
+        }
+        return items;
+    }, [data, predictions, ohlcInfo]);
+
+    if (chartData.length === 0) {
+        return <p className={`text-sm ${colors.textMuted}`}>No data to display in chart.</p>;
+    }
+
+    // Calculate chart dimensions
+    const chartWidth = Math.max(chartData.length * 24, 600);
+    const chartHeight = 400;
+    const padding = { top: 20, right: 60, bottom: 40, left: 70 };
+    const plotWidth = chartWidth - padding.left - padding.right;
+    const plotHeight = chartHeight - padding.top - padding.bottom;
+
+    const allValues = chartData.flatMap(d => [d.high, d.low, d.predicted]);
+    const minVal = Math.min(...allValues);
+    const maxVal = Math.max(...allValues);
+    const range = maxVal - minVal || 1;
+    const yMin = minVal - range * 0.05;
+    const yMax = maxVal + range * 0.05;
+
+    const yScale = (v: number) => padding.top + plotHeight - ((v - yMin) / (yMax - yMin)) * plotHeight;
+    const candleWidth = Math.max(6, Math.min(18, plotWidth / chartData.length * 0.6));
+    const xStep = plotWidth / chartData.length;
+
+    // Y-axis ticks
+    const yTicks: number[] = [];
+    const tickCount = 8;
+    for (let i = 0; i <= tickCount; i++) {
+        yTicks.push(yMin + (yMax - yMin) * (i / tickCount));
+    }
+
+    // Prediction line points
+    const predictionLine = chartData.map((d, i) => {
+        const x = padding.left + i * xStep + xStep / 2;
+        const y = yScale(d.predicted);
+        return `${x},${y}`;
+    }).join(' ');
+
+    return (
+        <div className="relative">
+            <div className="overflow-x-auto rounded-xl" style={{ background: 'linear-gradient(180deg, #0a0e17 0%, #111827 100%)' }}>
+                <svg width={chartWidth} height={chartHeight} className="block">
+                    {/* Grid lines */}
+                    {yTicks.map((tick, i) => (
+                        <g key={i}>
+                            <line
+                                x1={padding.left}
+                                y1={yScale(tick)}
+                                x2={chartWidth - padding.right}
+                                y2={yScale(tick)}
+                                stroke="#1e293b"
+                                strokeWidth={1}
+                            />
+                            <text
+                                x={padding.left - 8}
+                                y={yScale(tick) + 4}
+                                textAnchor="end"
+                                fill="#64748b"
+                                fontSize={10}
+                                fontFamily="monospace"
+                            >
+                                {tick.toFixed(tick > 1000 ? 0 : 2)}
+                            </text>
+                        </g>
+                    ))}
+
+                    {/* Vertical axis line */}
+                    <line
+                        x1={padding.left}
+                        y1={padding.top}
+                        x2={padding.left}
+                        y2={chartHeight - padding.bottom}
+                        stroke="#334155"
+                        strokeWidth={1}
+                    />
+
+                    {/* Candlesticks */}
+                    {chartData.map((d, i) => {
+                        const x = padding.left + i * xStep + xStep / 2;
+                        const bodyTop = yScale(Math.max(d.open, d.close));
+                        const bodyBottom = yScale(Math.min(d.open, d.close));
+                        const bodyHeight = Math.max(bodyBottom - bodyTop, 1);
+                        const wickTop = yScale(d.high);
+                        const wickBottom = yScale(d.low);
+                        const bullColor = '#22c55e';
+                        const bearColor = '#ef4444';
+                        const color = d.isBullish ? bullColor : bearColor;
+
+                        return (
+                            <g key={i}>
+                                {/* Wick */}
+                                <line
+                                    x1={x}
+                                    y1={wickTop}
+                                    x2={x}
+                                    y2={wickBottom}
+                                    stroke={color}
+                                    strokeWidth={1.5}
+                                />
+                                {/* Body */}
+                                <rect
+                                    x={x - candleWidth / 2}
+                                    y={bodyTop}
+                                    width={candleWidth}
+                                    height={bodyHeight}
+                                    fill={d.isBullish ? color : color}
+                                    stroke={color}
+                                    strokeWidth={1}
+                                    rx={1}
+                                />
+                                {/* X-axis labels (show every Nth) */}
+                                {(chartData.length <= 20 || i % Math.ceil(chartData.length / 15) === 0) && (
+                                    <text
+                                        x={x}
+                                        y={chartHeight - padding.bottom + 16}
+                                        textAnchor="middle"
+                                        fill="#64748b"
+                                        fontSize={9}
+                                        fontFamily="monospace"
+                                    >
+                                        {d.label.length > 10 ? d.label.slice(0, 10) : d.label}
+                                    </text>
+                                )}
+                            </g>
+                        );
+                    })}
+
+                    {/* Prediction line overlay */}
+                    <polyline
+                        points={predictionLine}
+                        fill="none"
+                        stroke="#818cf8"
+                        strokeWidth={2}
+                        strokeDasharray="6,3"
+                        opacity={0.8}
+                    />
+                    {/* Prediction dots */}
+                    {chartData.map((d, i) => {
+                        const x = padding.left + i * xStep + xStep / 2;
+                        const y = yScale(d.predicted);
+                        return (
+                            <circle
+                                key={i}
+                                cx={x}
+                                cy={y}
+                                r={3}
+                                fill="#818cf8"
+                                stroke="#312e81"
+                                strokeWidth={1}
+                            />
+                        );
+                    })}
+
+                    {/* Current price indicator on right side */}
+                    {chartData.length > 0 && (() => {
+                        const last = chartData[chartData.length - 1];
+                        const y = yScale(last.predicted);
+                        return (
+                            <g>
+                                <rect
+                                    x={chartWidth - padding.right + 4}
+                                    y={y - 10}
+                                    width={52}
+                                    height={20}
+                                    rx={4}
+                                    fill="#818cf8"
+                                />
+                                <text
+                                    x={chartWidth - padding.right + 30}
+                                    y={y + 4}
+                                    textAnchor="middle"
+                                    fill="white"
+                                    fontSize={10}
+                                    fontWeight="bold"
+                                    fontFamily="monospace"
+                                >
+                                    {last.predicted.toFixed(last.predicted > 1000 ? 0 : 2)}
+                                </text>
+                                <line
+                                    x1={padding.left}
+                                    y1={y}
+                                    x2={chartWidth - padding.right}
+                                    y2={y}
+                                    stroke="#818cf8"
+                                    strokeWidth={1}
+                                    strokeDasharray="3,3"
+                                    opacity={0.5}
+                                />
+                            </g>
+                        );
+                    })()}
+                </svg>
+            </div>
+
+            {/* Legend */}
+            <div className="flex items-center gap-6 mt-3 px-2">
+                <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-sm bg-[#22c55e]" />
+                    <span className={`text-[11px] ${colors.textMuted}`}>Bullish (Close ≥ Open)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-sm bg-[#ef4444]" />
+                    <span className={`text-[11px] ${colors.textMuted}`}>Bearish (Close &lt; Open)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="w-6 h-0.5 bg-indigo-400" style={{ borderTop: '2px dashed #818cf8' }} />
+                    <span className={`text-[11px] ${colors.textMuted}`}>Predicted {targetColumn}</span>
+                </div>
             </div>
         </div>
     );

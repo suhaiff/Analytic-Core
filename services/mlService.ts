@@ -24,6 +24,18 @@ export interface MLTrainParams {
     file: File;
 }
 
+export interface MLRetrainParams {
+    userId: number;
+    modelId: string;
+    name: string;
+    description?: string;
+    targetColumn: string;
+    algorithm: MLAlgorithm;
+    featureColumns?: string[];
+    problemType?: MLProblemType;
+    file: File;
+}
+
 export interface MLPredictParams {
     userId: number;
     modelId: string;
@@ -95,6 +107,26 @@ export const mlService = {
             timeout: 10 * 60 * 1000,
         });
         return data as MLPredictionResponse;
+    },
+
+    /** Retrain an existing model with additional data. */
+    retrainModel: async (params: MLRetrainParams): Promise<MLTrainResponse> => {
+        const form = new FormData();
+        form.append('file', params.file);
+        form.append('userId', String(params.userId));
+        form.append('name', params.name);
+        if (params.description) form.append('description', params.description);
+        form.append('targetColumn', params.targetColumn);
+        form.append('algorithm', params.algorithm);
+        if (params.featureColumns) form.append('featureColumns', JSON.stringify(params.featureColumns));
+        if (params.problemType) form.append('problemType', params.problemType);
+        form.append('modelId', params.modelId);
+
+        const { data } = await axios.post(`${ML_URL}/train`, form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 10 * 60 * 1000,
+        });
+        return data as MLTrainResponse;
     },
 
     /** Delete a trained model. */

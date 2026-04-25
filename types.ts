@@ -305,6 +305,7 @@ export interface MLModel {
   problem_type: MLProblemType;
   target_column: string;
   feature_columns: string[];
+  raw_feature_columns?: string[];
   metrics: Record<string, number>;
   sample_size: number;
   source_file_id?: number | null;
