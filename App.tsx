@@ -9,6 +9,7 @@ import { Signup } from './components/auth/Signup';
 import { ChangePassword } from './components/auth/ChangePassword';
 import { ForgotPassword } from './components/auth/ForgotPassword';
 import { Welcome } from './components/Welcome';
+import { Overview } from './components/Overview';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { MLModelHub } from './components/ml/MLModelHub';
 
@@ -31,6 +32,7 @@ enum Step {
   FORGOT_PASSWORD = 'FORGOT_PASSWORD',
   CHANGE_PASSWORD = 'CHANGE_PASSWORD',
   ADMIN = 'ADMIN',
+  OVERVIEW = 'OVERVIEW',
   LANDING = 0,
   DATA_PROFILING = 'DATA_PROFILING',
   CONFIG = 1,
@@ -88,7 +90,7 @@ function AppContent() {
       if (user.role === 'ADMIN') {
         setStep(Step.ADMIN);
       } else {
-        setStep(Step.LANDING);
+        setStep(Step.OVERVIEW);
       }
     } else {
       setStep(Step.WELCOME);
@@ -144,7 +146,7 @@ function AppContent() {
         setStep(Step.ADMIN);
         showToast(`Welcome back, ${user.name}!`);
       } else {
-        setStep(Step.LANDING);
+        setStep(Step.OVERVIEW);
         showToast(`Welcome back, ${user.name}!`);
       }
     }
@@ -166,7 +168,7 @@ function AppContent() {
       if (user.role === 'ADMIN') {
         setStep(Step.ADMIN);
       } else {
-        setStep(Step.LANDING);
+        setStep(Step.OVERVIEW);
       }
       showToast('Password set successfully! Welcome to InsightAI.');
     }
@@ -620,6 +622,13 @@ function AppContent() {
             user={currentUser} 
             onNavigateToUserApp={() => setStep(Step.LANDING)} 
             onViewDashboard={handleLoadDashboard}
+          />
+        )}
+
+        {step === Step.OVERVIEW && (
+          <Overview 
+            user={currentUser} 
+            onNavigateToLanding={() => setStep(Step.LANDING)} 
           />
         )}
 
