@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     ArrowLeft, Brain, CheckCircle2, Loader2, Upload, AlertCircle,
-    Sparkles, Target, Database, Cpu, Settings,
+    Sparkles, Target, Database, Cpu, Settings, FileSpreadsheet, Globe
 } from 'lucide-react';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
 import { mlService, MLAlgorithmDescriptor } from '../../services/mlService';
 import { MLAlgorithm, MLProblemType, MLTrainResponse, User } from '../../types';
+import { GoogleSheetsImportModal } from '../modals/GoogleSheetsImportModal';
+import { SqlDatabaseImportModal } from '../modals/SqlDatabaseImportModal';
+import { SharePointImportModal } from '../modals/SharePointImportModal';
 
 interface Props {
     user: User;
@@ -41,6 +44,11 @@ export const MLModelBuilder: React.FC<Props> = ({ user, onCancel, onTrained }) =
     const [isTraining, setIsTraining] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [parsing, setParsing] = useState(false);
+
+    // Modal States
+    const [showGSModal, setShowGSModal] = useState(false);
+    const [showSqlDbModal, setShowSqlDbModal] = useState(false);
+    const [showSPModal, setShowSPModal] = useState(false);
 
     useEffect(() => {
         (async () => {
@@ -119,9 +127,44 @@ export const MLModelBuilder: React.FC<Props> = ({ user, onCancel, onTrained }) =
         }
     };
 
+    const arrayToCsvFile = (data: any[][], filename: string): File => {
+        const csvContent = data.map(row => row.map(cell => {
+            if (cell === null || cell === undefined) return '';
+            const cellStr = String(cell);
+            if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                return `"${cellStr.replace(/"/g, '""')}"`;
+            }
+            return cellStr;
+        }).join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        return new File([blob], filename, { type: 'text/csv' });
+    };
+
+    const handleGSImport = (sheets: { id: number, name: string, data: any[][], fileId: number }[], title: string) => {
+        if (sheets.length > 0) {
+            const firstSheet = sheets[0];
+            const newFile = arrayToCsvFile(firstSheet.data, `${firstSheet.name}.csv`);
+            handleFileChange(newFile);
+        }
+    };
+
+    const handleSqlImport = (tables: { id: number, name: string, data: any[][], fileId: number }[], title: string) => {
+        if (tables.length > 0) {
+            const firstTable = tables[0];
+            const newFile = arrayToCsvFile(firstTable.data, `${firstTable.name}.csv`);
+            handleFileChange(newFile);
+        }
+    };
+
+    const handleSPImport = (siteId: string, listId: string, listName: string, data: any[][]) => {
+        const newFile = arrayToCsvFile(data, `${listName}.csv`);
+        handleFileChange(newFile);
+    };
+
     return (
-        <div className={`${colors.bgPrimary} ${colors.textPrimary} min-h-screen p-6 sm:p-10`}>
-            <div className="max-w-5xl mx-auto">
+        <>
+            <div className={`${colors.bgPrimary} ${colors.textPrimary} min-h-screen p-6 sm:p-10`}>
+                <div className="max-w-5xl mx-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-4">
@@ -145,27 +188,61 @@ export const MLModelBuilder: React.FC<Props> = ({ user, onCancel, onTrained }) =
 
                 {/* Step 1 — Upload */}
                 <Section title="1. Training Data" icon={<Upload className="w-4 h-4" />} colors={colors}>
-                    <label className={`block cursor-pointer border-2 border-dashed ${colors.borderPrimary} rounded-2xl p-6 text-center hover:border-indigo-500/60 transition`}>
-                        <input
-                            type="file"
-                            accept=".csv,.xlsx,.xls"
-                            className="hidden"
-                            onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
-                        />
-                        {file ? (
-                            <div>
-                                <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                                <p className={`font-semibold ${colors.textPrimary}`}>{file.name}</p>
-                                <p className={`text-xs ${colors.textMuted}`}>{(file.size / 1024).toFixed(1)} KB · {columns.length} columns</p>
+                    <div className="grid sm:grid-cols-4 gap-4">
+                        <label className={`col-span-1 sm:col-span-1 cursor-pointer border-2 border-dashed ${colors.borderPrimary} rounded-2xl p-6 text-center hover:border-indigo-500/60 transition flex flex-col items-center justify-center`}>
+                            <input
+                                type="file"
+                                accept=".csv,.xlsx,.xls"
+                                className="hidden"
+                                onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+                            />
+                            <Upload className="w-6 h-6 text-indigo-400 mb-2" />
+                            <p className={`text-xs font-bold ${colors.textPrimary}`}>Upload File</p>
+                        </label>
+
+                        <button
+                            onClick={() => setShowGSModal(true)}
+                            className={`p-6 rounded-2xl border-2 border-dashed ${colors.borderPrimary} hover:border-green-500/60 transition flex flex-col items-center justify-center`}
+                        >
+                            <FileSpreadsheet className="w-6 h-6 text-green-500 mb-2" />
+                            <p className={`text-xs font-bold ${colors.textPrimary}`}>Google Sheets</p>
+                        </button>
+
+                        <button
+                            onClick={() => setShowSqlDbModal(true)}
+                            className={`p-6 rounded-2xl border-2 border-dashed ${colors.borderPrimary} hover:border-blue-500/60 transition flex flex-col items-center justify-center`}
+                        >
+                            <Database className="w-6 h-6 text-blue-500 mb-2" />
+                            <p className={`text-xs font-bold ${colors.textPrimary}`}>SQL Database</p>
+                        </button>
+
+                        <button
+                            onClick={() => setShowSPModal(true)}
+                            className={`p-6 rounded-2xl border-2 border-dashed ${colors.borderPrimary} hover:border-orange-500/60 transition flex flex-col items-center justify-center`}
+                        >
+                            <Globe className="w-6 h-6 text-orange-500 mb-2" />
+                            <p className={`text-xs font-bold ${colors.textPrimary}`}>SharePoint</p>
+                        </button>
+                    </div>
+
+                    {file && (
+                        <div className={`mt-4 p-4 rounded-xl ${colors.bgTertiary} border ${colors.borderPrimary} flex items-center justify-between animate-fade-in`}>
+                            <div className="flex items-center gap-3">
+                                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                                <div>
+                                    <p className={`text-sm font-bold ${colors.textPrimary}`}>{file.name}</p>
+                                    <p className={`text-[10px] ${colors.textMuted}`}>{(file.size / 1024).toFixed(1)} KB · {columns.length} columns</p>
+                                </div>
                             </div>
-                        ) : (
-                            <div>
-                                <Upload className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
-                                <p className={`font-semibold ${colors.textPrimary}`}>Click to upload CSV or Excel</p>
-                                <p className={`text-xs ${colors.textMuted} mt-1`}>First row must be headers</p>
-                            </div>
-                        )}
-                    </label>
+                            <button
+                                onClick={() => handleFileChange(null)}
+                                className={`text-[10px] uppercase tracking-wider font-bold text-red-400 hover:text-red-300 transition`}
+                            >
+                                Remove
+                            </button>
+                        </div>
+                    )}
+
                     {parsing && <p className={`text-xs ${colors.textMuted} mt-2 flex items-center gap-1.5`}><Loader2 className="w-3 h-3 animate-spin" /> Reading file…</p>}
                 </Section>
 
@@ -359,13 +436,41 @@ export const MLModelBuilder: React.FC<Props> = ({ user, onCancel, onTrained }) =
                     </button>
                 </div>
             </div>
+
+            {/* Modals */}
+            {showGSModal && (
+                <GoogleSheetsImportModal
+                    user={user}
+                    onClose={() => setShowGSModal(false)}
+                    onImport={handleGSImport}
+                    singleSelection={true}
+                />
+            )}
+
+            {showSqlDbModal && (
+                <SqlDatabaseImportModal
+                    user={user}
+                    onClose={() => setShowSqlDbModal(false)}
+                    onImport={handleSqlImport}
+                    singleSelection={true}
+                />
+            )}
+
+            {showSPModal && (
+                <SharePointImportModal
+                    user={user}
+                    onClose={() => setShowSPModal(false)}
+                    onImport={handleSPImport}
+                />
+            )}
         </div>
+        </>
     );
 };
 
 // ─── helpers ────────────────────────────────────────────────────────────
 function Section({ title, icon, colors, children }: {
-    title: string; icon: React.ReactNode; colors: any; children: React.ReactNode;
+    title: string, icon: React.ReactNode, colors: any, children: React.ReactNode
 }) {
     return (
         <section className={`${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl p-5 mb-4`}>

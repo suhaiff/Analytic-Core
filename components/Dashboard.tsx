@@ -3313,7 +3313,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     <div className={`p-2 rounded-lg ${saveDestination === 'personal' ? 'bg-indigo-500/20' : colors.bgSecondary}`}>
                                                         <Save className={`w-5 h-5 ${saveDestination === 'personal' ? 'text-indigo-400' : colors.textMuted}`} />
                                                     </div>
-                                                    <span className={`text-sm font-semibold ${saveDestination === 'personal' ? 'text-indigo-400' : colors.textPrimary}`}>My Dashboards</span>
+                                                    <span className={`text-sm font-semibold ${saveDestination === 'personal' ? 'text-indigo-400' : colors.textPrimary}`}>My Workspace</span>
                                                     <span className={`text-[10px] ${colors.textMuted} text-center`}>Private to you</span>
                                                 </button>
                                                 <button
@@ -3328,24 +3328,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     <div className={`p-2 rounded-lg ${saveDestination === 'workspace' ? 'bg-violet-500/20' : colors.bgSecondary}`}>
                                                         <Home className={`w-5 h-5 ${saveDestination === 'workspace' ? 'text-violet-400' : colors.textMuted}`} />
                                                     </div>
-                                                    <span className={`text-sm font-semibold ${saveDestination === 'workspace' ? 'text-violet-400' : colors.textPrimary}`}>Workspace Folder</span>
-                                                    <span className={`text-[10px] ${colors.textMuted} text-center`}>Shared folder</span>
+                                                    <span className={`text-sm font-semibold ${saveDestination === 'workspace' ? 'text-violet-400' : colors.textPrimary}`}>Created Workspaces</span>
+                                                    <span className={`text-[10px] ${colors.textMuted} text-center`}>Shared Workspace</span>
                                                 </button>
                                             </div>
 
                                             {/* Folder dropdown */}
                                             {saveDestination === 'workspace' && (
                                                 <div className="mt-4">
-                                                    <label className={`block text-xs font-bold ${colors.textMuted} uppercase mb-2`}>Select Folder</label>
+                                                    <label className={`block text-xs font-bold ${colors.textMuted} uppercase mb-2`}>Select Workspace</label>
                                                     {workspaceFolders.length === 0 ? (
-                                                        <p className={`text-xs ${colors.textMuted} italic`}>No workspace folders yet. Create one in the My Dashboards sidebar.</p>
+                                                        <p className={`text-xs ${colors.textMuted} italic`}>No workspaces yet. Create one in the My Workspace sidebar.</p>
                                                     ) : (
                                                         <select
                                                             value={selectedFolderId}
                                                             onChange={e => setSelectedFolderId(e.target.value)}
                                                             className={`w-full ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} rounded-lg px-4 py-3 focus:ring-2 focus:ring-violet-500 outline-none text-sm`}
                                                         >
-                                                            <option value="">-- Choose a folder --</option>
+                                                            <option value="">-- Choose a Workspace --</option>
                                                             {workspaceFolders.map(f => (
                                                                 <option key={f.id} value={f.id}>{f.name}</option>
                                                             ))}
