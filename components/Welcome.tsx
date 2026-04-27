@@ -2,6 +2,7 @@ import React from 'react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { Sparkles, ArrowRight, BarChart3, Shield, Zap } from 'lucide-react';
+import { Footer } from './Footer';
 
 interface WelcomeProps {
     onNavigateToLogin: () => void;
@@ -101,6 +102,8 @@ export const Welcome: React.FC<WelcomeProps> = ({ onNavigateToLogin, onNavigateT
                     ))}
                 </div>
             </main>
+            
+            <Footer />
         </div>
     );
 };

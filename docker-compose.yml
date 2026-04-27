@@ -1,6 +1,21 @@
-version: '3.8'
-
 services:
+  # Python ML Prediction Service
+  ml-service:
+    build: ./server/AnalyticCore-Server/ml-service
+    container_name: insightai-ml-service
+    restart: unless-stopped
+    volumes:
+      - ml_models:/app/models_store
+    networks:
+      - insightai-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Node.js Backend API
   backend:
     build: .
     container_name: insightai-backend
@@ -9,10 +24,25 @@ services:
       - "3001:3001"
     env_file:
       - ./server/.env
+    environment:
+      - ML_SERVICE_URL=http://ml-service:8001
     volumes:
-      - ./server/uploads:/app/uploads
+      - ./server/AnalyticCore-Server/uploads:/app/uploads
+    depends_on:
+      ml-service:
+        condition: service_started
     networks:
       - insightai-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  ml_models:
+    driver: local
 
 networks:
   insightai-network:

@@ -18,5 +18,8 @@ dist/
 node_modules/
 .git/
 server/node_modules/
+server/AnalyticCore-Server/node_modules/
+server/AnalyticCore-Server/ml-service/.venv/
+server/AnalyticCore-Server/*.zip
 server/.git/
 **/uploads/*

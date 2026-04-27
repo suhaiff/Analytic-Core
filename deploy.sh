@@ -22,24 +22,39 @@ rsync -avz --exclude 'node_modules' \
   --exclude '.git' \
   --exclude '*.log' \
   --exclude '.env' \
+  --exclude 'server/AnalyticCore-Server/node_modules/*' \
+  --exclude 'server/AnalyticCore-Server/ml-service/.venv/*' \
+  --exclude '*.zip' \
   --exclude 'uploads/*' \
   ./ ${DROPLET_USER}@${DROPLET_IP}:${APP_DIR}
 
 echo "🔧 Deploying on droplet..."
 ssh ${DROPLET_USER}@${DROPLET_IP} << ENDSSH
+set -e
 cd /var/www/insightai-backend
 
 if [ "${DEPLOY_METHOD}" = "docker" ]; then
   echo "🐳 Using Docker deployment..."
-  docker-compose down
-  docker-compose build
-  docker-compose up -d
-  echo "✅ Docker containers started"
+  docker-compose up -d --build --remove-orphans
+  echo "✅ Docker container deployed"
+  
+  # Health check
+  echo "🏥 Waiting for backend to become healthy..."
+  for i in {1..15}; do
+    if curl -s -f http://localhost:3001/api/health > /dev/null; then
+      echo "✅ Backend is healthy and responding!"
+      break
+    fi
+    if [ \$i -eq 15 ]; then
+      echo "⚠️ Health check taking longer than expected, please verify logs."
+    fi
+    sleep 2
+  done
 else
   echo "⚙️  Using PM2 deployment..."
-  cd server
+  cd server/AnalyticCore-Server
   npm ci --only=production
-  cd ..
+  cd ../..
   pm2 restart ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs
   pm2 save
   echo "✅ PM2 process restarted"

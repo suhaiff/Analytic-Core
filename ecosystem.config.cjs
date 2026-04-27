@@ -1,7 +1,7 @@
 module.exports = {
     apps: [{
         name: 'insightai-backend',
-        script: './server/index.js',
+        script: './server/AnalyticCore-Server/index.js',
         instances: 1,
         autorestart: true,
         watch: false,

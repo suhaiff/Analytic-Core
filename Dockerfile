@@ -5,13 +5,13 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Copy server package files
-COPY server/package*.json ./
+COPY server/AnalyticCore-Server/package*.json ./
 
 # Install dependencies
 RUN npm ci --only=production
 
 # Copy server code
-COPY server/ ./
+COPY server/AnalyticCore-Server/ ./
 
 # Create uploads directory
 RUN mkdir -p uploads

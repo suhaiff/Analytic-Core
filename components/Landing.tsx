@@ -8,6 +8,7 @@ import { scheduledRefreshService } from '../services/scheduledRefreshService';
 import { FolderModal } from './workspace/FolderModal';
 import { ScheduledRefreshModal } from './workspace/ScheduledRefreshModal';
 import { dashboardService } from '../services/dashboardService';
+import { Footer } from './Footer';
 
 const DashboardCard = ({ dash, colors, theme, onLoad, onDelete, onRename, user, onScheduleClick, scheduleMap }: { 
   dash: SavedDashboard, 
@@ -1920,6 +1921,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
           </div>
         )}
       </main>
+      <Footer />
 
       {/* Info Guide Modal */}
       {showInfoGuide && (() => {

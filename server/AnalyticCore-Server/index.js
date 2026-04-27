@@ -2200,10 +2200,9 @@ app.post('/api/sql-db/refresh/:fileId', async (req, res) => {
 // ============================================
 // Admin: API Error Log Endpoints
 // ============================================
-// Initialize ML Routes
-console.log('Initializing ML routes...');
-console.log(`ML Service URL: ${process.env.ML_SERVICE_URL || 'http://localhost:8001'}`);
-setupMLRoutes(app);
+// ML Routes are defined inline below (line ~2615) with proper multer middleware.
+// Do NOT call setupMLRoutes(app) here — those routes lack multer and break file uploads.
+// setupMLRoutes(app);
 
 /**
  * Report an API key error (called from frontend when Gemini calls fail)
