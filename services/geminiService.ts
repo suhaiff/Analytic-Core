@@ -1159,30 +1159,75 @@ export const profileDataWithGemini = async (tables: TableInput[]): Promise<DataP
  */
 
 export const getDashboardInsights = async (model: DataModel, charts: ChartConfig[]): Promise<string> => {
-  const chartSummaries = charts.map(c => 
-    `- ${c.title}: ${c.type} chart analyzing ${c.dataKey} ${c.dataKey2 ? `and ${c.dataKey2}` : ''} by ${c.xAxisKey}. Aggregation: ${c.aggregation}.`
-  ).join('\n');
+  // Build detailed per-chart descriptions with data context
+  const chartDetails = charts.map((c, idx) => {
+    const chartTypeLabel = c.type === 'kpi' ? 'KPI Card' 
+      : c.type === 'bar' ? 'Bar Chart' 
+      : c.type === 'line' ? 'Line Chart' 
+      : c.type === 'pie' ? 'Pie Chart' 
+      : c.type === 'area' ? 'Area Chart' 
+      : c.type === 'scatter' ? 'Scatter Plot' 
+      : c.type === 'heatmap' ? 'Heatmap'
+      : c.type === 'table' ? 'Data Table'
+      : c.type === 'donut' ? 'Donut Chart'
+      : `${c.type} Chart`;
+
+    // Compute basic stats for this chart's metric from data
+    const metricValues = model.data
+      .map(row => parseFloat(String(row[c.dataKey])))
+      .filter(v => !isNaN(v));
+    const sum = metricValues.reduce((a, b) => a + b, 0);
+    const avg = metricValues.length > 0 ? (sum / metricValues.length).toFixed(2) : 'N/A';
+    const min = metricValues.length > 0 ? Math.min(...metricValues) : 'N/A';
+    const max = metricValues.length > 0 ? Math.max(...metricValues) : 'N/A';
+
+    // Get unique dimension values
+    const dimensionValues = [...new Set(model.data.map(row => String(row[c.xAxisKey])))].slice(0, 10);
+
+    return `
+Chart ${idx + 1}: "${c.title}"
+  - Type: ${chartTypeLabel}
+  - Metric: ${c.dataKey} (Aggregation: ${c.aggregation})${c.dataKey2 ? `\n  - Secondary Metric: ${c.dataKey2}` : ''}
+  - Dimension: ${c.xAxisKey} (Values: ${dimensionValues.join(', ')}${dimensionValues.length >= 10 ? '...' : ''})
+  - Stats: Sum=${sum}, Avg=${avg}, Min=${min}, Max=${max}, Count=${metricValues.length}
+  - Description: ${c.description || 'N/A'}`;
+  }).join('\n');
 
   const context = `
-    I have a dashboard named "${model.name}" with the following charts:
-    ${chartSummaries}
+    Dashboard: "${model.name}"
+    Dataset columns: ${model.columns.join(', ')}
+    Numeric columns: ${model.numericColumns.join(', ')}
+    Categorical columns: ${model.categoricalColumns.join(', ')}
+    Total rows: ${model.data.length}
 
-    The underlying dataset has these columns: ${model.columns.join(', ')}.
-    Numeric columns: ${model.numericColumns.join(', ')}.
-    Categorical columns: ${model.categoricalColumns.join(', ')}.
+    Sample Data (first 15 rows):
+    ${JSON.stringify(model.data.slice(0, 15))}
+
+    Charts on this dashboard:
+    ${chartDetails}
+
+    IMPORTANT INSTRUCTIONS:
+    Generate insights **for each chart individually**, one by one. Do NOT give a single overall summary.
     
-    Sample Data (first 5 rows):
-    ${JSON.stringify(model.data.slice(0, 5))}
+    For each chart, create a section using this format:
+    ## [Chart Title] ([Chart Type])
+    Then provide 3-5 bullet points of insight SPECIFIC to that chart:
 
-    Please provide a professional, executive-level analysis of this dashboard. 
-    Focus on:
-    1. Key trends and patterns visible across these metrics.
-    2. Potential correlations or interesting anomalies.
-    3. Actionable business recommendations based on the data.
-    4. A summary "state of the business" statement.
+    - For **KPI Cards**: Explain what the metric value means, whether it's healthy or concerning, and how it compares to typical benchmarks.
+    - For **Bar Charts**: Compare categories, highlight the top/bottom performers, and note any significant gaps between values.
+    - For **Line/Area Charts**: Identify trends over time (upward, downward, flat), seasonal patterns, and compare current vs past periods.
+    - For **Pie/Donut Charts**: Highlight dominant segments, show distribution balance, and flag if any category is disproportionately large or small.
+    - For **Scatter Plots**: Identify correlations, outliers, and clusters.
+    - For **Heatmaps**: Highlight hotspots and cold zones.
+    - For **Data Tables**: Summarize key takeaways from the tabular data.
 
-    Format your response in beautiful Markdown. Use headers, bullet points, and bold text for emphasis.
-    Make the tone professional yet engaging.
+    After all individual chart insights, add a final section:
+    ## Key Cross-Chart Observations
+    Provide 2-3 bullet points about how the charts relate to each other and any cross-metric patterns.
+
+    Format in Markdown with headers (##), bullet points, and **bold** for key numbers/terms.
+    Keep each chart section concise (3-5 bullets). Be specific with numbers from the data.
+    Tone: Professional, data-driven, and actionable.
   `;
 
   try {
@@ -1192,7 +1237,7 @@ export const getDashboardInsights = async (model: DataModel, charts: ChartConfig
         model: 'gemini-2.5-flash', 
         contents: context,
         config: {
-          systemInstruction: "You are a senior data analyst and strategic business consultant. Your goal is to provide deep, actionable insights based on dashboard configurations and sample data.",
+          systemInstruction: "You are a senior data analyst. Your job is to analyze each chart on a dashboard individually and provide specific, data-backed insights per chart. Never give generic advice — always reference actual numbers and patterns from the data provided.",
         }
       });
 

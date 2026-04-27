@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { X, Sparkles, Download, ArrowRight, Loader2, Info, ChevronRight, BarChart3, TrendingUp, Lightbulb } from 'lucide-react';
+import { X, Sparkles, Download, ArrowRight, Loader2, Info, ChevronRight, BarChart3, TrendingUp, Lightbulb, RefreshCw } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { getThemeClasses, type Theme } from '../theme';
@@ -112,7 +112,8 @@ export const AiInsightSidebar: React.FC<AiInsightSidebarProps> = ({
         }
     }, [isOpen]);
 
-    const fetchInsights = async () => {
+    const fetchInsights = async (forceRefresh = false) => {
+        if (forceRefresh) setInsights(null);
         setIsLoading(true);
         try {
             const result = await getDashboardInsights(dataModel, charts);
@@ -236,15 +237,25 @@ export const AiInsightSidebar: React.FC<AiInsightSidebarProps> = ({
                             </div>
                             <div>
                                 <h2 className={`text-sm font-black uppercase tracking-[0.2em] ${colors.textPrimary}`}>AI Insights</h2>
-                                <p className={`text-[10px] font-bold ${colors.textMuted} opacity-60 uppercase tracking-wider`}>Executive Analytical Report</p>
+                                <p className={`text-[10px] font-bold ${colors.textMuted} opacity-60 uppercase tracking-wider`}>Chart-wise Analysis</p>
                             </div>
                         </div>
-                        <button 
-                            onClick={onClose}
-                            className={`p-2.5 rounded-xl ${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} hover:text-red-400 transition-all active:scale-95 border border-transparent hover:border-red-500/20`}
-                        >
-                            <ChevronRight className="w-5 h-5" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => fetchInsights(true)}
+                                disabled={isLoading}
+                                className={`p-2.5 rounded-xl ${colors.bgTertiary} ${colors.textMuted} hover:text-indigo-400 transition-all active:scale-95 border border-transparent hover:border-indigo-500/20 disabled:opacity-50`}
+                                title="Regenerate insights"
+                            >
+                                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                            </button>
+                            <button 
+                                onClick={onClose}
+                                className={`p-2.5 rounded-xl ${colors.bgTertiary} ${colors.textMuted} hover:${colors.textPrimary} hover:text-red-400 transition-all active:scale-95 border border-transparent hover:border-red-500/20`}
+                            >
+                                <ChevronRight className="w-5 h-5" />
+                            </button>
+                        </div>
                     </div>
                 </div>
 
