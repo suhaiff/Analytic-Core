@@ -891,11 +891,11 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
             <button
               onClick={() => onNavigateToMLModels && onNavigateToMLModels()}
               className={`flex-1 sm:flex-none px-5 sm:px-8 py-2.5 sm:py-3 rounded-2xl text-xs sm:text-sm font-black transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 active:scale-95 ${colors.textMuted} hover:${colors.bgTertiary} hover:${colors.textPrimary}`}
-              title="Prediction Models"
+              title="Prediction Analysis"
               style={{ display: onNavigateToMLModels ? undefined : 'none' }}
             >
               <Brain className="w-4 h-4" />
-              <span className="hidden xs:inline tracking-tight">Prediction Models</span>
+              <span className="hidden xs:inline tracking-tight">Prediction Analysis</span>
             </button>
 
           </div>

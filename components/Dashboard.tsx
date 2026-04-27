@@ -23,6 +23,8 @@ import { formatCurrency, formatCompactCurrency, isCurrencyColumn, isCountColumn,
 import { DashboardLoader } from './DashboardLoader';
 import { DashboardShareModal } from './DashboardShareModal';
 import { ChartAnalyticsModal } from './ChartAnalyticsModal';
+import { AiInsightSidebar } from './AiInsightSidebar';
+
 
 interface DashboardProps {
     dataModel: DataModel;
@@ -2353,6 +2355,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         clickedYear: number;
     } | null>(null);
     const [chartFilterMenuOpen, setChartFilterMenuOpen] = useState<string | null>(null);
+
+    // --- AI INSIGHT STATE ---
+
+    const handleAiInsightClick = () => {
+        window.dispatchEvent(new CustomEvent('open-ai-insight'));
+    };
+
     const [chartFilterColumn, setChartFilterColumn] = useState<{ [chartId: string]: string | null }>({});
     const [chartFilterSearch, setChartFilterSearch] = useState<{ [chartId: string]: string }>({});
     const hoveredChartRef = useRef<string | null>(null); // Use ref to avoid re-renders on hover
@@ -3679,7 +3688,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                         <span className="hidden sm:inline">Font</span>
                                     </button>
 
+                                    <button
+                                        onClick={handleAiInsightClick}
+                                        className={`px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 flex items-center gap-2 shadow-sm ${colors.bgPrimary} ${colors.textPrimary} border ${colors.borderSecondary} hover:border-indigo-500/30 hover:text-indigo-500 active:scale-95`}
+                                    >
+                                        <Sparkles className="w-4 h-4" />
+                                        <span className="hidden sm:inline">Ai Insight</span>
+                                    </button>
+
                                     <ThemeToggle className="scale-100 sm:scale-110 ml-0 sm:ml-1" />
+
 
                                     <button
                                         onClick={handleExportPDF}
@@ -4512,7 +4530,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                         ))}
                     </div>
                 )}
+
+                <AiInsightSidebar 
+                    dataModel={dataModel}
+                    charts={currentCharts}
+                    theme={theme}
+                />
             </>
+
         );
     } catch (error: any) {
         console.error("Dashboard Render Error:", error);

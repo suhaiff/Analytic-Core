@@ -1153,3 +1153,54 @@ export const profileDataWithGemini = async (tables: TableInput[]): Promise<DataP
     throw error;
   }
 };
+
+/**
+ * Generate comprehensive dashboard insights using Gemini AI
+ */
+
+export const getDashboardInsights = async (model: DataModel, charts: ChartConfig[]): Promise<string> => {
+  const chartSummaries = charts.map(c => 
+    `- ${c.title}: ${c.type} chart analyzing ${c.dataKey} ${c.dataKey2 ? `and ${c.dataKey2}` : ''} by ${c.xAxisKey}. Aggregation: ${c.aggregation}.`
+  ).join('\n');
+
+  const context = `
+    I have a dashboard named "${model.name}" with the following charts:
+    ${chartSummaries}
+
+    The underlying dataset has these columns: ${model.columns.join(', ')}.
+    Numeric columns: ${model.numericColumns.join(', ')}.
+    Categorical columns: ${model.categoricalColumns.join(', ')}.
+    
+    Sample Data (first 5 rows):
+    ${JSON.stringify(model.data.slice(0, 5))}
+
+    Please provide a professional, executive-level analysis of this dashboard. 
+    Focus on:
+    1. Key trends and patterns visible across these metrics.
+    2. Potential correlations or interesting anomalies.
+    3. Actionable business recommendations based on the data.
+    4. A summary "state of the business" statement.
+
+    Format your response in beautiful Markdown. Use headers, bullet points, and bold text for emphasis.
+    Make the tone professional yet engaging.
+  `;
+
+  try {
+    return await withKeyRotation(async () => {
+      const ai = getAI();
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash', 
+        contents: context,
+        config: {
+          systemInstruction: "You are a senior data analyst and strategic business consultant. Your goal is to provide deep, actionable insights based on dashboard configurations and sample data.",
+        }
+      });
+
+      return response.text || "Unable to generate insights at this time.";
+    });
+  } catch (error: any) {
+    console.error("Dashboard Insights AI Error:", error);
+    reportApiError(error, 'getDashboardInsights');
+    return "An error occurred while generating insights. This may be due to API rate limits. Please try again in a few moments.";
+  }
+};
