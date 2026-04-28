@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     ArrowLeft, Loader2, Upload, AlertCircle, Download, Sparkles, Target,
-    Table, BarChart3, FileSpreadsheet, Database, Globe, CheckCircle2
+    Table, BarChart3, FileSpreadsheet, Database, Globe, CheckCircle2,
+    AlertTriangle, Scissors, TrendingUp
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
 import { mlService } from '../../services/mlService';
@@ -26,25 +28,136 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
 
     const [file, setFile] = useState<File | null>(null);
     const [isRunning, setIsRunning] = useState(false);
+    const [isRetraining, setIsRetraining] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [result, setResult] = useState<MLPredictionResponse | null>(null);
     const [viewMode, setViewMode] = useState<'table' | 'candlestick'>('table');
+
+    // Target column detection
+    const [fileHeaders, setFileHeaders] = useState<string[] | null>(null);
+    const [retrainSuccess, setRetrainSuccess] = useState<string | null>(null);
 
     // Modal States
     const [showGSModal, setShowGSModal] = useState(false);
     const [showSqlDbModal, setShowSqlDbModal] = useState(false);
     const [showSPModal, setShowSPModal] = useState(false);
 
+    // Detect if file contains the target column
+    const hasTargetColumn = useMemo(() => {
+        if (!fileHeaders) return false;
+        const target = model.target_column.toLowerCase().trim();
+        return fileHeaders.some(h => h.toLowerCase().trim() === target);
+    }, [fileHeaders, model.target_column]);
+
+    // Parse file headers whenever file changes
+    useEffect(() => {
+        if (!file) {
+            setFileHeaders(null);
+            return;
+        }
+        (async () => {
+            try {
+                const headers = await parseFileHeaders(file);
+                setFileHeaders(headers);
+            } catch (e) {
+                console.error('Failed to parse file headers:', e);
+                setFileHeaders(null);
+            }
+        })();
+    }, [file]);
+
+    // Parse headers from CSV or XLSX file
+    const parseFileHeaders = async (f: File): Promise<string[]> => {
+        const name = f.name.toLowerCase();
+        if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+            const buf = await f.arrayBuffer();
+            const wb = XLSX.read(buf, { type: 'array' });
+            const sheetName = wb.SheetNames[0];
+            const sheet = wb.Sheets[sheetName];
+            const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+            return (rows[0] || []).map((h: any) => String(h || '').trim());
+        }
+        // CSV - read first line only
+        const text = await f.text();
+        const firstLine = text.split(/\r?\n/)[0] || '';
+        return parseCsvLine(firstLine);
+    };
+
+    // Simple CSV line parser that handles quoted values
+    const parseCsvLine = (line: string): string[] => {
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+                if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+                else inQuotes = !inQuotes;
+            } else if (ch === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+            } else {
+                current += ch;
+            }
+        }
+        result.push(current.trim());
+        return result;
+    };
+
+    // Strip target column from file and return a new File
+    const stripTargetColumn = async (f: File): Promise<File> => {
+        const name = f.name.toLowerCase();
+        const targetLower = model.target_column.toLowerCase().trim();
+
+        if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+            const buf = await f.arrayBuffer();
+            const wb = XLSX.read(buf, { type: 'array' });
+            const sheetName = wb.SheetNames[0];
+            const sheet = wb.Sheets[sheetName];
+            const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+            if (rows.length === 0) return f;
+            const headers = (rows[0] || []).map((h: any) => String(h || '').trim());
+            const targetIdx = headers.findIndex(h => h.toLowerCase() === targetLower);
+            if (targetIdx < 0) return f;
+            const filtered = rows.map(r => r.filter((_: any, i: number) => i !== targetIdx));
+            return arrayToCsvFile(filtered, f.name.replace(/\.(xlsx|xls)$/i, '.csv'));
+        }
+
+        // CSV path
+        const text = await f.text();
+        const lines = text.split(/\r?\n/);
+        if (lines.length === 0) return f;
+        const headers = parseCsvLine(lines[0]);
+        const targetIdx = headers.findIndex(h => h.toLowerCase() === targetLower);
+        if (targetIdx < 0) return f;
+        const newLines = lines.map(line => {
+            if (line.trim() === '') return line;
+            const cells = parseCsvLine(line);
+            cells.splice(targetIdx, 1);
+            return cells.map(c => {
+                const s = String(c);
+                return (s.includes(',') || s.includes('"') || s.includes('\n'))
+                    ? `"${s.replace(/"/g, '""')}"`
+                    : s;
+            }).join(',');
+        });
+        const blob = new Blob([newLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        return new File([blob], f.name, { type: 'text/csv' });
+    };
+
     const handleRun = async () => {
         if (!file) return setError('Please upload a file first.');
         setIsRunning(true);
         setError(null);
         setResult(null);
+        setRetrainSuccess(null);
         try {
+            // Auto-strip target column if present (safety net)
+            const fileToUse = hasTargetColumn ? await stripTargetColumn(file) : file;
             const res = await mlService.predict({
                 userId: user.id,
                 modelId: model.id,
-                file,
+                file: fileToUse,
                 includeProbabilities: model.problem_type === 'classification',
             });
             setResult(res);
@@ -56,6 +169,65 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
             setError(msg || 'Prediction failed.');
         } finally {
             setIsRunning(false);
+        }
+    };
+
+    const handleRemoveTargetAndPredict = async () => {
+        if (!file) return;
+        try {
+            const stripped = await stripTargetColumn(file);
+            setFile(stripped);
+            // handleRun will be called automatically via user clicking Run Predictions
+            // but we call it directly for smoother UX
+            setIsRunning(true);
+            setError(null);
+            setResult(null);
+            setRetrainSuccess(null);
+            const res = await mlService.predict({
+                userId: user.id,
+                modelId: model.id,
+                file: stripped,
+                includeProbabilities: model.problem_type === 'classification',
+            });
+            setResult(res);
+        } catch (e: any) {
+            const detail = e?.response?.data?.detail;
+            const msg = typeof detail === 'object'
+                ? (detail.message || JSON.stringify(detail))
+                : (detail || e.message);
+            setError(msg || 'Prediction failed.');
+        } finally {
+            setIsRunning(false);
+        }
+    };
+
+    const handleRetrainWithData = async () => {
+        if (!file) return;
+        setIsRetraining(true);
+        setError(null);
+        setRetrainSuccess(null);
+        try {
+            await mlService.retrainModel({
+                userId: user.id,
+                modelId: model.id,
+                name: model.name,
+                description: model.description || undefined,
+                targetColumn: model.target_column,
+                algorithm: model.algorithm,
+                featureColumns: model.feature_columns,
+                problemType: model.problem_type,
+                file,
+            });
+            setRetrainSuccess(`Model "${model.name}" has been retrained with the new data. You can now upload a different file (without the target column) to run predictions.`);
+            setFile(null);
+        } catch (e: any) {
+            const detail = e?.response?.data?.detail;
+            const msg = typeof detail === 'object'
+                ? (detail.message || JSON.stringify(detail))
+                : (detail || e.message);
+            setError(msg || 'Retraining failed.');
+        } finally {
+            setIsRetraining(false);
         }
     };
 
@@ -278,6 +450,66 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
                             )}
                         </div>
 
+                {/* Target Column Warning Card */}
+                {file && hasTargetColumn && !result && (
+                    <div className="mb-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 p-5">
+                        <div className="flex items-start gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+                                <AlertTriangle className="w-5 h-5 text-amber-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h3 className={`text-sm font-bold ${colors.textPrimary} mb-1`}>
+                                    Target column <span className="text-amber-400">"{model.target_column}"</span> detected in your file
+                                </h3>
+                                <p className={`text-xs ${colors.textMuted} leading-relaxed`}>
+                                    Your uploaded file contains the target column. You can either remove it and run predictions on the rest of the data, or use this file to retrain the model and improve its accuracy.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="grid sm:grid-cols-2 gap-3">
+                            <button
+                                onClick={handleRemoveTargetAndPredict}
+                                disabled={isRunning || isRetraining}
+                                className="flex items-start gap-3 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/20 hover:border-indigo-500/50 transition text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Scissors className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                                <div className="min-w-0">
+                                    <p className={`text-xs font-bold ${colors.textPrimary} mb-1`}>
+                                        {isRunning ? 'Running predictions…' : 'Remove & Predict'}
+                                    </p>
+                                    <p className={`text-[10px] ${colors.textMuted} leading-relaxed`}>
+                                        Strip the target column and run predictions on the remaining data.
+                                    </p>
+                                </div>
+                            </button>
+                            <button
+                                onClick={handleRetrainWithData}
+                                disabled={isRunning || isRetraining}
+                                className="flex items-start gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isRetraining
+                                    ? <Loader2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5 animate-spin" />
+                                    : <TrendingUp className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />}
+                                <div className="min-w-0">
+                                    <p className={`text-xs font-bold ${colors.textPrimary} mb-1`}>
+                                        {isRetraining ? 'Retraining model…' : 'Retrain Model'}
+                                    </p>
+                                    <p className={`text-[10px] ${colors.textMuted} leading-relaxed`}>
+                                        Use this file (with target values) to improve the model's accuracy.
+                                    </p>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {retrainSuccess && (
+                    <div className="mb-5 px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{retrainSuccess}</span>
+                    </div>
+                )}
+
                 {error && (
                     <div className="mb-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm flex items-center gap-2">
                         <AlertCircle className="w-4 h-4" /> {error}
@@ -293,7 +525,7 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
                     </button>
                     <button
                         onClick={handleRun}
-                        disabled={isRunning || !file}
+                        disabled={isRunning || isRetraining || !file}
                         className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold transition shadow-lg shadow-indigo-900/20 flex items-center gap-2"
                     >
                         {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
