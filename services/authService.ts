@@ -192,6 +192,30 @@ export const authService = {
             throw new Error(data.error || 'Failed to update superuser status');
         }
     },
+
+    async updateUserPricing(userId: number, pricing: 'Pro' | 'Premium' | 'Elite'): Promise<void> {
+        const response = await fetch(`${API_URL}/users/${userId}/pricing`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pricing })
+        });
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to update pricing');
+        }
+    },
+
+    async updateUserDuration(userId: number, duration: string): Promise<void> {
+        const response = await fetch(`${API_URL}/users/${userId}/duration`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ duration })
+        });
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to update duration');
+        }
+    },
     
     async bulkSignup(users: any[]): Promise<any> {
         const response = await fetch(`${API_URL}/admin/users/bulk`, {

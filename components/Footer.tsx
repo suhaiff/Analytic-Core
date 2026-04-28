@@ -81,7 +81,7 @@ export const Footer: React.FC = () => {
                             </li>
                             <li className={`flex items-center gap-3 text-sm ${colors.textMuted}`}>
                                 <Mail className="w-5 h-5 text-indigo-400 shrink-0" />
-                                <a href="mailto:info@vtabsquare.com" className="hover:text-indigo-400 transition-colors">info@vtabsquare.com</a>
+                                <a href="mailto:info@vtabsquare.com" className="hover:text-indigo-400 transition-colors">contactsales@vtabsquare.com</a>
                             </li>
                             <li className={`flex items-center gap-3 text-sm ${colors.textMuted}`}>
                                 <Globe className="w-5 h-5 text-indigo-400 shrink-0" />

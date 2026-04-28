@@ -433,6 +433,30 @@ app.put('/api/users/:id/superuser', async (req, res) => {
     }
 });
 
+app.put('/api/users/:id/pricing', async (req, res) => {
+    try {
+        const userId = parseInt(req.params.id);
+        const { pricing } = req.body;
+        await supabaseService.updateUserPricing(userId, pricing);
+        res.json({ message: 'User pricing updated' });
+    } catch (error) {
+        console.error('Update user pricing error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.put('/api/users/:id/duration', async (req, res) => {
+    try {
+        const userId = parseInt(req.params.id);
+        const { duration } = req.body;
+        await supabaseService.updateUserDuration(userId, duration);
+        res.json({ message: 'User duration updated' });
+    } catch (error) {
+        console.error('Update user duration error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ============================================
 // Dashboard Access Sharing Endpoints
 // ============================================
@@ -624,6 +648,32 @@ app.post('/api/workspace/folders', async (req, res) => {
             return res.status(400).json({ error: 'Missing ownerId or name' });
         }
         const folder = await supabaseService.createWorkspaceFolder(ownerId, name, accessUsers, accessGroups);
+        
+        // Background: Send emails
+        (async () => {
+            try {
+                const owner = await supabaseService.getUserById(ownerId);
+                if (owner) {
+                    // Send creation email to owner (optional check for superuser as requested)
+                    if (owner.is_superuser) {
+                        await brevoService.sendWorkspaceCreatedEmail(owner.email, owner.name, name);
+                    }
+
+                    // Send invites to other users
+                    const invitedUserIds = accessUsers.filter(u => u.id.toString() !== ownerId.toString()).map(u => u.id);
+                    if (invitedUserIds.length > 0) {
+                        const invitedUsers = await supabaseService.getUsersByIds(invitedUserIds);
+                        for (const invitedUser of invitedUsers) {
+                            const level = accessUsers.find(u => u.id.toString() === invitedUser.id.toString())?.level || 'VIEWER';
+                            await brevoService.sendWorkspaceInviteEmail(invitedUser.email, invitedUser.name, name, owner.name, level);
+                        }
+                    }
+                }
+            } catch (emailErr) {
+                console.error('Failed to send workspace creation emails:', emailErr);
+            }
+        })();
+
         res.json(folder);
     } catch (error) {
         console.error('Create workspace folder error:', error);
@@ -644,7 +694,6 @@ app.get('/api/workspace/folders', async (req, res) => {
     }
 });
 
-// Update a workspace folder (owner only)
 app.put('/api/workspace/folders/:id', async (req, res) => {
     try {
         const folderId = req.params.id;
@@ -652,7 +701,34 @@ app.put('/api/workspace/folders/:id', async (req, res) => {
         if (!name || !requestingUserId) {
             return res.status(400).json({ error: 'Missing name or requestingUserId' });
         }
+
+        // Identify new users before updating
+        const currentMembers = await supabaseService.getWorkspaceFolderMembers(folderId);
+        const currentMemberIds = currentMembers.map(m => m.user_id.toString());
+        
         await supabaseService.updateWorkspaceFolder(folderId, name, accessUsers, accessGroups, requestingUserId);
+        
+        // Background: Send invites to NEWLY added users
+        (async () => {
+            try {
+                const inviter = await supabaseService.getUserById(requestingUserId);
+                const newInvitedUsers = accessUsers.filter(u => 
+                    u.id.toString() !== requestingUserId.toString() && 
+                    !currentMemberIds.includes(u.id.toString())
+                );
+
+                if (inviter && newInvitedUsers.length > 0) {
+                    const invitedUsers = await supabaseService.getUsersByIds(newInvitedUsers.map(u => u.id));
+                    for (const invitedUser of invitedUsers) {
+                        const level = accessUsers.find(u => u.id.toString() === invitedUser.id.toString())?.level || 'VIEWER';
+                        await brevoService.sendWorkspaceInviteEmail(invitedUser.email, invitedUser.name, name, inviter.name, level);
+                    }
+                }
+            } catch (emailErr) {
+                console.error('Failed to send workspace update emails:', emailErr);
+            }
+        })();
+
         res.json({ message: 'Folder updated' });
     } catch (error) {
         console.error('Update workspace folder error:', error);

@@ -6,7 +6,7 @@ import { apiErrorService, ApiErrorLog } from '../../services/apiErrorService';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
 import { User, SavedDashboard, Organization } from '../../types';
-import { Shield, Trash2, LogOut, Search, User as UserIcon, FileText, LayoutDashboard, Upload, Eye, X, Mail, Phone, Building, Briefcase, Users, UserPlus, TrendingUp, BarChart3, PieChart as PieChartIcon, Activity, HardDrive, Database, Clock, Globe, Bell, AlertTriangle, CheckCircle2, XCircle, Zap, Wifi, KeyRound, ChevronRight, Check, Plus, Building2, Star, ChevronDown } from 'lucide-react';
+import { Shield, ShieldCheck, Trash2, LogOut, Search, User as UserIcon, FileText, LayoutDashboard, Upload, Eye, X, Mail, Phone, Building, Briefcase, Users, UserPlus, TrendingUp, BarChart3, PieChart as PieChartIcon, Activity, HardDrive, Database, Clock, Globe, Bell, AlertTriangle, CheckCircle2, XCircle, Zap, Wifi, KeyRound, ChevronRight, Check, Plus, Building2, Star, ChevronDown } from 'lucide-react';
 import { ProfileMenu } from '../navbar/ProfileMenu';
 import { ThemeToggle } from '../ThemeToggle';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
@@ -295,6 +295,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_superuser: !current } : u));
         } catch (error: any) {
             alert(error.message || 'Failed to update superuser status');
+        }
+    };
+
+    const handleUpdatePricing = async (userId: number, pricing: 'Pro' | 'Premium' | 'Elite') => {
+        try {
+            await authService.updateUserPricing(userId, pricing);
+            setUsers(prev => prev.map(u => u.id === userId ? { ...u, pricing } : u));
+        } catch (error: any) {
+            alert(error.message || 'Failed to update pricing');
+        }
+    };
+
+    const handleUpdateDuration = async (userId: number, duration: string) => {
+        try {
+            await authService.updateUserDuration(userId, duration);
+            setUsers(prev => prev.map(u => u.id === userId ? { ...u, duration } : u));
+        } catch (error: any) {
+            alert(error.message || 'Failed to update duration');
         }
     };
 
@@ -1022,12 +1040,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                                     </div>
                                                 </th>
                                             )}
-                                            <th className="px-6 py-4">User</th>
-                                            <th className="px-6 py-4">Role</th>
-                                            <th className="px-6 py-4">Organization</th>
-                                            <th className="px-6 py-4">Domain</th>
-                                            <th className="px-6 py-4">Joined</th>
-                                            <th className="px-6 py-4 text-right">Actions</th>
+                                            <th className="px-4 md:px-6 py-4">User</th>
+                                            <th className="px-4 md:px-6 py-4">Role</th>
+                                            <th className="px-4 md:px-6 py-4">Organization</th>
+                                            <th className="px-4 md:px-6 py-4">Pricing</th>
+                                            <th className="px-4 md:px-6 py-4">Duration</th>
+                                            <th className="px-4 md:px-6 py-4 hidden lg:table-cell">Domain</th>
+                                            <th className="px-4 md:px-6 py-4 hidden sm:table-cell">Joined</th>
+                                            <th className="px-4 md:px-6 py-4 text-right">Actions</th>
                                         </>
                                     )}
                                     {activeTab === 'REPORTS' && (
@@ -1084,7 +1104,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                                         )}
                                                     </td>
                                                 )}
-                                                <td className="px-6 py-4">
+                                                <td className="px-4 md:px-6 py-4">
                                                     <div className="flex items-center gap-3">
                                                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-extrabold shadow-md ${theme === 'dark' ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white' : 'bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-700'}`}>
                                                             {user.name.charAt(0).toUpperCase()}
@@ -1095,7 +1115,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-4 md:px-6 py-4">
                                                     <span className={`px-3 py-1.5 rounded-full text-[10px] uppercase tracking-widest font-black shadow-sm ${user.role === 'ADMIN' ? 'bg-gradient-to-r from-purple-500/20 to-fuchsia-500/20 text-fuchsia-500 border border-fuchsia-500/30' : 'bg-gradient-to-r from-indigo-500/20 to-blue-500/20 text-indigo-500 border border-indigo-500/30'}`}>
                                                         {user.role}
                                                     </span>
@@ -1112,7 +1132,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                                         </button>
                                                     )}
                                                 </td>
-                                                <td className="px-6 py-4 relative">
+                                                <td className="px-4 md:px-6 py-4 relative">
                                                     <div className="relative" ref={orgDropdownUserId === user.id ? orgDropdownRef : undefined}>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); setOrgDropdownUserId(orgDropdownUserId === user.id ? null : user.id); }}
@@ -1147,16 +1167,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-sm font-semibold text-slate-500">
+                                                <td className="px-4 md:px-6 py-4">
+                                                    <div className="relative group/pricing">
+                                                        <select
+                                                            value={user.pricing || ''}
+                                                            onChange={(e) => handleUpdatePricing(user.id, e.target.value as any)}
+                                                            className={`appearance-none px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all duration-300 w-32
+                                                                ${user.pricing === 'Elite' ? 'bg-gradient-to-r from-amber-500/10 to-yellow-500/10 text-amber-500 border-amber-500/30' : 
+                                                                  user.pricing === 'Premium' ? 'bg-gradient-to-r from-purple-500/10 to-indigo-500/10 text-purple-500 border-purple-500/30' :
+                                                                  user.pricing === 'Pro' ? 'bg-gradient-to-r from-emerald-500/10 to-teal-500/10 text-emerald-500 border-emerald-500/30' :
+                                                                  `${colors.bgTertiary} ${colors.textMuted} ${colors.borderSecondary}`}
+                                                                focus:ring-2 focus:ring-indigo-500/20 outline-none cursor-pointer hover:scale-105 active:scale-95`}
+                                                        >
+                                                            <option value="" disabled className="bg-slate-900">Select Plan</option>
+                                                            <option value="Pro" className="bg-slate-900 text-emerald-500">Pro</option>
+                                                            <option value="Premium" className="bg-slate-900 text-purple-500">Premium</option>
+                                                            <option value="Elite" className="bg-slate-900 text-amber-500">Elite</option>
+                                                        </select>
+                                                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 opacity-50 pointer-events-none group-hover/pricing:translate-y-[-40%] transition-transform" />
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 md:px-6 py-4">
+                                                    <div className="relative group/date">
+                                                        <input
+                                                            type="date"
+                                                            value={user.duration || ''}
+                                                            onChange={(e) => handleUpdateDuration(user.id, e.target.value)}
+                                                            className={`appearance-none px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all duration-300
+                                                                ${user.duration ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/30' : `${colors.bgTertiary} ${colors.textMuted} ${colors.borderSecondary}`}
+                                                                focus:ring-2 focus:ring-indigo-500/20 outline-none cursor-pointer hover:scale-105 active:scale-95`}
+                                                        />
+                                                        <Clock className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 opacity-50 pointer-events-none group-hover/date:rotate-12 transition-transform" />
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 md:px-6 py-4 text-sm font-semibold text-slate-500 hidden lg:table-cell">
                                                     {user.domain || '-'}
                                                 </td>
-                                                <td className="px-6 py-4 text-sm text-slate-500 font-medium">
+                                                <td className="px-4 md:px-6 py-4 text-sm text-slate-500 font-medium hidden sm:table-cell">
                                                     <div className="flex items-center gap-2">
                                                         <Clock className="w-3.5 h-3.5 opacity-50" />
                                                         {new Date(user.created_at || '').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                <td className="px-4 md:px-6 py-4 text-right whitespace-nowrap">
                                                     <div className="flex items-center justify-end gap-2">
                                                         <button
                                                             onClick={() => setViewingUser(user)}
@@ -1623,6 +1676,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                     </div>
                                 </div>
                                 
+                                <div className={`p-4 rounded-2xl ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm hover:shadow-md hover:border-emerald-500/30 transition-all duration-300 group overflow-hidden relative`}>
+                                    <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-full -translate-y-8 translate-x-8"></div>
+                                    <div className="flex items-center gap-3 relative z-10">
+                                        <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-emerald-500/10 rounded-xl text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
+                                            <ShieldCheck className="w-4 h-4" />
+                                        </div>
+                                        <div className="flex-1 overflow-hidden">
+                                            <p className={`text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-0.5`}>Pricing Plan</p>
+                                            <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider
+                                                ${viewingUser.pricing === 'Elite' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
+                                                  viewingUser.pricing === 'Premium' ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
+                                                  viewingUser.pricing === 'Pro' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
+                                                  'bg-slate-500/10 text-slate-500 border border-slate-500/20'}
+                                            `}>
+                                                {viewingUser.pricing || 'Starter'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className={`p-4 rounded-2xl ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm hover:shadow-md hover:border-rose-500/30 transition-all duration-300 group overflow-hidden relative`}>
+                                    <div className="absolute top-0 right-0 w-16 h-16 bg-rose-500/5 rounded-full -translate-y-8 translate-x-8"></div>
+                                    <div className="flex items-center gap-3 relative z-10">
+                                        <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-rose-500/10 rounded-xl text-rose-500 group-hover:bg-rose-500 group-hover:text-white transition-all duration-300">
+                                            <Clock className="w-4 h-4" />
+                                        </div>
+                                        <div className="flex-1 overflow-hidden">
+                                            <p className={`text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-0.5`}>License Duration</p>
+                                            <p className={`text-sm font-semibold ${colors.textPrimary} truncate`}>
+                                                {viewingUser.duration ? new Date(viewingUser.duration).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Lifetime'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div className={`p-4 rounded-2xl ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm hover:shadow-md hover:border-emerald-500/30 transition-all duration-300 group overflow-hidden relative sm:col-span-2`}>
                                     <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -translate-y-12 translate-x-12"></div>
                                     <div className="flex items-center gap-4 relative z-10">

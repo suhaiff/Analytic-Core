@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { LogOut, Settings, ChevronDown, User as UserIcon, Info, HelpCircle, X, ArrowRight, Sparkles, Shield, LayoutDashboard } from 'lucide-react';
+import { LogOut, Settings, ChevronDown, User as UserIcon, Info, HelpCircle, X, ArrowRight, Sparkles, Shield, LayoutDashboard, Clock } from 'lucide-react';
 import { User as UserType } from '../../types';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
@@ -99,6 +99,37 @@ export const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, onLogout, onNavi
                                     {user.name}
                                 </h3>
                                 <p className={`text-xs ${colors.textMuted} truncate`}>{user.email}</p>
+                                
+                                {user.pricing && (
+                                    <div className="mt-3 flex flex-col items-center gap-2">
+                                        <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-lg border animate-pulse
+                                            ${user.pricing === 'Elite' ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white border-amber-400/50 shadow-amber-500/20' : 
+                                              user.pricing === 'Premium' ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white border-purple-400/50 shadow-indigo-500/20' :
+                                              'bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-emerald-400/50 shadow-emerald-500/20'}
+                                        `}>
+                                            <Sparkles className="w-3 h-3 inline mr-1.5 mb-0.5" />
+                                            {user.pricing} Plan
+                                        </div>
+                                        
+                                        {user.duration && (
+                                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-500/5 border border-slate-500/10">
+                                                <Clock className="w-3 h-3 text-indigo-400" />
+                                                <p className={`text-[10px] font-bold ${colors.textMuted}`}>
+                                                    Deadline: <span className={colors.textPrimary}>
+                                                        {(() => {
+                                                            try {
+                                                                const d = new Date(user.duration);
+                                                                return isNaN(d.getTime()) ? user.duration : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                                                            } catch {
+                                                                return user.duration;
+                                                            }
+                                                        })()}
+                                                    </span>
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
 

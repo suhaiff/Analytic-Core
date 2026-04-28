@@ -99,9 +99,21 @@ export const Overview: React.FC<OverviewProps> = ({ user, onNavigateToLanding })
           </div>
           <div className="flex items-center gap-4">
              {user && (
-               <div className={`hidden md:flex items-center gap-2 px-4 py-2 rounded-full ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm`}>
-                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                 <span className={`text-sm font-medium ${colors.textSecondary}`}>Logged in as <span className="font-bold">{user.name}</span></span>
+               <div className={`hidden md:flex items-center gap-3 px-4 py-2 rounded-full ${colors.bgSecondary} border ${colors.borderPrimary} shadow-sm`}>
+                 <div className="flex items-center gap-2 pr-3 border-r border-slate-500/20">
+                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                   <span className={`text-sm font-medium ${colors.textSecondary}`}>Active as <span className="font-bold">{user.name}</span></span>
+                 </div>
+                 {user.pricing && (
+                    <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider
+                        ${user.pricing === 'Elite' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
+                          user.pricing === 'Premium' ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
+                          'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'}
+                    `}>
+                        <Star className="w-3 h-3" />
+                        {user.pricing}
+                    </div>
+                 )}
                </div>
              )}
              <button

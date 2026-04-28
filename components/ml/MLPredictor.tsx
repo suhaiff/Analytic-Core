@@ -209,9 +209,14 @@ export const MLPredictor: React.FC<Props> = ({ user, model, onBack }) => {
                         <Info colors={colors} label="Trained on" value={`${model.sample_size.toLocaleString()} rows`} />
                     </div>
                     {(model.raw_feature_columns || model.feature_columns).length > 0 && (
-                        <p className={`mt-3 text-[11px] ${colors.textMuted}`}>
-                            <Target className="w-3 h-3 inline mr-1" /> Required columns: {(model.raw_feature_columns || model.feature_columns).join(', ')}
-                        </p>
+                        <div className="mt-3 space-y-1">
+                            <p className={`text-[11px] ${colors.textMuted}`}>
+                                <Target className="w-3 h-3 inline mr-1" /> Required columns: {(model.raw_feature_columns || model.feature_columns).join(', ')}
+                            </p>
+                            <p className={`text-[10px] text-amber-500/80 font-medium italic`}>
+                                <AlertCircle className="w-3 h-3 inline mr-1" /> Note: Do NOT include the target column <span className="font-bold">"{model.target_column}"</span> in your upload.
+                            </p>
+                        </div>
                     )}
                 </div>
 
