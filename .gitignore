@@ -24,7 +24,9 @@ coverage/
 *.xlsx
 *.xls
 *.csv
-server/uploads/
+# Server (Backend) - Ignored in Frontend Git
+server/
+
 
 # Package manager stuff
 package-lock.json

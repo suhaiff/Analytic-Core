@@ -11,6 +11,7 @@ import { ProfileMenu } from '../navbar/ProfileMenu';
 import { ThemeToggle } from '../ThemeToggle';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { BulkUserUploadModal } from './BulkUserUploadModal';
+import { AdminSubscriptionManagement } from './AdminSubscriptionManagement';
 
 interface AdminDashboardProps {
     onLogout: () => void;
@@ -19,7 +20,7 @@ interface AdminDashboardProps {
     onViewDashboard?: (dash: SavedDashboard) => void;
 }
 
-type AdminTab = 'USERS' | 'REPORTS' | 'UPLOADS' | 'PERFORMANCE';
+type AdminTab = 'USERS' | 'REPORTS' | 'UPLOADS' | 'PERFORMANCE' | 'SUBSCRIPTIONS';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, onNavigateToUserApp, onViewDashboard }) => {
     const { theme } = useTheme();
@@ -632,6 +633,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                             >
                                 <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 
                                 <span className="hidden xs:inline">System Performance</span>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('SUBSCRIPTIONS')}
+                                className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2
+                                    ${activeTab === 'SUBSCRIPTIONS' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : `${colors.textMuted} hover:${colors.textPrimary}`}
+                                `}
+                            >
+                                <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 
+                                <span className="hidden xs:inline">Subscriptions</span>
                             </button>
                         </div>
                     </div>
@@ -1322,6 +1332,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                         </table>
                     </div>
                 </div>
+                )}
+
+                {activeTab === 'SUBSCRIPTIONS' && (
+                    <div className="animate-fade-in">
+                        <AdminSubscriptionManagement />
+                    </div>
                 )}
 
                 {activeTab === 'PERFORMANCE' && (

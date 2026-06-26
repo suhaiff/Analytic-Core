@@ -12,6 +12,8 @@ import { Welcome } from './components/Welcome';
 import { Overview } from './components/Overview';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { MLModelHub } from './components/ml/MLModelHub';
+import { SubscriptionPricing } from './components/SubscriptionPricing';
+import { PermissionGate } from './components/PermissionGate';
 
 import { processFile } from './utils/fileParser';
 import { processRawData, performJoins } from './utils/dataProcessing';
@@ -38,7 +40,8 @@ enum Step {
   CONFIG = 1,
   BUILDER = 2,
   DASHBOARD = 3,
-  ML_MODELS = 'ML_MODELS'
+  ML_MODELS = 'ML_MODELS',
+  PRICING = 'PRICING'
 }
 
 interface ToastState {
@@ -644,6 +647,7 @@ function AppContent() {
             onLogout={handleLogout}
             onNavigateToAdmin={() => setStep(Step.ADMIN)}
             onNavigateToMLModels={() => setStep(Step.ML_MODELS)}
+            onNavigateToPricing={() => setStep(Step.PRICING)}
             user={currentUser}
             workspaceFolders={workspaceFolders}
             onFoldersChange={() => { if (currentUser) loadWorkspaceFolders(currentUser.id); }}
@@ -651,11 +655,45 @@ function AppContent() {
           />
         )}
 
+        {step === Step.PRICING && (
+          <SubscriptionPricing onBack={() => setStep(Step.LANDING)} user={currentUser} />
+        )}
+
         {step === Step.ML_MODELS && currentUser && (
-          <MLModelHub
-            user={currentUser}
-            onHome={() => setStep(Step.LANDING)}
-          />
+          <PermissionGate 
+            permissionKey="ml_models_access" 
+            organizationId={currentUser.organization_id}
+            fallback={
+              <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 text-center px-4">
+                <div className="max-w-md bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl">
+                  <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <AlertCircle className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Access Denied</h2>
+                  <p className="text-slate-600 dark:text-slate-400 mb-6">
+                    Your organization's current subscription does not include access to the ML Models module. 
+                  </p>
+                  <button
+                    onClick={() => setStep(Step.PRICING)}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition-colors"
+                  >
+                    View Subscription Plans
+                  </button>
+                  <button
+                    onClick={() => setStep(Step.LANDING)}
+                    className="w-full mt-3 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
+                  >
+                    Back to Home
+                  </button>
+                </div>
+              </div>
+            }
+          >
+            <MLModelHub
+              user={currentUser}
+              onHome={() => setStep(Step.LANDING)}
+            />
+          </PermissionGate>
         )}
 
         {step === Step.CONFIG && initialTables.length > 0 && (

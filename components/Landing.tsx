@@ -228,11 +228,12 @@ interface LandingProps {
   onSharePointImport: (siteId: string, listId: string, listName: string, data: any[][], siteName: string, fileId: number) => void;
   onSqlDatabaseImport: (tables: { id: number, name: string, data: any[][], fileId: number }[], title: string, connectionId: string) => void;
   savedDashboards: SavedDashboard[];
-  onLoadDashboard: (dashboard: SavedDashboard) => void;
+  onLoadDashboard: (dashboard: SavedDashboard, role?: AccessLevel | null) => void;
   onDeleteDashboard: (id: string) => void;
   onLogout: () => void;
   onNavigateToAdmin?: () => void;
   onNavigateToMLModels?: () => void;
+  onNavigateToPricing?: () => void;
   workspaceFolders?: WorkspaceFolder[];
   onFoldersChange?: () => void;
   onDashboardsChange?: () => void;
@@ -240,7 +241,23 @@ interface LandingProps {
 }
 
 
-export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImport, onSharePointImport, onSqlDatabaseImport, savedDashboards, onLoadDashboard, onDeleteDashboard, onLogout, onNavigateToAdmin, onNavigateToMLModels, workspaceFolders = [], onFoldersChange, onDashboardsChange, user }) => {
+export const Landing: React.FC<LandingProps> = ({ 
+  onFileUpload, 
+  onGoogleSheetImport, 
+  onSharePointImport, 
+  onSqlDatabaseImport, 
+  savedDashboards, 
+  onLoadDashboard, 
+  onDeleteDashboard, 
+  onLogout, 
+  onNavigateToAdmin, 
+  onNavigateToMLModels, 
+  onNavigateToPricing,
+  user,
+  workspaceFolders = [], 
+  onFoldersChange, 
+  onDashboardsChange 
+}) => {
   const { theme } = useTheme();
   const colors = getThemeClasses(theme);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -498,7 +515,7 @@ export const Landing: React.FC<LandingProps> = ({ onFileUpload, onGoogleSheetImp
 
         <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
           <ThemeToggle />
-          <ProfileMenu user={user} onLogout={onLogout} onNavigateToAdmin={onNavigateToAdmin} />
+          <ProfileMenu user={user} onLogout={onLogout} onNavigateToAdmin={onNavigateToAdmin} onNavigateToPricing={onNavigateToPricing} />
         </div>
       </header>
 

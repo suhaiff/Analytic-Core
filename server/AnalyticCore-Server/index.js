@@ -17,6 +17,8 @@ const sharepointOAuthService = require('./sharepointOAuthService');
 const dbConnectorService = require('./dbConnectorService');
 const sqlParserService = require('./sqlParserService');
 const setupMLRoutes = require('./mlRoutes');
+const subscriptionRoutes = require('./subscriptionRoutes');
+const adminSubscriptionRoutes = require('./adminSubscriptionRoutes');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -59,6 +61,10 @@ app.use(cors({
 
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+
+// Subscription Routes
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/admin/subscriptions', adminSubscriptionRoutes);
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
@@ -654,10 +660,8 @@ app.post('/api/workspace/folders', async (req, res) => {
             try {
                 const owner = await supabaseService.getUserById(ownerId);
                 if (owner) {
-                    // Send creation email to owner (optional check for superuser as requested)
-                    if (owner.is_superuser) {
-                        await brevoService.sendWorkspaceCreatedEmail(owner.email, owner.name, name);
-                    }
+                    // Send creation email to owner
+                    await brevoService.sendWorkspaceCreatedEmail(owner.email, owner.name, name);
 
                     // Send invites to other users
                     const invitedUserIds = accessUsers.filter(u => u.id.toString() !== ownerId.toString()).map(u => u.id);

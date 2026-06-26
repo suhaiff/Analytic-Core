@@ -348,3 +348,49 @@ export interface MLPredictionJob {
   predictions?: any;
   created_at: string;
 }
+
+// ── Enterprise SaaS Subscription & Pricing ───────────────────────────────────
+
+export interface Feature {
+  id: string;
+  module_id: string;
+  permission_key: string;
+  display_name: string;
+  description: string;
+  is_active: boolean;
+}
+
+export interface Module {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  monthly_price: number;
+  yearly_price: number;
+  display_order: number;
+  is_active: boolean;
+  features?: Feature[];
+}
+
+export interface Plan {
+  id: string;
+  name: string;
+  type: 'PREMIUM' | 'CUSTOM';
+  description: string;
+  monthly_price: number;
+  yearly_price: number;
+  is_active: boolean;
+}
+
+export interface Subscription {
+  id: string;
+  organization_id: string;
+  plan_id: string;
+  status: 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+  billing_cycle: 'MONTHLY' | 'YEARLY';
+  current_period_start: string;
+  current_period_end: string;
+  cancel_at_period_end: boolean;
+  plans?: Plan;
+  purchased_modules?: string[]; // Array of Module IDs
+}
