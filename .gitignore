@@ -24,8 +24,7 @@ coverage/
 *.xlsx
 *.xls
 *.csv
-# Server (Backend) - Ignored in Frontend Git
-server/
+# Server (Backend) - No longer ignored
 
 
 # Package manager stuff
