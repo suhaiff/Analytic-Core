@@ -9,6 +9,10 @@ import { FolderModal } from './workspace/FolderModal';
 import { ScheduledRefreshModal } from './workspace/ScheduledRefreshModal';
 import { dashboardService } from '../services/dashboardService';
 import { Footer } from './Footer';
+import { S3ImportModal } from './modals/S3ImportModal';
+import { AzureBlobImportModal } from './modals/AzureBlobImportModal';
+import { GCSImportModal } from './modals/GCSImportModal';
+import { DataWarehouseImportModal } from './modals/DataWarehouseImportModal';
 
 const DashboardCard = ({ dash, colors, theme, onLoad, onDelete, onRename, user, onScheduleClick, scheduleMap }: { 
   dash: SavedDashboard, 
@@ -400,6 +404,12 @@ export const Landing: React.FC<LandingProps> = ({
   const [showGSModal, setShowGSModal] = useState(false);
   const [showSqlDbModal, setShowSqlDbModal] = useState(false);
   const [showSPModal, setShowSPModal] = useState(false);
+  const [showS3Modal, setShowS3Modal] = useState(false);
+  const [showAzureBlobModal, setShowAzureBlobModal] = useState(false);
+  const [showGCSModal, setShowGCSModal] = useState(false);
+  
+  const [showDWModal, setShowDWModal] = useState(false);
+  const [dwEngine, setDwEngine] = useState<'bigquery' | 'snowflake' | 'azuresql' | 'databricks' | 'redshift' | 'mongodb'>('bigquery');
 
   React.useEffect(() => {
     // Check for OAuth callback parameters for SharePoint
@@ -491,6 +501,134 @@ export const Landing: React.FC<LandingProps> = ({
         { title: 'Select a List', desc: 'Choose the specific list you want to import from the site.' },
         { title: 'Confirm & Import', desc: 'Review your selection and click "Import SharePoint Data" to load it.' },
       ]
+    }
+  };
+
+  const extendedGuideContent = {
+    ...infoGuideContent,
+    sql: {
+      title: "SQL Database Import Guide",
+      content: (
+        <div className="space-y-4">
+          <p>Connect your application directly to your MySQL or PostgreSQL database.</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Ensure your database server accepts connections from the internet (whitelist our IP if necessary).</li>
+            <li>Use a read-only user account for maximum security.</li>
+            <li>For local databases (localhost), you must use a tunneling service like ngrok to expose your database to the web.</li>
+          </ul>
+        </div>
+      )
+    },
+    s3: {
+      title: "AWS S3 Import Guide",
+      content: (
+        <div className="space-y-4">
+          <p>Import CSV and Excel files directly from your Amazon S3 bucket.</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Create an IAM User with programmatic access (Access Key ID & Secret Key).</li>
+            <li>Ensure the user has <code className="bg-gray-500/20 px-1 rounded">s3:ListBucket</code> and <code className="bg-gray-500/20 px-1 rounded">s3:GetObject</code> permissions.</li>
+            <li>Verify your bucket region (e.g., us-east-1, eu-west-2).</li>
+          </ul>
+        </div>
+      )
+    },
+    azure: {
+      title: "Azure Blob Import Guide",
+      content: (
+        <div className="space-y-4">
+          <p>Import CSV and Excel files directly from your Azure Blob Storage container.</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Retrieve your storage account Connection String from the Azure Portal (under Security + networking &gt; Access keys).</li>
+            <li>Specify the exact container name where your files are stored.</li>
+          </ul>
+        </div>
+      )
+    },
+    gcs: {
+      title: "Google Cloud Storage Guide",
+      content: (
+        <div className="space-y-4">
+          <p>Import CSV and Excel files directly from your Google Cloud Storage bucket.</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Create a Service Account in the GCP Console and generate a JSON Key.</li>
+            <li>Grant the Service Account the "Storage Object Viewer" role for your bucket.</li>
+            <li>Paste the entire JSON key object into the credentials field.</li>
+          </ul>
+        </div>
+      )
+    },
+    bigquery: {
+      title: "Google BigQuery Guide",
+      content: (
+        <div className="space-y-4">
+          <p>Connect and query your BigQuery datasets directly.</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Create a Service Account in the GCP Console with "BigQuery Data Viewer" and "BigQuery User" roles.</li>
+            <li>Generate a JSON Key and paste the entire object into the credentials field.</li>
+            <li>Specify the Dataset name exactly as it appears in GCP.</li>
+          </ul>
+        </div>
+      )
+    },
+    snowflake: {
+      title: "Snowflake Guide",
+      content: (
+        <div className="space-y-4">
+          <p>Connect to your Snowflake Cloud Data Warehouse.</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Your Account Identifier usually looks like <code className="bg-gray-500/20 px-1 rounded">xy12345.us-east-1</code> or <code className="bg-gray-500/20 px-1 rounded">xy12345.aws</code>.</li>
+            <li>Ensure the User has access to the specified Warehouse, Database, and Schema.</li>
+          </ul>
+        </div>
+      )
+    },
+    databricks: {
+      title: "Databricks SQL Guide",
+      content: (
+        <div className="space-y-4">
+          <p>Connect to your Databricks SQL Warehouse or cluster.</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Generate a Personal Access Token in your Databricks User Settings.</li>
+            <li>Find the Server Hostname and HTTP Path under the "Connection Details" tab of your SQL Warehouse.</li>
+          </ul>
+        </div>
+      )
+    },
+    azuresql: {
+      title: "Azure SQL Database Guide",
+      content: (
+        <div className="space-y-4">
+          <p>Connect to your managed Azure SQL instances.</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Ensure your Azure SQL firewall settings allow connections from our server's IP address.</li>
+            <li>Use a SQL Authentication user with db_datareader permissions.</li>
+          </ul>
+        </div>
+      )
+    },
+    redshift: {
+      title: "Amazon Redshift Guide",
+      content: (
+        <div className="space-y-4">
+          <p>Connect directly to your Redshift cluster.</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Ensure your Redshift cluster is publicly accessible or VPC-peered with our network.</li>
+            <li>The default port is usually 5439.</li>
+          </ul>
+        </div>
+      )
+    },
+    mongodb: {
+      title: "MongoDB Atlas Guide",
+      content: (
+        <div className="space-y-4">
+          <p>Import NoSQL document collections from MongoDB Atlas.</p>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Retrieve your connection string (e.g. <code className="bg-gray-500/20 px-1 rounded text-xs">mongodb+srv://user:pass@cluster.mongodb.net</code>) from the Atlas dashboard.</li>
+            <li>Nested JSON objects will be automatically flattened for tabular analysis.</li>
+          </ul>
+        </div>
+      )
     }
   };
 
@@ -666,7 +804,7 @@ export const Landing: React.FC<LandingProps> = ({
                   </div>
                   <div className="text-left flex-1">
                     <div className={`text-base font-black ${colors.textPrimary} tracking-tight`}>Explore More Sources</div>
-                    <div className={`text-xs ${colors.textMuted} font-medium opacity-70`}>Connect Google Sheets, SQL Databases, or SharePoint</div>
+                    <div className={`text-xs ${colors.textMuted} font-medium opacity-70`}>Google Sheets, SQL, SharePoint, AWS S3, Snowflake & more</div>
                   </div>
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${colors.bgTertiary} border ${colors.borderPrimary} group-hover:translate-x-1 transition-all`}>
                     <ChevronRight className={`w-4 h-4 ${colors.textMuted} transition-transform ${showImportMenu ? 'rotate-90' : ''}`} />
@@ -674,52 +812,145 @@ export const Landing: React.FC<LandingProps> = ({
                 </button>
 
                 {showImportMenu && (
-                  <div className={`absolute top-full left-0 right-0 mt-2 p-2 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-20 animate-fade-in-up space-y-1 max-h-80 overflow-y-auto custom-scrollbar`}>
-                    {/* Google Sheets Option */}
+                  <div className={`absolute top-full left-0 right-0 mt-2 p-3 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-20 animate-fade-in-up space-y-3 max-h-[28rem] overflow-y-auto custom-scrollbar`}>
+
+                    {/* --- Live Connections --- */}
+                    <div className={`px-2 pb-1`}>
+                      <span className={`text-[10px] font-black uppercase tracking-[0.15em] ${colors.textMuted} opacity-60`}>Live Connections</span>
+                    </div>
+
+                    {/* Google Sheets */}
                     <button
                       onClick={() => { setShowGSModal(true); setShowImportMenu(false); }}
                       className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
                     >
-                      <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
+                      <div className="w-9 h-9 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center shrink-0">
                         <FileSpreadsheet className="w-4 h-4 text-green-500" />
                       </div>
                       <div className="text-left">
-                        <div className={`text-sm font-bold ${colors.textPrimary}`}>Connect with Google Sheets</div>
-                        <div className={`text-[10px] ${colors.textMuted}`}>Live data from Google Sheets</div>
+                        <div className={`text-sm font-bold ${colors.textPrimary}`}>Google Sheets</div>
+                        <div className={`text-[10px] ${colors.textMuted}`}>Live sync from Google Sheets</div>
                       </div>
                     </button>
 
-                    {/* SQL Option (Placeholder functionality) */}
+                    {/* SQL Databases */}
                     <button
                       onClick={() => { setShowSqlDbModal(true); setShowImportMenu(false); }}
                       className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
                     >
-                      <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                      <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
                         <Database className="w-4 h-4 text-blue-500" />
                       </div>
                       <div className="text-left">
-                        <div className={`text-sm font-bold ${colors.textPrimary}`}>Import SQL Data</div>
-                        <div className={`text-[10px] ${colors.textMuted}`}>Connect to SQL databases</div>
+                        <div className={`text-sm font-bold ${colors.textPrimary}`}>SQL Database</div>
+                        <div className={`text-[10px] ${colors.textMuted}`}>MySQL & PostgreSQL</div>
                       </div>
                     </button>
 
-                    {/* SharePoint Option */}
+                    {/* SharePoint */}
                     <button
-                      onClick={() => {
-                        setShowSPModal(true);
-                        setShowImportMenu(false);
-                        setSpStep('CONNECT'); // Always start at connect for privacy
-                      }}
+                      onClick={() => { setShowSPModal(true); setShowImportMenu(false); setSpStep('CONNECT'); }}
                       className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
                     >
-                      <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                      <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center shrink-0">
                         <Globe className="w-4 h-4 text-orange-500" />
                       </div>
                       <div className="text-left">
-                        <div className={`text-sm font-bold ${colors.textPrimary}`}>Import from SharePoint</div>
-                        <div className={`text-[10px] ${colors.textMuted}`}>Microsoft Graph API integration</div>
+                        <div className={`text-sm font-bold ${colors.textPrimary}`}>SharePoint</div>
+                        <div className={`text-[10px] ${colors.textMuted}`}>Microsoft Graph API</div>
                       </div>
                     </button>
+
+                    {/* Divider */}
+                    <div className={`h-px ${colors.borderPrimary} border-t my-1`} />
+
+                    {/* --- Cloud Storage --- */}
+                    <div className="px-2 pb-1">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.15em] ${colors.textMuted} opacity-60`}>Cloud Storage</span>
+                    </div>
+
+                    {[  
+                      { name: 'AWS S3', desc: 'Amazon Simple Storage Service', color: 'amber', letter: 'S3', action: () => { setShowS3Modal(true); setShowImportMenu(false); } },
+                      { name: 'Azure Blob Storage', desc: 'Microsoft Azure Blob containers', color: 'sky', letter: 'Az', action: () => { setShowAzureBlobModal(true); setShowImportMenu(false); } },
+                      { name: 'Google Cloud Storage', desc: 'GCS buckets & objects', color: 'emerald', letter: 'GC', action: () => { setShowGCSModal(true); setShowImportMenu(false); } },
+                    ].map((src) => (
+                      <button
+                        key={src.name}
+                        onClick={src.action}
+                        className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl bg-${src.color}-500/10 border border-${src.color}-500/20 flex items-center justify-center shrink-0`}>
+                          <span className={`text-[10px] font-black text-${src.color}-500`}>{src.letter}</span>
+                        </div>
+                        <div className="text-left flex-1">
+                          <div className={`text-sm font-bold ${colors.textPrimary} flex items-center gap-2`}>
+                            {src.name}
+                          </div>
+                          <div className={`text-[10px] ${colors.textMuted}`}>{src.desc}</div>
+                        </div>
+                      </button>
+                    ))}
+
+                    {/* Divider */}
+                    <div className={`h-px ${colors.borderPrimary} border-t my-1`} />
+
+                    {/* --- Data Warehouses --- */}
+                    <div className="px-2 pb-1">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.15em] ${colors.textMuted} opacity-60`}>Data Warehouses</span>
+                    </div>
+
+                    {[
+                      { name: 'Google BigQuery', desc: 'Serverless multi-cloud data warehouse', color: 'blue', letter: 'BQ', engine: 'bigquery' as const },
+                      { name: 'Snowflake', desc: 'Cloud data platform & warehouse', color: 'cyan', letter: 'SF', engine: 'snowflake' as const },
+                      { name: 'Amazon Redshift', desc: 'Cloud data warehouse service', color: 'rose', letter: 'RS', engine: 'redshift' as const },
+                      { name: 'Azure SQL Database', desc: 'Managed cloud SQL Server', color: 'sky', letter: 'Az', engine: 'azuresql' as const },
+                    ].map((src) => (
+                      <button
+                        key={src.name}
+                        onClick={() => { setDwEngine(src.engine); setShowDWModal(true); setShowImportMenu(false); }}
+                        className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl bg-${src.color}-500/10 border border-${src.color}-500/20 flex items-center justify-center shrink-0`}>
+                          <span className={`text-[10px] font-black text-${src.color}-500`}>{src.letter}</span>
+                        </div>
+                        <div className="text-left flex-1">
+                          <div className={`text-sm font-bold ${colors.textPrimary} flex items-center gap-2`}>
+                            {src.name}
+                          </div>
+                          <div className={`text-[10px] ${colors.textMuted}`}>{src.desc}</div>
+                        </div>
+                      </button>
+                    ))}
+
+                    {/* Divider */}
+                    <div className={`h-px ${colors.borderPrimary} border-t my-1`} />
+
+                    {/* --- Big Data & NoSQL --- */}
+                    <div className="px-2 pb-1">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.15em] ${colors.textMuted} opacity-60`}>Big Data & NoSQL</span>
+                    </div>
+
+                    {[
+                      { name: 'Databricks SQL Warehouse', desc: 'Lakehouse SQL analytics engine', color: 'orange', letter: 'DB', engine: 'databricks' as const },
+                      { name: 'MongoDB Atlas', desc: 'Cloud document database service', color: 'green', letter: 'MG', engine: 'mongodb' as const },
+                    ].map((src) => (
+                      <button
+                        key={src.name}
+                        onClick={() => { setDwEngine(src.engine); setShowDWModal(true); setShowImportMenu(false); }}
+                        className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl bg-${src.color}-500/10 border border-${src.color}-500/20 flex items-center justify-center shrink-0`}>
+                          <span className={`text-[10px] font-black text-${src.color}-500`}>{src.letter}</span>
+                        </div>
+                        <div className="text-left flex-1">
+                          <div className={`text-sm font-bold ${colors.textPrimary} flex items-center gap-2`}>
+                            {src.name}
+                          </div>
+                          <div className={`text-[10px] ${colors.textMuted}`}>{src.desc}</div>
+                        </div>
+                      </button>
+                    ))}
+
                   </div>
                 )}
               </div>
@@ -1026,7 +1257,41 @@ export const Landing: React.FC<LandingProps> = ({
             user={user}
             onClose={() => setShowSqlDbModal(false)}
             onImport={onSqlDatabaseImport}
-            onShowInfoGuide={() => setShowInfoGuide('SQL')}
+            onShowInfoGuide={() => handleShowInfoGuide('sql')}
+          />
+        )}
+
+        {showS3Modal && (
+          <S3ImportModal
+            onClose={() => setShowS3Modal(false)}
+            onImport={handleFile}
+            onShowInfoGuide={() => handleShowInfoGuide('s3')}
+          />
+        )}
+
+        {showAzureBlobModal && (
+          <AzureBlobImportModal
+            onClose={() => setShowAzureBlobModal(false)}
+            onImport={handleFile}
+            onShowInfoGuide={() => handleShowInfoGuide('azure')}
+          />
+        )}
+
+        {showGCSModal && (
+          <GCSImportModal
+            onClose={() => setShowGCSModal(false)}
+            onImport={handleFile}
+            onShowInfoGuide={() => handleShowInfoGuide('gcs')}
+          />
+        )}
+
+        {showDWModal && user && (
+          <DataWarehouseImportModal
+            user={user}
+            engine={dwEngine}
+            onClose={() => setShowDWModal(false)}
+            onImport={onSqlDatabaseImport}
+            onShowInfoGuide={() => handleShowInfoGuide(dwEngine)}
           />
         )}
       </main>

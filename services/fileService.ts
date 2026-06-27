@@ -266,6 +266,74 @@ export const fileService = {
     refreshSqlDatabase: async (fileId: number, password: string) => {
         const response = await axios.post(`${API_URL}/sql-db/refresh/${fileId}`, { password });
         return response.data;
+    },
+
+    // ============================================
+    // Cloud Storage Methods
+    // ============================================
+
+    // S3
+    testS3Connection: async (credentials: any, bucket: string) => {
+        const response = await axios.post(`${API_URL}/cloud-storage/s3/test`, { credentials, bucket });
+        return response.data;
+    },
+    listS3Files: async (credentials: any, bucket: string) => {
+        const response = await axios.post(`${API_URL}/cloud-storage/s3/list-files`, { credentials, bucket });
+        return response.data;
+    },
+    fetchS3File: async (credentials: any, bucket: string, fileKey: string) => {
+        const response = await axios.post(`${API_URL}/cloud-storage/s3/fetch-file`, { credentials, bucket, fileKey }, { responseType: 'blob' });
+        return response.data;
+    },
+
+    // Azure Blob
+    testAzureConnection: async (connectionString: string, containerName: string) => {
+        const response = await axios.post(`${API_URL}/cloud-storage/azure/test`, { connectionString, containerName });
+        return response.data;
+    },
+    listAzureFiles: async (connectionString: string, containerName: string) => {
+        const response = await axios.post(`${API_URL}/cloud-storage/azure/list-files`, { connectionString, containerName });
+        return response.data;
+    },
+    fetchAzureFile: async (connectionString: string, containerName: string, blobName: string) => {
+        const response = await axios.post(`${API_URL}/cloud-storage/azure/fetch-file`, { connectionString, containerName, blobName }, { responseType: 'blob' });
+        return response.data;
+    },
+
+    // Google Cloud Storage
+    testGCSConnection: async (credentialsJson: string, bucketName: string) => {
+        const response = await axios.post(`${API_URL}/cloud-storage/gcs/test`, { credentialsJson, bucketName });
+        return response.data;
+    },
+    listGCSFiles: async (credentialsJson: string, bucketName: string) => {
+        const response = await axios.post(`${API_URL}/cloud-storage/gcs/list-files`, { credentialsJson, bucketName });
+        return response.data;
+    },
+    fetchGCSFile: async (credentialsJson: string, bucketName: string, fileName: string) => {
+        const response = await axios.post(`${API_URL}/cloud-storage/gcs/fetch-file`, { credentialsJson, bucketName, fileName }, { responseType: 'blob' });
+        return response.data;
+    },
+
+    // ============================================
+    // Unified Data Warehouse Methods
+    // ============================================
+    testDWConnection: async (engine: string, config: any) => {
+        const response = await axios.post(`${API_URL}/data-warehouse/test`, { engine, config });
+        return response.data;
+    },
+    getDWTables: async (engine: string, config: any) => {
+        const response = await axios.post(`${API_URL}/data-warehouse/tables`, { engine, config });
+        return response.data;
+    },
+    importDWTable: async (userId: number, engine: string, config: any, tableNames: string[], title?: string) => {
+        const response = await axios.post(`${API_URL}/data-warehouse/import`, {
+            userId,
+            engine,
+            config,
+            tableNames,
+            title
+        });
+        return response.data;
     }
 
 };
