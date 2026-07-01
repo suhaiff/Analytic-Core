@@ -61,6 +61,8 @@ export const AdminSubscriptionManagement: React.FC = () => {
     yearly_price: 0
   });
 
+  const [editingFeature, setEditingFeature] = useState<Feature | null>(null);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -83,6 +85,17 @@ export const AdminSubscriptionManagement: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const groupedFeatures = allFeatures.reduce((acc, feat) => {
+    let category = 'General';
+    if (feat.display_name.includes(':')) {
+      category = feat.display_name.split(':')[0].trim();
+    }
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(feat);
+    return acc;
+  }, {} as Record<string, Feature[]>);
+
 
   const handleUpdatePlanPrice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,6 +172,30 @@ export const AdminSubscriptionManagement: React.FC = () => {
       console.error(error);
     }
   };
+
+  const handleUpdateFeature = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingFeature) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/subscriptions/features/${editingFeature.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          display_name: editingFeature.display_name,
+          description: editingFeature.description,
+          monthly_price: editingFeature.monthly_price,
+          yearly_price: editingFeature.yearly_price
+        })
+      });
+      if (res.ok) {
+        setEditingFeature(null);
+        fetchData();
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -423,25 +460,40 @@ export const AdminSubscriptionManagement: React.FC = () => {
             </button>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {allFeatures.map(feat => (
-              <div key={feat.id} className="bg-white dark:bg-slate-800/80 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start mb-3">
-                  <h4 className="font-bold text-lg text-slate-900 dark:text-white">{feat.display_name}</h4>
-                  <span className="text-[10px] font-mono text-purple-600 bg-purple-50 dark:bg-purple-500/10 px-2 py-1 rounded-md">
-                    {feat.permission_key}
-                  </span>
-                </div>
-                <p className="text-sm text-slate-500 mb-4">{feat.description || 'No description provided.'}</p>
-                <div className="flex items-center gap-4 text-sm font-bold">
-                  <span className="text-slate-700 dark:text-slate-300">${feat.monthly_price}/mo</span>
-                  <span className="text-slate-400">|</span>
-                  <span className="text-slate-700 dark:text-slate-300">${feat.yearly_price}/yr</span>
+          <div className="space-y-8">
+            {Object.entries(groupedFeatures).map(([category, features]) => (
+              <div key={category} className="space-y-4">
+                <h4 className="text-lg font-bold text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-700 pb-2">{category}</h4>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {features.map(feat => (
+                    <div key={feat.id} className="bg-white dark:bg-slate-800/80 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-bold text-lg text-slate-900 dark:text-white">
+                            {feat.display_name.includes(':') ? feat.display_name.split(':')[1].trim() : feat.display_name}
+                          </h4>
+                          <span className="text-[10px] font-mono text-purple-600 bg-purple-50 dark:bg-purple-500/10 px-2 py-1 rounded-md mt-1 inline-block">
+                            {feat.permission_key}
+                          </span>
+                        </div>
+                        <button onClick={() => setEditingFeature(feat)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <p className="text-sm text-slate-500 mb-4">{feat.description || 'No description provided.'}</p>
+                      <div className="flex items-center gap-4 text-sm font-bold">
+                        <span className="text-slate-700 dark:text-slate-300">${feat.monthly_price || 0}/mo</span>
+                        <span className="text-slate-400">|</span>
+                        <span className="text-slate-700 dark:text-slate-300">${feat.yearly_price || 0}/yr</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
+            
             {allFeatures.length === 0 && (
-              <div className="col-span-full py-12 text-center text-slate-500">
+              <div className="py-12 text-center text-slate-500 bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700">
                 No features in the library. Create one to get started!
               </div>
             )}
@@ -628,6 +680,72 @@ export const AdminSubscriptionManagement: React.FC = () => {
               <div className="pt-4 flex gap-3">
                 <button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-purple-500/25">
                   Create Feature
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Feature Modal */}
+      {editingFeature && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-lg w-full shadow-2xl border border-slate-200 dark:border-slate-800 animate-fade-in-up">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Edit Feature</h3>
+              <button onClick={() => setEditingFeature(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleUpdateFeature} className="space-y-5">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 block">Display Name</label>
+                <input 
+                  type="text" required
+                  value={editingFeature.display_name}
+                  onChange={e => setEditingFeature({...editingFeature, display_name: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 block">Description</label>
+                <textarea 
+                  value={editingFeature.description || ''}
+                  onChange={e => setEditingFeature({...editingFeature, description: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none h-24 resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 block">Monthly Price</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                      type="number" required
+                      value={editingFeature.monthly_price || 0}
+                      onChange={e => setEditingFeature({...editingFeature, monthly_price: Number(e.target.value)})}
+                      className="w-full pl-9 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 block">Yearly Price</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                      type="number" required
+                      value={editingFeature.yearly_price || 0}
+                      onChange={e => setEditingFeature({...editingFeature, yearly_price: Number(e.target.value)})}
+                      className="w-full pl-9 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="pt-4 flex gap-3">
+                <button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-indigo-500/25">
+                  Update Feature
                 </button>
               </div>
             </form>

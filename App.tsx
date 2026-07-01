@@ -21,6 +21,7 @@ import { DashboardLoader } from './components/DashboardLoader';
 import { DataModel, ChartConfig, DataTable, SavedDashboard, User, ProcessedRow, DashboardSection, RawData, WorkspaceFolder, AccessLevel } from './types';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ThemeProvider, useTheme } from './ThemeContext';
+import { SubscriptionProvider } from './SubscriptionContext';
 import { getThemeClasses } from './theme';
 import { authService } from './services/authService';
 import { dashboardService } from './services/dashboardService';
@@ -537,8 +538,9 @@ function AppContent() {
 
 
   return (
-    <div className={`min-h-screen ${colors.bgPrimary} ${colors.textSecondary} relative selection:bg-indigo-500/30`}>
-      {/* Toast Notification */}
+    <SubscriptionProvider organizationId={currentUser?.organization_id}>
+      <div className={`min-h-screen ${colors.bgPrimary} ${colors.textSecondary} relative selection:bg-indigo-500/30`}>
+        {/* Toast Notification */}
       <div className={`fixed top-6 right-6 z-[100] transition-all duration-300 transform ${toast.show ? 'translate-y-0 opacity-100' : '-translate-y-4 opacity-0 pointer-events-none'}`}>
         <div className={`flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl border ${toast.type === 'success' ? `${colors.bgSecondary} ${colors.successBorder} ${colors.success}` : `${colors.bgSecondary} ${colors.errorBorder} ${colors.error}`}`}>
           {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
@@ -661,8 +663,7 @@ function AppContent() {
 
         {step === Step.ML_MODELS && currentUser && (
           <PermissionGate 
-            permissionKey="ml_models_access" 
-            organizationId={currentUser.organization_id}
+            permissionKey="ml_hub_model_dashboard" 
             fallback={
               <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 text-center px-4">
                 <div className="max-w-md bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl">
@@ -738,8 +739,9 @@ function AppContent() {
           />
         )}
       </div>
-      {isProcessing && <DashboardLoader message={processingMessage} />}
-    </div>
+        {isProcessing && <DashboardLoader message={processingMessage} />}
+      </div>
+    </SubscriptionProvider>
   );
 }
 

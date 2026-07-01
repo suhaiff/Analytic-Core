@@ -225,6 +225,7 @@ import { ProfileMenu } from './navbar/ProfileMenu';
 import { GoogleSheetsImportModal } from './modals/GoogleSheetsImportModal';
 import { SqlDatabaseImportModal } from './modals/SqlDatabaseImportModal';
 import { SharePointImportModal } from './modals/SharePointImportModal';
+import { useSubscription } from '../SubscriptionContext';
 
 interface LandingProps {
   onFileUpload: (file: File) => void;
@@ -264,6 +265,7 @@ export const Landing: React.FC<LandingProps> = ({
 }) => {
   const { theme } = useTheme();
   const colors = getThemeClasses(theme);
+  const { hasPermission } = useSubscription();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState<'NEW' | 'SAVED'>('NEW');
@@ -870,9 +872,9 @@ export const Landing: React.FC<LandingProps> = ({
                     </div>
 
                     {[  
-                      { name: 'AWS S3', desc: 'Amazon Simple Storage Service', color: 'amber', letter: 'S3', action: () => { setShowS3Modal(true); setShowImportMenu(false); } },
-                      { name: 'Azure Blob Storage', desc: 'Microsoft Azure Blob containers', color: 'sky', letter: 'Az', action: () => { setShowAzureBlobModal(true); setShowImportMenu(false); } },
-                      { name: 'Google Cloud Storage', desc: 'GCS buckets & objects', color: 'emerald', letter: 'GC', action: () => { setShowGCSModal(true); setShowImportMenu(false); } },
+                      { name: 'AWS S3', desc: 'Amazon Simple Storage Service', color: 'amber', logo: 'https://www.vectorlogo.zone/logos/amazon_aws/amazon_aws-icon.svg', action: () => { setShowS3Modal(true); setShowImportMenu(false); } },
+                      { name: 'Azure Blob Storage', desc: 'Microsoft Azure Blob containers', color: 'sky', logo: 'https://www.vectorlogo.zone/logos/microsoft_azure/microsoft_azure-icon.svg', action: () => { setShowAzureBlobModal(true); setShowImportMenu(false); } },
+                      { name: 'Google Cloud Storage', desc: 'GCS buckets & objects', color: 'emerald', logo: 'https://www.vectorlogo.zone/logos/google_cloud/google_cloud-icon.svg', action: () => { setShowGCSModal(true); setShowImportMenu(false); } },
                     ].map((src) => (
                       <button
                         key={src.name}
@@ -880,7 +882,7 @@ export const Landing: React.FC<LandingProps> = ({
                         className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
                       >
                         <div className={`w-9 h-9 rounded-xl bg-${src.color}-500/10 border border-${src.color}-500/20 flex items-center justify-center shrink-0`}>
-                          <span className={`text-[10px] font-black text-${src.color}-500`}>{src.letter}</span>
+                          <img src={src.logo} alt={src.name} className="w-5 h-5 object-contain drop-shadow-sm" />
                         </div>
                         <div className="text-left flex-1">
                           <div className={`text-sm font-bold ${colors.textPrimary} flex items-center gap-2`}>
@@ -900,10 +902,10 @@ export const Landing: React.FC<LandingProps> = ({
                     </div>
 
                     {[
-                      { name: 'Google BigQuery', desc: 'Serverless multi-cloud data warehouse', color: 'blue', letter: 'BQ', engine: 'bigquery' as const },
-                      { name: 'Snowflake', desc: 'Cloud data platform & warehouse', color: 'cyan', letter: 'SF', engine: 'snowflake' as const },
-                      { name: 'Amazon Redshift', desc: 'Cloud data warehouse service', color: 'rose', letter: 'RS', engine: 'redshift' as const },
-                      { name: 'Azure SQL Database', desc: 'Managed cloud SQL Server', color: 'sky', letter: 'Az', engine: 'azuresql' as const },
+                      { name: 'Google BigQuery', desc: 'Serverless multi-cloud data warehouse', color: 'blue', logo: 'https://www.vectorlogo.zone/logos/google_bigquery/google_bigquery-icon.svg', engine: 'bigquery' as const },
+                      { name: 'Snowflake', desc: 'Cloud data platform & warehouse', color: 'cyan', logo: 'https://www.vectorlogo.zone/logos/snowflake/snowflake-icon.svg', engine: 'snowflake' as const },
+                      { name: 'Amazon Redshift', desc: 'Cloud data warehouse service', color: 'rose', logo: 'https://www.vectorlogo.zone/logos/amazon_aws/amazon_aws-icon.svg', engine: 'redshift' as const },
+                      { name: 'Azure SQL Database', desc: 'Managed cloud SQL Server', color: 'sky', logo: 'https://www.vectorlogo.zone/logos/microsoft_azure/microsoft_azure-icon.svg', engine: 'azuresql' as const },
                     ].map((src) => (
                       <button
                         key={src.name}
@@ -911,7 +913,7 @@ export const Landing: React.FC<LandingProps> = ({
                         className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
                       >
                         <div className={`w-9 h-9 rounded-xl bg-${src.color}-500/10 border border-${src.color}-500/20 flex items-center justify-center shrink-0`}>
-                          <span className={`text-[10px] font-black text-${src.color}-500`}>{src.letter}</span>
+                          <img src={src.logo} alt={src.name} className="w-5 h-5 object-contain drop-shadow-sm" />
                         </div>
                         <div className="text-left flex-1">
                           <div className={`text-sm font-bold ${colors.textPrimary} flex items-center gap-2`}>
@@ -931,8 +933,8 @@ export const Landing: React.FC<LandingProps> = ({
                     </div>
 
                     {[
-                      { name: 'Databricks SQL Warehouse', desc: 'Lakehouse SQL analytics engine', color: 'orange', letter: 'DB', engine: 'databricks' as const },
-                      { name: 'MongoDB Atlas', desc: 'Cloud document database service', color: 'green', letter: 'MG', engine: 'mongodb' as const },
+                      { name: 'Databricks SQL Warehouse', desc: 'Lakehouse SQL analytics engine', color: 'orange', logo: 'https://www.vectorlogo.zone/logos/databricks/databricks-icon.svg', engine: 'databricks' as const },
+                      { name: 'MongoDB Atlas', desc: 'Cloud document database service', color: 'green', logo: 'https://www.vectorlogo.zone/logos/mongodb/mongodb-icon.svg', engine: 'mongodb' as const },
                     ].map((src) => (
                       <button
                         key={src.name}
@@ -940,7 +942,7 @@ export const Landing: React.FC<LandingProps> = ({
                         className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
                       >
                         <div className={`w-9 h-9 rounded-xl bg-${src.color}-500/10 border border-${src.color}-500/20 flex items-center justify-center shrink-0`}>
-                          <span className={`text-[10px] font-black text-${src.color}-500`}>{src.letter}</span>
+                          <img src={src.logo} alt={src.name} className="w-5 h-5 object-contain drop-shadow-sm" />
                         </div>
                         <div className="text-left flex-1">
                           <div className={`text-sm font-bold ${colors.textPrimary} flex items-center gap-2`}>
