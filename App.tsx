@@ -1,19 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { Landing } from './components/Landing';
-import { DataConfig } from './components/DataConfig';
-import { ChartBuilder } from './components/ChartBuilder';
-import { Dashboard } from './components/Dashboard';
-import { DataProfiling } from './components/DataProfiling';
-import { Login } from './components/auth/Login';
-import { Signup } from './components/auth/Signup';
-import { ChangePassword } from './components/auth/ChangePassword';
-import { ForgotPassword } from './components/auth/ForgotPassword';
-import { Welcome } from './components/Welcome';
-import { Overview } from './components/Overview';
-import { AdminDashboard } from './components/admin/AdminDashboard';
-import { MLModelHub } from './components/ml/MLModelHub';
-import { SubscriptionPricing } from './components/SubscriptionPricing';
-import { PermissionGate } from './components/PermissionGate';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
+const Landing = lazy(() => import('./components/Landing').then(m => ({ default: m.Landing })));
+const DataConfig = lazy(() => import('./components/DataConfig').then(m => ({ default: m.DataConfig })));
+const ChartBuilder = lazy(() => import('./components/ChartBuilder').then(m => ({ default: m.ChartBuilder })));
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const DataProfiling = lazy(() => import('./components/DataProfiling').then(m => ({ default: m.DataProfiling })));
+const Login = lazy(() => import('./components/auth/Login').then(m => ({ default: m.Login })));
+const Signup = lazy(() => import('./components/auth/Signup').then(m => ({ default: m.Signup })));
+const ChangePassword = lazy(() => import('./components/auth/ChangePassword').then(m => ({ default: m.ChangePassword })));
+const ForgotPassword = lazy(() => import('./components/auth/ForgotPassword').then(m => ({ default: m.ForgotPassword })));
+const Welcome = lazy(() => import('./components/Welcome').then(m => ({ default: m.Welcome })));
+const Overview = lazy(() => import('./components/Overview').then(m => ({ default: m.Overview })));
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const MLModelHub = lazy(() => import('./components/ml/MLModelHub').then(m => ({ default: m.MLModelHub })));
+const SubscriptionPricing = lazy(() => import('./components/SubscriptionPricing').then(m => ({ default: m.SubscriptionPricing })));
+const PermissionGate = lazy(() => import('./components/PermissionGate').then(m => ({ default: m.PermissionGate })));
 
 import { processFile } from './utils/fileParser';
 import { processRawData, performJoins } from './utils/dataProcessing';
@@ -89,9 +89,15 @@ function AppContent() {
   // Check for logged in user on init
   useEffect(() => {
     const user = authService.getCurrentUser();
+    const postAction = localStorage.getItem('insightAI_postSubscribeAction');
+
     if (user) {
       setCurrentUser(user);
-      if (user.role === 'ADMIN') {
+      
+      if (postAction === 'LANDING') {
+        setStep(Step.LANDING);
+        localStorage.removeItem('insightAI_postSubscribeAction');
+      } else if (user.role === 'ADMIN') {
         setStep(Step.ADMIN);
       } else {
         setStep(Step.OVERVIEW);
@@ -217,16 +223,23 @@ function AppContent() {
             setUploadedFileId(response.file.id);
           }
           console.log("File uploaded to server successfully");
-        } catch (uploadError) {
+        } catch (uploadError: any) {
           console.error("Failed to upload file to server", uploadError);
-          // Don't block the user flow if upload fails, just log it
+          if (uploadError.code === 'ECONNABORTED' || uploadError.message === 'Network Error' || !window.navigator.onLine) {
+            throw new Error('NETWORK_DISCONNECT');
+          }
+          // Don't block the user flow if upload fails for non-network reasons, just log it
         }
       }
 
       setStep(Step.CONFIG);
-    } catch (error) {
+    } catch (error: any) {
       console.error("File processing failed", error);
-      showToast("Failed to process file. Please ensure it is a valid CSV or Excel file.", 'error');
+      if (error.message === 'NETWORK_DISCONNECT') {
+        showToast("Network disconnect during upload. Please check your connection and try again.", 'error');
+      } else {
+        showToast("Failed to process file. Please ensure it is a valid CSV or Excel file.", 'error');
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -581,6 +594,7 @@ function AppContent() {
       </div>
 
       <div className="relative z-10 min-h-screen flex flex-col">
+        <Suspense fallback={<DashboardLoader message="Loading..." />}>
         {step === Step.WELCOME && (
           <Welcome
             onNavigateToLogin={() => setStep(Step.LOGIN)}
@@ -663,7 +677,7 @@ function AppContent() {
 
         {step === Step.ML_MODELS && currentUser && (
           <PermissionGate 
-            permissionKey="ml_hub_model_dashboard" 
+            permissionKey="ai_predictions" 
             fallback={
               <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 text-center px-4">
                 <div className="max-w-md bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl">
@@ -672,7 +686,7 @@ function AppContent() {
                   </div>
                   <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Access Denied</h2>
                   <p className="text-slate-600 dark:text-slate-400 mb-6">
-                    Your organization's current subscription does not include access to the ML Models module. 
+                    Your organization's current subscription does not include access to the AI Analytics module. 
                   </p>
                   <button
                     onClick={() => setStep(Step.PRICING)}
@@ -738,6 +752,7 @@ function AppContent() {
             activeRole={currentFolderRole}
           />
         )}
+        </Suspense>
       </div>
         {isProcessing && <DashboardLoader message={processingMessage} />}
       </div>

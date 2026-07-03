@@ -333,7 +333,7 @@ export const AdminSubscriptionManagement: React.FC = () => {
                         </div>
                         <span className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1 relative z-10">Monthly Billing</span>
                         <div className="flex items-baseline gap-1 relative z-10">
-                          <span className="text-3xl font-extrabold text-slate-900 dark:text-white">${plan.monthly_price}</span>
+                          <span className="text-3xl font-extrabold text-slate-900 dark:text-white">₹{plan.monthly_price}</span>
                           <span className="text-sm font-medium text-slate-500">/mo</span>
                         </div>
                       </div>
@@ -343,7 +343,7 @@ export const AdminSubscriptionManagement: React.FC = () => {
                         </div>
                         <span className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1 relative z-10">Yearly Billing</span>
                         <div className="flex items-baseline gap-1 relative z-10">
-                          <span className="text-3xl font-extrabold text-slate-900 dark:text-white">${plan.yearly_price}</span>
+                          <span className="text-3xl font-extrabold text-slate-900 dark:text-white">₹{plan.yearly_price}</span>
                           <span className="text-sm font-medium text-slate-500">/yr</span>
                         </div>
                       </div>
@@ -391,12 +391,12 @@ export const AdminSubscriptionManagement: React.FC = () => {
                   <div className="flex items-center gap-6 mt-6">
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Monthly</p>
-                      <p className="text-2xl font-bold text-slate-900 dark:text-white">${mod.monthly_price}</p>
+                      <p className="text-2xl font-bold text-slate-900 dark:text-white">₹{mod.monthly_price}</p>
                     </div>
                     <div className="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Yearly</p>
-                      <p className="text-2xl font-bold text-slate-900 dark:text-white">${mod.yearly_price}</p>
+                      <p className="text-2xl font-bold text-slate-900 dark:text-white">₹{mod.yearly_price}</p>
                     </div>
                   </div>
                 </div>
@@ -482,9 +482,9 @@ export const AdminSubscriptionManagement: React.FC = () => {
                       </div>
                       <p className="text-sm text-slate-500 mb-4">{feat.description || 'No description provided.'}</p>
                       <div className="flex items-center gap-4 text-sm font-bold">
-                        <span className="text-slate-700 dark:text-slate-300">${feat.monthly_price || 0}/mo</span>
+                        <span className="text-slate-700 dark:text-slate-300">₹{feat.monthly_price || 0}/mo</span>
                         <span className="text-slate-400">|</span>
-                        <span className="text-slate-700 dark:text-slate-300">${feat.yearly_price || 0}/yr</span>
+                        <span className="text-slate-700 dark:text-slate-300">₹{feat.yearly_price || 0}/yr</span>
                       </div>
                     </div>
                   ))}

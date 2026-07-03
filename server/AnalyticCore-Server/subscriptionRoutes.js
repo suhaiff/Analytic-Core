@@ -104,13 +104,49 @@ router.get('/:organization_id', async (req, res) => {
 
 // Create or update subscription
 router.post('/', async (req, res) => {
-  const { organization_id, plan_id, billing_cycle, module_ids } = req.body;
+  let { organization_id, plan_id, billing_cycle, module_ids, user_id, pricing_tag } = req.body;
   
-  if (!organization_id || !plan_id) {
-    return res.status(400).json({ error: 'organization_id and plan_id are required' });
+  if (!plan_id) {
+    return res.status(400).json({ error: 'plan_id is required' });
+  }
+
+  if (!organization_id && !user_id) {
+    return res.status(400).json({ error: 'organization_id or user_id is required' });
   }
 
   try {
+    // If user subscribes directly without an organization, create a personal one for them
+    if (!organization_id && user_id) {
+      const orgName = `Personal Workspace - User ${user_id}`;
+      
+      // Check if it already exists from a previous attempt
+      const { data: existingOrg } = await supabase
+        .from('organizations')
+        .select('id')
+        .eq('name', orgName)
+        .single();
+
+      if (existingOrg) {
+        organization_id = existingOrg.id;
+      } else {
+        const { data: newOrg, error: orgError } = await supabase
+          .from('organizations')
+          .insert({ name: orgName })
+          .select()
+          .single();
+          
+        if (orgError) throw orgError;
+        organization_id = newOrg.id;
+      }
+
+      // Update the user's organization
+      const { error: userError } = await supabase
+        .from('users')
+        .update({ organization_id })
+        .eq('id', user_id);
+        
+      if (userError) throw userError;
+    }
     // 1. Check if org already has a subscription
     const { data: existingSub } = await supabase
       .from('subscriptions')
@@ -119,6 +155,7 @@ router.post('/', async (req, res) => {
       .single();
 
     let subscriptionId;
+    let current_period_end = new Date(new Date().setMonth(new Date().getMonth() + (billing_cycle === 'YEARLY' ? 12 : 1)));
 
     if (existingSub) {
       // Update existing subscription
@@ -128,6 +165,7 @@ router.post('/', async (req, res) => {
           plan_id,
           billing_cycle,
           status: 'ACTIVE',
+          current_period_end: current_period_end,
           updated_at: new Date()
         })
         .eq('id', existingSub.id)
@@ -153,7 +191,7 @@ router.post('/', async (req, res) => {
           billing_cycle,
           status: 'ACTIVE',
           current_period_start: new Date(),
-          current_period_end: new Date(new Date().setMonth(new Date().getMonth() + (billing_cycle === 'YEARLY' ? 12 : 1)))
+          current_period_end: current_period_end
         })
         .select()
         .single();
@@ -176,7 +214,18 @@ router.post('/', async (req, res) => {
       if (pmError) throw pmError;
     }
 
-    res.json({ success: true, message: 'Subscription successfully updated', subscription_id: subscriptionId });
+    if (pricing_tag && user_id) {
+       await supabase.from('users').update({ pricing: pricing_tag, duration: current_period_end.toISOString().split('T')[0] }).eq('id', user_id);
+    } else if (user_id) {
+       await supabase.from('users').update({ duration: current_period_end.toISOString().split('T')[0] }).eq('id', user_id);
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Subscription successfully updated', 
+      subscription_id: subscriptionId,
+      organization_id: organization_id 
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to process subscription', details: error.message });
   }

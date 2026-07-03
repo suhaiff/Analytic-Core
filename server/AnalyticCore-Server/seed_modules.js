@@ -16,8 +16,8 @@ const newModules = [
     name: "Data Integration Pro",
     description: "Connect to live databases, SharePoint, and extensive webhooks.",
     icon: "Database",
-    monthly_price: 149.00,
-    yearly_price: 1490.00,
+    monthly_price: 1100.00,
+    yearly_price: 11000.00,
     display_order: 4,
     features: [
       { display_name: "SharePoint Sync", permission_key: "integration_sharepoint" },
@@ -29,8 +29,8 @@ const newModules = [
     name: "Document AI",
     description: "Extract insights and query unstructured text (PDFs, Images) using advanced LLMs.",
     icon: "FileText",
-    monthly_price: 199.00,
-    yearly_price: 1990.00,
+    monthly_price: 1250.00,
+    yearly_price: 12500.00,
     display_order: 5,
     features: [
       { display_name: "PDF Analytics", permission_key: "docai_pdf" },
@@ -42,8 +42,8 @@ const newModules = [
     name: "Automation Engine",
     description: "Automate repetitive data tasks, email reporting, and trigger workflows.",
     icon: "Zap",
-    monthly_price: 89.00,
-    yearly_price: 890.00,
+    monthly_price: 1400.00,
+    yearly_price: 14000.00,
     display_order: 6,
     features: [
       { display_name: "Automated Email Reports", permission_key: "auto_reports" },

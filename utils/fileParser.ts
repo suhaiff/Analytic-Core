@@ -1,6 +1,4 @@
 import { DataTable, RawData } from '../types';
-import * as XLSX from 'xlsx';
-
 const parseCSVContent = (content: string): RawData => {
   const lines = content.split(/\r\n|\n/);
   const rows = lines
@@ -37,9 +35,14 @@ const parseCSVContent = (content: string): RawData => {
   };
 };
 
-export const processFile = (file: File): Promise<DataTable[]> => {
+export const processFile = async (file: File): Promise<DataTable[]> => {
+  const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+  let XLSX: any;
+  if (isExcel) {
+    XLSX = await import('xlsx');
+  }
+
   return new Promise((resolve, reject) => {
-    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
     const reader = new FileReader();
 
     if (isExcel) {

@@ -193,7 +193,7 @@ export const authService = {
         }
     },
 
-    async updateUserPricing(userId: number, pricing: 'Pro' | 'Premium' | 'Elite'): Promise<void> {
+    async updateUserPricing(userId: number, pricing: 'Pro' | 'Premium'): Promise<void> {
         const response = await fetch(`${API_URL}/users/${userId}/pricing`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },

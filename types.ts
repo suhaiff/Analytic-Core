@@ -244,7 +244,7 @@ export interface User {
   organization_name?: string;
   is_superuser?: boolean;
   must_change_password?: boolean;
-  pricing?: 'Pro' | 'Premium' | 'Elite';
+  pricing?: 'Pro' | 'Premium';
   duration?: string;
 }
 

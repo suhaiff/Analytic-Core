@@ -6,6 +6,7 @@ if (!globalThis.crypto) {
 }
 
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const multer = require('multer');
@@ -25,6 +26,7 @@ const sqlParserService = require('./sqlParserService');
 const setupMLRoutes = require('./mlRoutes');
 const subscriptionRoutes = require('./subscriptionRoutes');
 const adminSubscriptionRoutes = require('./adminSubscriptionRoutes');
+const paymentRequestRoutes = require('./paymentRequestRoutes');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -71,6 +73,7 @@ app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 // Subscription Routes
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/admin/subscriptions', adminSubscriptionRoutes);
+app.use('/api/payment-requests', paymentRequestRoutes);
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
@@ -123,8 +126,17 @@ function generateOtp() {
     return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+// Rate Limiter for Login Endpoint (Brute Force Protection)
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // Limit each IP to 5 failed requests per `window` (here, per 15 minutes) - actually we'll apply it to all requests for simplicity, or we can make it just 5 requests total.
+    message: { error: 'Too many login attempts, please try again after 15 minutes' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 // Auth Endpoints
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
         const user = await supabaseService.getUserByEmail(email);

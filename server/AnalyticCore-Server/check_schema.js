@@ -1,24 +1,11 @@
-const mysql = require('mysql2');
-
-const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: 'root',
-  database: 'insightai'
-});
-
-db.connect((err) => {
-  if (err) {
-    console.error('Connection failed:', err.message);
-    process.exit(1);
-  }
-  
-  db.query('DESCRIBE dashboards', (err, results) => {
-    if (err) {
-      console.error('Error describing table:', err.message);
-    } else {
-      console.log('Dashboards Table Schema:', results);
-    }
-    db.end();
-  });
-});
+const fs = require('fs');
+const env = fs.readFileSync('/home/Suhaif/Downloads/insightai_clone/Analytic-Core/server/.env', 'utf8');
+const url = env.match(/SUPABASE_URL=(.*)/)[1];
+const key = env.match(/SUPABASE_KEY=(.*)/)[1];
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(url, key);
+async function run() {
+  const { data, error } = await supabase.from('users').select('id, name, organization_id').limit(5);
+  console.log('Users:', data, error);
+}
+run();

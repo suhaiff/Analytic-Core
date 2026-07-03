@@ -222,6 +222,7 @@ import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
 import { fileService } from '../services/fileService';
 import { ProfileMenu } from './navbar/ProfileMenu';
+import { UserNotification } from './navbar/UserNotification';
 import { GoogleSheetsImportModal } from './modals/GoogleSheetsImportModal';
 import { SqlDatabaseImportModal } from './modals/SqlDatabaseImportModal';
 import { SharePointImportModal } from './modals/SharePointImportModal';
@@ -400,7 +401,7 @@ export const Landing: React.FC<LandingProps> = ({
   const [showImportMenu, setShowImportMenu] = useState(false);
 
   // Info Guide State
-  const [showInfoGuide, setShowInfoGuide] = useState<'GS' | 'SQL' | 'SP' | null>(null);
+  const [showInfoGuide, setShowInfoGuide] = useState<string | null>(null);
 
   // Modals Visibility State
   const [showGSModal, setShowGSModal] = useState(false);
@@ -655,6 +656,7 @@ export const Landing: React.FC<LandingProps> = ({
 
         <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
           <ThemeToggle />
+          <UserNotification user={user} />
           <ProfileMenu user={user} onLogout={onLogout} onNavigateToAdmin={onNavigateToAdmin} onNavigateToPricing={onNavigateToPricing} />
         </div>
       </header>
@@ -851,7 +853,7 @@ export const Landing: React.FC<LandingProps> = ({
 
                     {/* SharePoint */}
                     <button
-                      onClick={() => { setShowSPModal(true); setShowImportMenu(false); setSpStep('CONNECT'); }}
+                      onClick={() => { setShowSPModal(true); setShowImportMenu(false); }}
                       className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
                     >
                       <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center shrink-0">
@@ -1259,7 +1261,7 @@ export const Landing: React.FC<LandingProps> = ({
             user={user}
             onClose={() => setShowSqlDbModal(false)}
             onImport={onSqlDatabaseImport}
-            onShowInfoGuide={() => handleShowInfoGuide('sql')}
+            onShowInfoGuide={() => setShowInfoGuide('sql')}
           />
         )}
 
@@ -1267,7 +1269,7 @@ export const Landing: React.FC<LandingProps> = ({
           <S3ImportModal
             onClose={() => setShowS3Modal(false)}
             onImport={handleFile}
-            onShowInfoGuide={() => handleShowInfoGuide('s3')}
+            onShowInfoGuide={() => setShowInfoGuide('s3')}
           />
         )}
 
@@ -1275,7 +1277,7 @@ export const Landing: React.FC<LandingProps> = ({
           <AzureBlobImportModal
             onClose={() => setShowAzureBlobModal(false)}
             onImport={handleFile}
-            onShowInfoGuide={() => handleShowInfoGuide('azure')}
+            onShowInfoGuide={() => setShowInfoGuide('azure')}
           />
         )}
 
@@ -1283,7 +1285,7 @@ export const Landing: React.FC<LandingProps> = ({
           <GCSImportModal
             onClose={() => setShowGCSModal(false)}
             onImport={handleFile}
-            onShowInfoGuide={() => handleShowInfoGuide('gcs')}
+            onShowInfoGuide={() => setShowInfoGuide('gcs')}
           />
         )}
 
@@ -1293,7 +1295,7 @@ export const Landing: React.FC<LandingProps> = ({
             engine={dwEngine}
             onClose={() => setShowDWModal(false)}
             onImport={onSqlDatabaseImport}
-            onShowInfoGuide={() => handleShowInfoGuide(dwEngine)}
+            onShowInfoGuide={() => setShowInfoGuide(dwEngine)}
           />
         )}
       </main>

@@ -36,7 +36,8 @@ export const fileService = {
         const response = await axios.post(`${API_URL}/upload`, formData, {
             headers: {
                 'Content-Type': 'multipart/form-data'
-            }
+            },
+            timeout: 30000 // 30s timeout to prevent hanging on silent disconnects
         });
         return response.data;
     },

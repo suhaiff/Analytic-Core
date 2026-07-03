@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Check, CheckCircle2, Building2, ChevronDown, ChevronUp, Sparkles, CreditCard, LayoutDashboard, BrainCircuit, FileText } from 'lucide-react';
 import { API_BASE } from '../config/api';
 import { User } from '../types';
+import { PaymentQRModal } from './PaymentQRModal';
 
 interface Plan {
   id: string;
@@ -38,20 +39,52 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
   const [modules, setModules] = useState<Module[]>([]);
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'YEARLY'>('YEARLY');
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
+  const [previouslyPurchasedModules, setPreviouslyPurchasedModules] = useState<string[]>([]);
   const [expandedModule, setExpandedModule] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
+  const [paymentModal, setPaymentModal] = useState<{
+    open: boolean;
+    planId: string;
+    planName: string;
+    planType: 'PREMIUM' | 'CUSTOM';
+    amount: number;
+  } | null>(null);
 
   useEffect(() => {
     const fetchPricingData = async () => {
       try {
-        const [plansRes, modulesRes] = await Promise.all([
+        const fetchPromises = [
           fetch(`${API_BASE}/subscriptions/plans`),
           fetch(`${API_BASE}/subscriptions/modules`)
-        ]);
+        ];
+
+        if (user && user.organization_id) {
+          fetchPromises.push(fetch(`${API_BASE}/subscriptions/${user.organization_id}`));
+        }
+
+        const responses = await Promise.all(fetchPromises);
+        const [plansRes, modulesRes, subRes] = responses;
 
         if (plansRes.ok) setPlans(await plansRes.json());
         if (modulesRes.ok) setModules(await modulesRes.json());
+
+        if (subRes && subRes.ok) {
+          const subscription = await subRes.json();
+          if (subscription && subscription.status === 'ACTIVE') {
+            if (subscription.plans) {
+              setCurrentPlanId(subscription.plans.id);
+            }
+            if (subscription.billing_cycle) {
+              setBillingCycle(subscription.billing_cycle);
+            }
+            if (subscription.purchased_modules && subscription.purchased_modules.length > 0) {
+              setSelectedModules(subscription.purchased_modules);
+              setPreviouslyPurchasedModules(subscription.purchased_modules);
+            }
+          }
+        }
         setLoading(false);
       } catch (error) {
         console.error('Failed to fetch pricing:', error);
@@ -74,7 +107,9 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
 
   const calculateCustomTotal = () => {
     let total = 0;
-    selectedModules.forEach(moduleId => {
+    // Only charge for modules that weren't previously purchased
+    const newModules = selectedModules.filter(id => !previouslyPurchasedModules.includes(id));
+    newModules.forEach(moduleId => {
       const mod = modules.find(m => m.id === moduleId);
       if (mod) {
         total += billingCycle === 'YEARLY' ? mod.yearly_price : mod.monthly_price;
@@ -88,34 +123,24 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
     return calculateCustomTotal() / 12;
   };
 
-  const handleSubscribe = async (planId: string, isCustom: boolean) => {
-    if (!user?.organization_id) {
-      alert("You need to be part of an organization to subscribe.");
+  const openPaymentModal = (planId: string, isCustom: boolean) => {
+    if (!user) {
+      alert('You need to be logged in to subscribe.');
       return;
     }
+    const plan = isCustom ? customPlan : premiumPlan;
+    if (!plan) return;
+    const amount = isCustom
+      ? (billingCycle === 'YEARLY' ? calculateCustomTotal() : calculateCustomTotal())
+      : (billingCycle === 'YEARLY' ? premiumPlan!.yearly_price : premiumPlan!.monthly_price);
 
-    try {
-      const res = await fetch(`${API_BASE}/subscriptions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          organization_id: user.organization_id,
-          plan_id: planId,
-          billing_cycle: billingCycle,
-          module_ids: isCustom ? selectedModules : []
-        })
-      });
-      
-      if (res.ok) {
-        alert("Subscription successfully updated!");
-        window.location.reload();
-      } else {
-        throw new Error('Failed to subscribe');
-      }
-    } catch (error) {
-      console.error(error);
-      alert("An error occurred during subscription.");
-    }
+    setPaymentModal({
+      open: true,
+      planId,
+      planName: plan.name,
+      planType: isCustom ? 'CUSTOM' : 'PREMIUM',
+      amount,
+    });
   };
 
   const filteredModules = modules.filter(m => m.name.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -132,7 +157,7 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
     return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>;
   }
 
-  return (
+  const mainContent = (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans py-20 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
       {onBack && (
         <button 
@@ -190,19 +215,26 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
                 </div>
 
                 <div className="mb-8">
-                  <h3 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{premiumPlan.name}</h3>
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="text-3xl font-bold text-slate-900 dark:text-white">{premiumPlan.name}</h3>
+                    {currentPlanId === premiumPlan.id && (
+                      <span className="px-3 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs font-bold rounded-full border border-green-200 dark:border-green-800 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Active Plan
+                      </span>
+                    )}
+                  </div>
                   <p className="text-slate-500 dark:text-slate-400">{premiumPlan.description}</p>
                 </div>
 
                 <div className="mb-8">
                   <div className="flex items-baseline gap-2">
                     <span className="text-5xl font-extrabold tracking-tight">
-                      ${billingCycle === 'YEARLY' ? (premiumPlan.yearly_price / 12).toFixed(0) : premiumPlan.monthly_price}
+                      ₹{billingCycle === 'YEARLY' ? (premiumPlan.yearly_price / 12).toFixed(0) : premiumPlan.monthly_price}
                     </span>
                     <span className="text-slate-500 font-medium">/mo</span>
                   </div>
                   {billingCycle === 'YEARLY' && (
-                    <p className="text-sm text-slate-500 mt-2">Billed ${(premiumPlan.yearly_price).toLocaleString()} yearly</p>
+                    <p className="text-sm text-slate-500 mt-2">Billed ₹{(premiumPlan.yearly_price).toLocaleString()} yearly</p>
                   )}
                 </div>
 
@@ -225,10 +257,10 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
                 </ul>
 
                 <button 
-                  onClick={() => handleSubscribe(premiumPlan.id, false)}
+                  onClick={() => openPaymentModal(premiumPlan.id, false)}
                   className="w-full py-4 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2"
                 >
-                  Subscribe to Premium <Sparkles className="w-5 h-5" />
+                  {currentPlanId === premiumPlan.id ? 'Update Premium Subscription' : 'Subscribe to Premium'} <Sparkles className="w-5 h-5" />
                 </button>
               </div>
             </div>
@@ -238,7 +270,14 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
           {customPlan && (
             <div className="relative h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl overflow-hidden flex flex-col">
               <div className="p-8 pb-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
-                <h3 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{customPlan.name}</h3>
+                <div className="flex items-center gap-3 mb-2">
+                  <h3 className="text-3xl font-bold text-slate-900 dark:text-white">{customPlan.name}</h3>
+                  {currentPlanId === customPlan.id && (
+                    <span className="px-3 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs font-bold rounded-full border border-green-200 dark:border-green-800 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Active Plan
+                    </span>
+                  )}
+                </div>
                 <p className="text-slate-500 dark:text-slate-400">{customPlan.description}</p>
                 
                 <div className="mt-6 relative">
@@ -287,7 +326,7 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
                           <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-1">{mod.description}</p>
                         </div>
                         <div className="text-right ml-4">
-                          <div className="font-bold text-slate-900 dark:text-white">${price}</div>
+                          <div className="font-bold text-slate-900 dark:text-white">₹{price}</div>
                           <div className="text-xs text-slate-500">/{billingCycle === 'YEARLY' ? 'yr' : 'mo'}</div>
                         </div>
                         <div 
@@ -330,12 +369,12 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
                     <div className="text-sm text-slate-500 dark:text-slate-400 mb-1">Estimated Total</div>
                     <div className="flex items-baseline gap-1">
                       <span className="text-4xl font-bold text-slate-900 dark:text-white">
-                        ${calculateCustomMonthlyEquivalent().toFixed(0)}
+                        ₹{calculateCustomMonthlyEquivalent().toFixed(0)}
                       </span>
                       <span className="text-slate-500">/mo</span>
                     </div>
                     {billingCycle === 'YEARLY' && (
-                      <div className="text-xs text-slate-500 mt-1">Billed ${calculateCustomTotal().toLocaleString()} yearly</div>
+                      <div className="text-xs text-slate-500 mt-1">Billed ₹{calculateCustomTotal().toLocaleString()} yearly</div>
                     )}
                   </div>
                   <div className="text-right">
@@ -345,7 +384,7 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
                   </div>
                 </div>
                 <button 
-                  onClick={() => handleSubscribe(customPlan.id, true)}
+                  onClick={() => openPaymentModal(customPlan.id, true)}
                   disabled={selectedModules.length === 0}
                   className={`w-full py-4 px-6 rounded-xl font-bold text-lg shadow-lg transition-all duration-300 flex items-center justify-center gap-2 ${
                     selectedModules.length > 0
@@ -354,7 +393,7 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
                   }`}
                 >
                   <CreditCard className="w-5 h-5" />
-                  Subscribe to Custom Plan
+                  {currentPlanId === customPlan.id ? 'Update Custom Plan' : 'Subscribe to Custom Plan'}
                 </button>
               </div>
             </div>
@@ -362,5 +401,28 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
         </div>
       </div>
     </div>
+  );
+
+  // Payment QR Modal
+  const modal = paymentModal?.open ? (
+    <PaymentQRModal
+      isOpen={true}
+      onClose={() => setPaymentModal(null)}
+      user={user}
+      planId={paymentModal.planId}
+      planName={paymentModal.planName}
+      planType={paymentModal.planType}
+      billingCycle={billingCycle}
+      amount={paymentModal.amount}
+      moduleIds={selectedModules}
+      organizationId={user?.organization_id || null}
+    />
+  ) : null;
+
+  return (
+    <>
+      {mainContent}
+      {modal}
+    </>
   );
 };

@@ -6,7 +6,7 @@ import { apiErrorService, ApiErrorLog } from '../../services/apiErrorService';
 import { useTheme } from '../../ThemeContext';
 import { getThemeClasses } from '../../theme';
 import { User, SavedDashboard, Organization } from '../../types';
-import { Shield, ShieldCheck, Trash2, LogOut, Search, User as UserIcon, FileText, LayoutDashboard, Upload, Eye, X, Mail, Phone, Building, Briefcase, Users, UserPlus, TrendingUp, BarChart3, PieChart as PieChartIcon, Activity, HardDrive, Database, Clock, Globe, Bell, AlertTriangle, CheckCircle2, XCircle, Zap, Wifi, KeyRound, ChevronRight, Check, Plus, Building2, Star, ChevronDown } from 'lucide-react';
+import { Shield, ShieldCheck, Trash2, LogOut, Search, User as UserIcon, FileText, LayoutDashboard, Upload, Eye, X, Mail, Phone, Building, Briefcase, Users, UserPlus, TrendingUp, BarChart3, PieChart as PieChartIcon, Activity, HardDrive, Database, Clock, Globe, Bell, AlertTriangle, CheckCircle2, XCircle, Zap, Wifi, KeyRound, ChevronRight, Check, Plus, Building2, Star, ChevronDown, QrCode, Image as ImageIcon, CreditCard, Loader2 } from 'lucide-react';
 import { ProfileMenu } from '../navbar/ProfileMenu';
 import { ThemeToggle } from '../ThemeToggle';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
@@ -45,6 +45,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
     const notificationRef = useRef<HTMLDivElement>(null);
     const bellRef = useRef<HTMLButtonElement>(null);
     const [activeSheet, setActiveSheet] = useState(0);
+    // Payment request state
+    const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
+    const [pendingPaymentCount, setPendingPaymentCount] = useState(0);
+    const [availableModules, setAvailableModules] = useState<any[]>([]);
+    const [processingPayment, setProcessingPayment] = useState<string | null>(null);
+    const [confirmAction, setConfirmAction] = useState<{ id: string; action: 'approve' | 'reject'; note: string } | null>(null);
 
     // Organization State
     const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -72,7 +78,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
 
     useEffect(() => {
         fetchUnresolvedCount();
-        const interval = setInterval(fetchUnresolvedCount, 30000);
+        fetchPendingPaymentCount();
+        const interval = setInterval(() => {
+            fetchUnresolvedCount();
+            fetchPendingPaymentCount();
+        }, 30000);
         return () => clearInterval(interval);
     }, [fetchUnresolvedCount]);
 
@@ -100,12 +110,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
             setApiErrors(errors);
             const count = errors.filter(e => !e.resolved).length;
             setUnresolvedCount(count);
+            // Also load payment requests
+            const prRes = await fetch(`${(await import('../../config/api')).API_BASE}/payment-requests`);
+            if (prRes.ok) {
+                const prData = await prRes.json();
+                setPaymentRequests(prData);
+                setPendingPaymentCount(prData.filter((p: any) => p.status === 'PENDING').length);
+            }
+            // Load available modules to map module_ids to names
+            const modRes = await fetch(`${(await import('../../config/api')).API_BASE}/subscriptions/modules`);
+            if (modRes.ok) {
+                setAvailableModules(await modRes.json());
+            }
         } catch (error) {
             console.error('Failed to load notifications', error);
         } finally {
             setLoadingNotifications(false);
         }
     };
+
+    const fetchPendingPaymentCount = useCallback(async () => {
+        try {
+            const { API_BASE } = await import('../../config/api');
+            const res = await fetch(`${API_BASE}/payment-requests/pending-count`);
+            if (res.ok) {
+                const data = await res.json();
+                setPendingPaymentCount(data.count || 0);
+            }
+        } catch { /* silent */ }
+    }, []);
 
     const toggleNotificationPanel = () => {
         const newState = !notificationOpen;
@@ -136,6 +169,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
             await apiErrorService.clearResolved();
             setApiErrors(prev => prev.filter(e => !e.resolved));
         } catch { /* silent */ }
+    };
+
+    const handleApprovePayment = async (id: string, note: string) => {
+        setProcessingPayment(id);
+        try {
+            const { API_BASE } = await import('../../config/api');
+            const res = await fetch(`${API_BASE}/payment-requests/${id}/approve`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ admin_note: note, reviewed_by: user?.name || 'Admin' })
+            });
+            if (res.ok) {
+                setPaymentRequests(prev => prev.map(p => p.id === id ? { ...p, status: 'APPROVED' } : p));
+                setPendingPaymentCount(prev => Math.max(0, prev - 1));
+            }
+        } catch (e) {
+            console.error('Failed to approve payment', e);
+        } finally {
+            setProcessingPayment(null);
+            setConfirmAction(null);
+        }
+    };
+
+    const handleRejectPayment = async (id: string, note: string) => {
+        setProcessingPayment(id);
+        try {
+            const { API_BASE } = await import('../../config/api');
+            const res = await fetch(`${API_BASE}/payment-requests/${id}/reject`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ admin_note: note, reviewed_by: user?.name || 'Admin' })
+            });
+            if (res.ok) {
+                setPaymentRequests(prev => prev.map(p => p.id === id ? { ...p, status: 'REJECTED' } : p));
+                setPendingPaymentCount(prev => Math.max(0, prev - 1));
+            }
+        } catch (e) {
+            console.error('Failed to reject payment', e);
+        } finally {
+            setProcessingPayment(null);
+            setConfirmAction(null);
+        }
     };
 
     const getErrorIcon = (errorType: string) => {
@@ -299,9 +374,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
         }
     };
 
-    const handleUpdatePricing = async (userId: number, pricing: 'Pro' | 'Premium' | 'Elite') => {
+    const handleUpdatePricing = async (userId: number, pricing: 'Pro' | 'Premium') => {
         try {
-            await authService.updateUserPricing(userId, pricing);
+            await authService.updateUserPricing(userId, pricing as any);
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, pricing } : u));
         } catch (error: any) {
             alert(error.message || 'Failed to update pricing');
@@ -437,13 +512,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                 ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-500 shadow-lg shadow-indigo-500/10'
                                 : `${colors.borderSecondary} ${colors.textMuted} hover:text-indigo-500 hover:border-indigo-500/30 hover:bg-indigo-500/5`
                             }`}
-                            title="API Notifications"
+                            title="Notifications"
                             id="admin-notification-bell"
                         >
-                            <Bell className={`w-5 h-5 ${unresolvedCount > 0 ? 'animate-[wiggle_1s_ease-in-out_3]' : ''}`} />
-                            {unresolvedCount > 0 && (
+                            <Bell className={`w-5 h-5 ${(unresolvedCount + pendingPaymentCount) > 0 ? 'animate-[wiggle_1s_ease-in-out_3]' : ''}`} />
+                            {(unresolvedCount + pendingPaymentCount) > 0 && (
                                 <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 flex items-center justify-center px-1 rounded-full bg-gradient-to-r from-red-500 to-rose-500 text-white text-[10px] font-black shadow-lg shadow-red-500/30 animate-pulse">
-                                    {unresolvedCount > 99 ? '99+' : unresolvedCount}
+                                    {(unresolvedCount + pendingPaymentCount) > 99 ? '99+' : (unresolvedCount + pendingPaymentCount)}
                                 </span>
                             )}
                         </button>
@@ -496,21 +571,153 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                 </div>
 
                                 {/* Panel Body */}
-                                <div className="overflow-y-auto max-h-[400px] scrollbar-thin">
+                                <div className="overflow-y-auto max-h-[520px] scrollbar-thin">
                                     {loadingNotifications ? (
                                         <div className="flex items-center justify-center py-12">
                                             <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                                         </div>
-                                    ) : apiErrors.length === 0 ? (
-                                        <div className="flex flex-col items-center justify-center py-12 px-6">
-                                            <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center mb-4 border border-emerald-500/20">
-                                                <CheckCircle2 className="w-8 h-8 text-emerald-500" />
-                                            </div>
-                                            <p className={`text-sm font-bold ${colors.textPrimary} mb-1`}>No API Errors</p>
-                                            <p className="text-[11px] text-slate-400 text-center font-medium">All API keys are functioning normally. You'll be notified if any issues arise.</p>
-                                        </div>
                                     ) : (
-                                        <div className="divide-y divide-slate-500/10">
+                                        <React.Fragment>
+                                        {/* Payment Requests Section */}
+                                        {paymentRequests.length > 0 && (
+                                            <div>
+                                                <div className={`px-5 py-2 border-b ${colors.borderPrimary} flex items-center gap-2`}>
+                                                    <QrCode className="w-3.5 h-3.5 text-indigo-400" />
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Payment Requests</span>
+                                                    {pendingPaymentCount > 0 && (
+                                                        <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-400 text-[9px] font-black rounded-full border border-indigo-500/30">{pendingPaymentCount} pending</span>
+                                                    )}
+                                                </div>
+                                                <div className="divide-y divide-slate-500/10">
+                                                    {paymentRequests.map((pr) => (
+                                                        <div key={pr.id} className={`px-5 py-4 ${theme === 'dark' ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'} transition-all`}>
+                                                            {/* Status badge */}
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <CreditCard className="w-4 h-4 text-indigo-400" />
+                                                                    <span className={`text-xs font-black ${colors.textPrimary}`}>{pr.plan_name}</span>
+                                                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border uppercase tracking-widest ${
+                                                                        pr.status === 'PENDING' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                                                        pr.status === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                                                        'bg-red-500/10 text-red-400 border-red-500/20'
+                                                                    }`}>{pr.status}</span>
+                                                                </div>
+                                                                <span className="text-[10px] text-slate-400">{pr.created_at ? new Date(pr.created_at).toLocaleDateString('en-IN') : ''}</span>
+                                                            </div>
+
+                                                            {/* User Info */}
+                                                            <div className={`flex flex-col gap-0.5 mb-3 p-2.5 rounded-xl ${theme === 'dark' ? 'bg-slate-800/60' : 'bg-slate-100'} border ${colors.borderPrimary}`}>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <UserIcon className="w-3 h-3 text-slate-400" />
+                                                                    <span className={`text-xs font-bold ${colors.textPrimary}`}>{pr.user_name}</span>
+                                                                    <span className="text-[10px] text-slate-400">{pr.user_email}</span>
+                                                                </div>
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[10px] text-slate-400">{pr.plan_type} · {pr.billing_cycle}</span>
+                                                                    <span className="text-sm font-black text-indigo-400">₹{Number(pr.amount).toLocaleString()}</span>
+                                                                </div>
+                                                                {pr.module_ids && Array.isArray(pr.module_ids) && pr.module_ids.length > 0 && (
+                                                                    <div className="mt-2 pt-2 border-t border-slate-500/20">
+                                                                        <span className="text-[10px] font-bold text-slate-500 mb-1 block">
+                                                                            {pr.module_ids.length} Module{pr.module_ids.length > 1 ? 's' : ''} Selected
+                                                                        </span>
+                                                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                                                            {pr.module_ids.map((modId: string) => {
+                                                                                const modInfo = availableModules.find(m => m.id === modId);
+                                                                                return (
+                                                                                    <span key={modId} className={`text-[9px] px-2 py-0.5 rounded-md font-medium border ${colors.borderSecondary} ${theme === 'dark' ? 'bg-slate-800' : 'bg-white'} text-slate-400`}>
+                                                                                        {modInfo ? modInfo.name : modId}
+                                                                                    </span>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Screenshot Preview */}
+                                                            {pr.screenshot_url && (
+                                                                <a
+                                                                    href={`${window.location.origin.replace(':5173', ':3001').replace(':3000', ':3001')}${pr.screenshot_url}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-800/40 hover:bg-slate-700/60' : 'bg-white hover:bg-slate-50'} transition-all group mb-3`}
+                                                                >
+                                                                    <ImageIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400 transition-colors" />
+                                                                    <span className="text-xs text-slate-400 group-hover:text-indigo-400 transition-colors font-medium">View Payment Screenshot</span>
+                                                                </a>
+                                                            )}
+
+                                                            {/* Approve / Reject — only for PENDING */}
+                                                            {pr.status === 'PENDING' && (
+                                                                confirmAction?.id === pr.id ? (
+                                                                    /* Confirmation Dialog */
+                                                                    <div className={`p-3 rounded-xl border ${confirmAction.action === 'approve' ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+                                                                        <p className={`text-xs font-bold mb-2 ${confirmAction.action === 'approve' ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                                            {confirmAction.action === 'approve' ? '✅ Confirm Approval' : '❌ Confirm Rejection'}
+                                                                        </p>
+                                                                        <textarea
+                                                                            placeholder="Add a note (optional)"
+                                                                            value={confirmAction.note}
+                                                                            onChange={e => setConfirmAction(prev => prev ? { ...prev, note: e.target.value } : null)}
+                                                                            className={`w-full text-xs px-3 py-2 rounded-lg border ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-800'} outline-none resize-none mb-2`}
+                                                                            rows={2}
+                                                                        />
+                                                                        <div className="flex gap-2">
+                                                                            <button
+                                                                                disabled={processingPayment === pr.id}
+                                                                                onClick={() => confirmAction.action === 'approve' ? handleApprovePayment(pr.id, confirmAction.note) : handleRejectPayment(pr.id, confirmAction.note)}
+                                                                                className={`flex-1 py-1.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                                                                                    confirmAction.action === 'approve'
+                                                                                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30'
+                                                                                        : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
+                                                                                }`}
+                                                                            >
+                                                                                {processingPayment === pr.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : confirmAction.action === 'approve' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                                                                                Confirm {confirmAction.action === 'approve' ? 'Approve' : 'Reject'}
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => setConfirmAction(null)}
+                                                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold ${colors.textMuted} hover:${colors.textPrimary} border ${colors.borderPrimary} transition-all`}
+                                                                            >
+                                                                                Cancel
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    /* Action Buttons */
+                                                                    <div className="flex gap-2">
+                                                                        <button
+                                                                            onClick={() => setConfirmAction({ id: pr.id, action: 'approve', note: '' })}
+                                                                            className="flex-1 py-2 rounded-xl text-xs font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all flex items-center justify-center gap-1.5"
+                                                                        >
+                                                                            <CheckCircle2 className="w-3.5 h-3.5" /> Approve
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setConfirmAction({ id: pr.id, action: 'reject', note: '' })}
+                                                                            className="flex-1 py-2 rounded-xl text-xs font-black bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all flex items-center justify-center gap-1.5"
+                                                                        >
+                                                                            <XCircle className="w-3.5 h-3.5" /> Reject
+                                                                        </button>
+                                                                    </div>
+                                                                )
+                                                            )}
+                                                            {pr.status !== 'PENDING' && pr.admin_note && (
+                                                                <p className="text-[10px] text-slate-500 mt-1 italic">Note: {pr.admin_note}</p>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* API Errors Section */}
+                                        {apiErrors.length > 0 && (
+                                            <div>
+                                                <div className={`px-5 py-2 border-b ${colors.borderPrimary} flex items-center gap-2`}>
+                                                    <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-red-400">API Errors</span>
+                                                </div>
                                             {apiErrors.map((err) => {
                                                 const errColor = getErrorColor(err.error_type);
                                                 return (
@@ -572,7 +779,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                                     </div>
                                                 );
                                             })}
-                                        </div>
+                                            </div>
+                                        )}
+                                        {paymentRequests.length === 0 && apiErrors.length === 0 && (
+                                            <div className="flex flex-col items-center justify-center py-12 px-6">
+                                                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center mb-4 border border-emerald-500/20">
+                                                    <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                                                </div>
+                                                <p className={`text-sm font-bold ${colors.textPrimary} mb-1`}>All Clear</p>
+                                                <p className="text-[11px] text-slate-400 text-center font-medium">No pending payments or API errors.</p>
+                                            </div>
+                                        )}
+                                        </React.Fragment>
                                     )}
                                 </div>
 
@@ -1183,8 +1401,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                                             value={user.pricing || ''}
                                                             onChange={(e) => handleUpdatePricing(user.id, e.target.value as any)}
                                                             className={`appearance-none px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all duration-300 w-32
-                                                                ${user.pricing === 'Elite' ? 'bg-gradient-to-r from-amber-500/10 to-yellow-500/10 text-amber-500 border-amber-500/30' : 
-                                                                  user.pricing === 'Premium' ? 'bg-gradient-to-r from-purple-500/10 to-indigo-500/10 text-purple-500 border-purple-500/30' :
+                                                                ${user.pricing === 'Premium' ? 'bg-gradient-to-r from-purple-500/10 to-indigo-500/10 text-purple-500 border-purple-500/30' :
                                                                   user.pricing === 'Pro' ? 'bg-gradient-to-r from-emerald-500/10 to-teal-500/10 text-emerald-500 border-emerald-500/30' :
                                                                   `${colors.bgTertiary} ${colors.textMuted} ${colors.borderSecondary}`}
                                                                 focus:ring-2 focus:ring-indigo-500/20 outline-none cursor-pointer hover:scale-105 active:scale-95`}
@@ -1192,7 +1409,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                                             <option value="" disabled className="bg-slate-900">Select Plan</option>
                                                             <option value="Pro" className="bg-slate-900 text-emerald-500">Pro</option>
                                                             <option value="Premium" className="bg-slate-900 text-purple-500">Premium</option>
-                                                            <option value="Elite" className="bg-slate-900 text-amber-500">Elite</option>
                                                         </select>
                                                         <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 opacity-50 pointer-events-none group-hover/pricing:translate-y-[-40%] transition-transform" />
                                                     </div>
@@ -1701,8 +1917,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
                                         <div className="flex-1 overflow-hidden">
                                             <p className={`text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-0.5`}>Pricing Plan</p>
                                             <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider
-                                                ${viewingUser.pricing === 'Elite' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
-                                                  viewingUser.pricing === 'Premium' ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
+                                                ${viewingUser.pricing === 'Premium' ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
                                                   viewingUser.pricing === 'Pro' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
                                                   'bg-slate-500/10 text-slate-500 border border-slate-500/20'}
                                             `}>

@@ -39,14 +39,14 @@ export const Overview: React.FC<OverviewProps> = ({ user, onNavigateToLanding })
       recommended: false,
     },
     {
-      name: 'Pro',
-      price: '$49/mo',
+      name: 'Premium',
+      price: '₹10,000/mo',
       description: 'For growing businesses needing deeper analytics.',
       features: ['Unlimited Dashboards', 'Live Database Connectors', 'Advanced Predictive Models', 'Priority Support'],
       recommended: true,
     },
     {
-      name: 'Enterprise',
+      name: 'Pro',
       price: 'Custom',
       description: 'Maximum security and dedicated resources.',
       features: ['Dedicated Infrastructure', 'Custom AI Model Training', 'Advanced Role-based Access', '24/7 SLA Support'],
@@ -72,15 +72,46 @@ export const Overview: React.FC<OverviewProps> = ({ user, onNavigateToLanding })
 
       {/* Transition Overlay */}
       <div 
-        className={`fixed inset-0 z-[100] flex items-center justify-center pointer-events-none transition-all duration-[1200ms] ease-[cubic-bezier(0.87,0,0.13,1)]
-          ${isTransitioning ? 'bg-indigo-600/90 backdrop-blur-xl opacity-100 scale-100' : 'bg-transparent backdrop-blur-0 opacity-0 scale-150'}`}
+        className={`fixed inset-0 z-[100] flex items-center justify-center pointer-events-none transition-all duration-[1200ms] ease-[cubic-bezier(0.87,0,0.13,1)] overflow-hidden
+          ${isTransitioning ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       >
+        {/* Luxurious Glass Background */}
+        <div className={`absolute inset-0 transition-all duration-[1200ms] ${isTransitioning ? (theme === 'dark' ? 'bg-slate-950/80 backdrop-blur-3xl' : 'bg-white/80 backdrop-blur-3xl') : 'bg-transparent backdrop-blur-0'}`} />
+        
+        {/* Animated Orbs/Gradients */}
+        <div className={`absolute inset-0 transition-all duration-1000 delay-300 ${isTransitioning ? 'opacity-100 scale-100' : 'opacity-0 scale-150'}`}>
+          <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[120px] animate-pulse pointer-events-none ${theme === 'dark' ? 'bg-indigo-600/20' : 'bg-indigo-500/10'}`} />
+          <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-[100px] animate-[spin_8s_linear_infinite] pointer-events-none ${theme === 'dark' ? 'bg-violet-600/20' : 'bg-violet-500/10'}`} />
+          <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full blur-[80px] animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite] pointer-events-none ${theme === 'dark' ? 'bg-fuchsia-600/20' : 'bg-fuchsia-500/10'}`} />
+        </div>
+
         {isTransitioning && (
-          <div className="flex flex-col items-center animate-fade-in delay-300">
-            <div className="w-20 h-20 bg-white rounded-2xl shadow-2xl flex items-center justify-center animate-bounce">
-              <Activity className="w-10 h-10 text-indigo-600" />
+          <div className="relative z-10 flex flex-col items-center animate-fade-in-up delay-500">
+            {/* Elegant Icon Container */}
+            <div className="relative group mb-10">
+              <div className={`absolute inset-0 bg-gradient-to-tr from-indigo-500 via-violet-500 to-fuchsia-500 rounded-3xl blur-xl animate-pulse ${theme === 'dark' ? 'opacity-50' : 'opacity-30'}`}></div>
+              <div className={`relative w-24 h-24 backdrop-blur-xl rounded-3xl shadow-[0_0_40px_rgba(79,70,229,0.3)] flex items-center justify-center border ${theme === 'dark' ? 'bg-gradient-to-br from-white/10 to-white/5 border-white/20' : 'bg-gradient-to-br from-white/80 to-white/40 border-slate-200/60'}`}>
+                <div className={`absolute inset-0 rounded-3xl ${theme === 'dark' ? 'bg-gradient-to-tr from-indigo-500/20 to-transparent' : 'bg-gradient-to-tr from-indigo-200/50 to-transparent'}`}></div>
+                <Activity className={`w-12 h-12 animate-[pulse_2s_ease-in-out_infinite] ${theme === 'dark' ? 'text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]' : 'text-indigo-600 drop-shadow-[0_0_15px_rgba(79,70,229,0.3)]'}`} />
+              </div>
             </div>
-            <h2 className="text-3xl font-bold text-white mt-8 tracking-wider animate-pulse">Initializing Workspace...</h2>
+            
+            {/* Typography */}
+            <div className="text-center space-y-3">
+              <h2 className={`text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r animate-pulse tracking-tight drop-shadow-sm ${theme === 'dark' ? 'from-white via-indigo-200 to-white' : 'from-slate-900 via-indigo-600 to-slate-900'}`}>
+                Initializing Workspace
+              </h2>
+              <div className={`flex items-center justify-center gap-2 font-medium tracking-widest text-sm uppercase ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-600'}`}>
+                <div className="w-1 h-1 bg-indigo-500 rounded-full animate-ping"></div>
+                Setting up your environment
+                <div className="w-1 h-1 bg-indigo-500 rounded-full animate-ping delay-150"></div>
+              </div>
+            </div>
+            
+            {/* Loading Bar */}
+            <div className={`mt-12 w-64 h-1.5 rounded-full overflow-hidden backdrop-blur-sm border ${theme === 'dark' ? 'bg-white/10 border-white/5' : 'bg-slate-200 border-slate-300/50'}`}>
+              <div className="h-full bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500 rounded-full animate-[progress_2s_ease-in-out_infinite]" style={{ width: '100%', transformOrigin: 'left', animation: 'progress 2s infinite linear' }}></div>
+            </div>
           </div>
         )}
       </div>
@@ -105,13 +136,11 @@ export const Overview: React.FC<OverviewProps> = ({ user, onNavigateToLanding })
                    <span className={`text-sm font-medium ${colors.textSecondary}`}>Active as <span className="font-bold">{user.name}</span></span>
                  </div>
                  {user.pricing && (
-                    <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider
-                        ${user.pricing === 'Elite' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
-                          user.pricing === 'Premium' ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
-                          'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'}
-                    `}>
-                        <Star className="w-3 h-3" />
-                        {user.pricing}
+                    <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider
+                        ${user.pricing === 'Premium' ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' : 
+                          user.pricing === 'Pro' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 
+                          'bg-slate-500/10 text-slate-500 border border-slate-500/20'}`}>
+                        {user.pricing || 'Starter'}
                     </div>
                  )}
                </div>
@@ -193,34 +222,40 @@ export const Overview: React.FC<OverviewProps> = ({ user, onNavigateToLanding })
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
               {pricingTiers.map((tier, idx) => (
-                <div key={idx} className={`relative p-8 rounded-3xl border ${tier.recommended ? 'border-indigo-500 bg-gradient-to-b from-indigo-500/10 to-transparent' : `${colors.borderPrimary} ${colors.bgSecondary}`} premium-shadow transition-transform hover:-translate-y-2`}>
+                <div key={idx} className={`relative p-8 rounded-[2rem] border ${tier.recommended ? 'border-indigo-500 bg-gradient-to-br from-indigo-900/40 via-indigo-900/10 to-transparent shadow-[0_0_40px_-10px_rgba(99,102,241,0.3)]' : `${colors.borderPrimary} ${colors.bgSecondary} hover:bg-white/5`} backdrop-blur-xl transition-all duration-500 hover:-translate-y-3 hover:shadow-2xl overflow-hidden group`}>
+                  {/* Subtle glowing background effect on hover */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-violet-500/0 to-fuchsia-500/0 group-hover:from-indigo-500/10 group-hover:via-violet-500/5 group-hover:to-fuchsia-500/10 transition-all duration-500 pointer-events-none"></div>
+                  
                   {tier.recommended && (
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-4 py-1 bg-indigo-500 text-white text-xs font-bold uppercase tracking-wider rounded-full shadow-lg">
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 px-6 py-1.5 bg-gradient-to-r from-indigo-500 to-violet-500 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-b-xl shadow-lg shadow-indigo-500/30">
                       Most Popular
                     </div>
                   )}
-                  <h3 className={`text-2xl font-bold ${colors.textPrimary} mb-2`}>{tier.name}</h3>
-                  <p className={`${colors.textMuted} text-sm mb-6 min-h-[40px]`}>{tier.description}</p>
-                  <div className="mb-8">
-                    <span className={`text-5xl font-extrabold ${colors.textPrimary}`}>{tier.price}</span>
+                  <h3 className={`text-2xl font-bold ${colors.textPrimary} mb-2 mt-2 group-hover:text-indigo-400 transition-colors`}>{tier.name}</h3>
+                  <p className={`${colors.textMuted} text-sm mb-8 min-h-[40px] leading-relaxed`}>{tier.description}</p>
+                  <div className="mb-8 relative">
+                    <span className={`text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r ${tier.recommended ? 'from-white to-indigo-200' : 'from-white to-slate-400'}`}>{tier.price}</span>
                   </div>
-                  <ul className="space-y-4 mb-8">
+                  <ul className="space-y-5 mb-10">
                     {tier.features.map((feature, fidx) => (
                       <li key={fidx} className="flex items-start gap-3">
-                        <CheckCircle2 className={`w-5 h-5 shrink-0 ${tier.recommended ? 'text-indigo-400' : 'text-emerald-500'}`} />
-                        <span className={`${colors.textSecondary} font-medium`}>{feature}</span>
+                        <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${tier.recommended ? 'bg-indigo-500/20 text-indigo-400' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        </div>
+                        <span className={`${colors.textSecondary} font-medium text-sm`}>{feature}</span>
                       </li>
                     ))}
                   </ul>
                   <button
                     onClick={handleGetStarted}
-                    className={`w-full py-4 rounded-xl font-bold transition-all ${
+                    className={`w-full py-4 rounded-xl font-bold transition-all duration-300 relative overflow-hidden group/btn ${
                       tier.recommended 
-                        ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/25' 
-                        : `${colors.bgTertiary} ${colors.textPrimary} hover:border-indigo-500/50 border ${colors.borderPrimary}`
+                        ? 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-xl shadow-indigo-500/25 hover:shadow-indigo-500/40' 
+                        : `${colors.bgTertiary} ${colors.textPrimary} hover:border-indigo-500/50 border ${colors.borderPrimary} hover:bg-indigo-500/10`
                     }`}
                   >
-                    Select {tier.name}
+                    <div className="absolute inset-0 w-full h-full bg-white/20 blur-xl opacity-0 group-hover/btn:opacity-100 transition-opacity translate-x-[-100%] group-hover/btn:translate-x-[100%] duration-1000"></div>
+                    <span className="relative z-10">Select {tier.name}</span>
                   </button>
                 </div>
               ))}

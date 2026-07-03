@@ -1,10 +1,12 @@
 const mysql = require('mysql2/promise');
+const { validateHost } = require('./utils/ssrfValidator');
 
 class SqlDatabaseService {
     /**
      * Helper to create a MySQL connection with SSL fallback
      */
     async _createMySQLConnection(config) {
+        await validateHost(config.host);
         const connectionConfig = {
             host: config.host,
             port: config.port || 3306,
@@ -32,6 +34,7 @@ class SqlDatabaseService {
      * Helper for PostgreSQL connection
      */
     async _connectPostgreSQL(config) {
+        await validateHost(config.host);
         const { Client } = require('pg');
         const clientConfig = {
             host: config.host,
