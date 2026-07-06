@@ -238,7 +238,7 @@ function AppContent() {
       if (error.message === 'NETWORK_DISCONNECT') {
         showToast("Network disconnect during upload. Please check your connection and try again.", 'error');
       } else {
-        showToast("Failed to process file. Please ensure it is a valid CSV or Excel file.", 'error');
+        showToast("Failed to process file. Please ensure it is a valid CSV, Excel, JSON, or XML file.", 'error');
       }
     } finally {
       setIsProcessing(false);

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, Clock, LayoutDashboard, Sparkles, ChevronRight, FileSpreadsheet, Trash2, FolderOpen, PlusCircle, Settings, LogOut, Database, Globe, X, Info, BarChart3, Briefcase, Plus, Edit2, Lock, Users, ArrowLeft, Hourglass, RefreshCw, Brain } from 'lucide-react';
+import { Upload, FileText, Clock, LayoutDashboard, Sparkles, ChevronRight, FileSpreadsheet, Trash2, FolderOpen, PlusCircle, Settings, LogOut, Database, Globe, X, Info, BarChart3, Briefcase, Plus, Edit2, Lock, Users, ArrowLeft, Hourglass, RefreshCw, Brain, FileCode, Braces } from 'lucide-react';
 import { SavedDashboard, User, WorkspaceFolder, AccessLevel, DashboardAccessLevel, RefreshSchedule } from '../types';
 import { workspaceService } from '../services/workspaceService';
 import { authService } from '../services/authService';
@@ -13,6 +13,9 @@ import { S3ImportModal } from './modals/S3ImportModal';
 import { AzureBlobImportModal } from './modals/AzureBlobImportModal';
 import { GCSImportModal } from './modals/GCSImportModal';
 import { DataWarehouseImportModal } from './modals/DataWarehouseImportModal';
+import { XmlFileImportModal } from './modals/XmlFileImportModal';
+import { JsonFileImportModal } from './modals/JsonFileImportModal';
+import { ApiImportModal } from './modals/ApiImportModal';
 
 const DashboardCard = ({ dash, colors, theme, onLoad, onDelete, onRename, user, onScheduleClick, scheduleMap }: { 
   dash: SavedDashboard, 
@@ -414,6 +417,11 @@ export const Landing: React.FC<LandingProps> = ({
   const [showDWModal, setShowDWModal] = useState(false);
   const [dwEngine, setDwEngine] = useState<'bigquery' | 'snowflake' | 'azuresql' | 'databricks' | 'redshift' | 'mongodb'>('bigquery');
 
+  // New file upload source modals
+  const [showXmlModal, setShowXmlModal] = useState(false);
+  const [showJsonModal, setShowJsonModal] = useState(false);
+  const [showApiModal, setShowApiModal] = useState(false);
+
   React.useEffect(() => {
     // Check for OAuth callback parameters for SharePoint
     const params = new URLSearchParams(window.location.search);
@@ -442,11 +450,13 @@ export const Landing: React.FC<LandingProps> = ({
   };
 
   const handleFile = (file: File) => {
-    const validTypes = ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
-    if (validTypes.includes(file.type) || file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+    const validTypes = ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'application/json', 'text/xml', 'application/xml'];
+    const validExtensions = ['.csv', '.xlsx', '.xls', '.json', '.xml'];
+    const hasValidExt = validExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+    if (validTypes.includes(file.type) || hasValidExt) {
       onFileUpload(file);
     } else {
-      alert("Please upload a valid CSV or Excel file.");
+      alert("Please upload a valid CSV, Excel, JSON, or XML file.");
     }
   };
 
@@ -777,7 +787,7 @@ export const Landing: React.FC<LandingProps> = ({
               >
                 <input
                   type="file"
-                  accept=".csv,.xlsx,.xls"
+                  accept=".csv,.xlsx,.xls,.json,.xml"
                   ref={fileInputRef}
                   className="hidden"
                   onChange={(e) => e.target.files && handleFile(e.target.files[0])}
@@ -792,7 +802,7 @@ export const Landing: React.FC<LandingProps> = ({
                 </div>
 
                 <h3 className={`responsive-text-lg font-semibold ${colors.textPrimary} mb-2`}>Upload Dataset</h3>
-                <p className={`${colors.textMuted} responsive-text-sm`}>CSV or Excel files up to 10MB</p>
+                <p className={`${colors.textMuted} responsive-text-sm`}>CSV, Excel, JSON or XML files up to 10MB</p>
 
                 {/* Decorative glow */}
                 <div className="absolute inset-0 bg-indigo-500/5 blur-3xl -z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl sm:rounded-3xl" />
@@ -808,7 +818,7 @@ export const Landing: React.FC<LandingProps> = ({
                   </div>
                   <div className="text-left flex-1">
                     <div className={`text-base font-black ${colors.textPrimary} tracking-tight`}>Explore More Sources</div>
-                    <div className={`text-xs ${colors.textMuted} font-medium opacity-70`}>Google Sheets, SQL, SharePoint, AWS S3, Snowflake & more</div>
+                    <div className={`text-xs ${colors.textMuted} font-medium opacity-70`}>XML, JSON, API, Google Sheets, SQL, SharePoint & more</div>
                   </div>
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${colors.bgTertiary} border ${colors.borderPrimary} group-hover:translate-x-1 transition-all`}>
                     <ChevronRight className={`w-4 h-4 ${colors.textMuted} transition-transform ${showImportMenu ? 'rotate-90' : ''}`} />
@@ -818,8 +828,58 @@ export const Landing: React.FC<LandingProps> = ({
                 {showImportMenu && (
                   <div className={`absolute top-full left-0 right-0 mt-2 p-3 ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-20 animate-fade-in-up space-y-3 max-h-[28rem] overflow-y-auto custom-scrollbar`}>
 
+                    {/* --- File Uploads --- */}
+                    <div className="px-2 pb-1">
+                      <span className={`text-[10px] font-black uppercase tracking-[0.15em] ${colors.textMuted} opacity-60`}>File Uploads</span>
+                    </div>
+
+                    {/* XML File */}
+                    <button
+                      onClick={() => { setShowXmlModal(true); setShowImportMenu(false); }}
+                      className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0">
+                        <FileCode className="w-4 h-4 text-rose-500" />
+                      </div>
+                      <div className="text-left">
+                        <div className={`text-sm font-bold ${colors.textPrimary}`}>XML File</div>
+                        <div className={`text-[10px] ${colors.textMuted}`}>Upload a local .xml file</div>
+                      </div>
+                    </button>
+
+                    {/* JSON File */}
+                    <button
+                      onClick={() => { setShowJsonModal(true); setShowImportMenu(false); }}
+                      className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center shrink-0">
+                        <Braces className="w-4 h-4 text-yellow-500" />
+                      </div>
+                      <div className="text-left">
+                        <div className={`text-sm font-bold ${colors.textPrimary}`}>JSON File</div>
+                        <div className={`text-[10px] ${colors.textMuted}`}>Upload a local .json file</div>
+                      </div>
+                    </button>
+
+                    {/* REST API */}
+                    <button
+                      onClick={() => { setShowApiModal(true); setShowImportMenu(false); }}
+                      className={`w-full p-3 rounded-xl hover:${colors.bgTertiary} transition-colors flex items-center gap-3 group`}
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center shrink-0">
+                        <Globe className="w-4 h-4 text-violet-500" />
+                      </div>
+                      <div className="text-left">
+                        <div className={`text-sm font-bold ${colors.textPrimary}`}>REST API</div>
+                        <div className={`text-[10px] ${colors.textMuted}`}>Fetch data from any JSON API</div>
+                      </div>
+                    </button>
+
+                    {/* Divider */}
+                    <div className={`h-px ${colors.borderPrimary} border-t my-1`} />
+
                     {/* --- Live Connections --- */}
-                    <div className={`px-2 pb-1`}>
+                    <div className="px-2 pb-1">
                       <span className={`text-[10px] font-black uppercase tracking-[0.15em] ${colors.textMuted} opacity-60`}>Live Connections</span>
                     </div>
 
@@ -1296,6 +1356,27 @@ export const Landing: React.FC<LandingProps> = ({
             onClose={() => setShowDWModal(false)}
             onImport={onSqlDatabaseImport}
             onShowInfoGuide={() => setShowInfoGuide(dwEngine)}
+          />
+        )}
+
+        {showXmlModal && (
+          <XmlFileImportModal
+            onClose={() => setShowXmlModal(false)}
+            onImport={onFileUpload}
+          />
+        )}
+
+        {showJsonModal && (
+          <JsonFileImportModal
+            onClose={() => setShowJsonModal(false)}
+            onImport={onFileUpload}
+          />
+        )}
+
+        {showApiModal && (
+          <ApiImportModal
+            onClose={() => setShowApiModal(false)}
+            onImport={onFileUpload}
           />
         )}
       </main>
