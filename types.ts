@@ -50,7 +50,8 @@ export enum ChartType {
   HEATMAP = 'HEATMAP',
   TABLE = 'TABLE',
   MATRIX = 'MATRIX',
-  FORECASTING = 'FORECASTING'
+  FORECASTING = 'FORECASTING',
+  MAP = 'MAP'
 }
 
 export enum ColumnType {
@@ -115,6 +116,7 @@ export interface ChartConfig {
   dataKey: string; // Metric (primary)
   dataKey2?: string; // Metric (secondary) — for dual-metric charts
   yAxisKey?: string; // Second dimension — for heatmap
+  columns?: string[]; // Multiple columns for raw data table
   aggregation: AggregationType;
   color?: string;
   color2?: string;
@@ -148,6 +150,11 @@ export interface ChartConfig {
 
   // Date filter slider range for forecast charts (Power BI-style)
   dateSliderRange?: { start: string; end: string };   // User-selected date range from the slider
+
+  // Custom styling for table and matrix cells
+  cellStyles?: {
+    [cellId: string]: { backgroundColor?: string; fontColor?: string }
+  };
 }
 
 // ---- Line-chart analytics (Power BI-style options) ----

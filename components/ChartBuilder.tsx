@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DataModel, ChartConfig, DashboardSection, ChartType, AggregationType, AnalyticsLinesConfig } from '../types';
 import { analyzeDataAndSuggestKPIs, generateChartFromPrompt } from '../services/geminiService';
-import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, RefreshCw, Filter, Check, ChevronDown, Palette, GitBranch, Layers, BarChartHorizontal, ScatterChart as ScatterChartIcon, Droplets, Grid3x3, Edit2, Settings2, TrendingUp } from 'lucide-react';
+import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, RefreshCw, Filter, Check, ChevronDown, Palette, GitBranch, Layers, BarChartHorizontal, ScatterChart as ScatterChartIcon, Droplets, Grid3x3, Edit2, Settings2, TrendingUp, Map as MapIcon } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
@@ -37,6 +37,7 @@ const ALL_CHART_TYPES: { type: ChartType; label: string }[] = [
     { type: ChartType.TABLE, label: 'Table' },
     { type: ChartType.MATRIX, label: 'Matrix' },
     { type: ChartType.FORECASTING, label: 'Forecasting' },
+    { type: ChartType.MAP, label: 'Map Chart' },
 ];
 
 const getChartIcon = (type: string) => {
@@ -56,6 +57,7 @@ const getChartIcon = (type: string) => {
         case 'TABLE': return <TableIcon className="w-5 h-5" />;
         case 'KPI': return <div className="text-xs font-bold border border-current px-1 rounded leading-none min-w-[20px] text-center">123</div>;
         case 'FORECASTING': return <TrendingUp className="w-5 h-5" />;
+        case 'MAP': return <MapIcon className="w-5 h-5" />;
         default: return <BarChart3 className="w-5 h-5" />;
     }
 };
@@ -896,7 +898,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     };
 
     const handleAddManualChart = () => {
-        if (!manualConfig.title || !manualConfig.dataKey) return;
+        if (!isManualConfigValid()) return;
         
         let chartToAdd: ChartConfig = {
             ...manualConfig,
@@ -940,7 +942,11 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
     };
 
     const isManualConfigValid = () => {
-        if (!manualConfig.title.trim() || !manualConfig.dataKey) return false;
+        if (!manualConfig.title.trim()) return false;
+        if (manualConfig.type === ChartType.TABLE) {
+            return manualConfig.columns && manualConfig.columns.length > 0;
+        }
+        if (!manualConfig.dataKey) return false;
         if (manualConfig.type !== ChartType.KPI && !manualConfig.xAxisKey) return false;
         if ((manualConfig.type === ChartType.HEATMAP || manualConfig.type === ChartType.MATRIX) && !manualConfig.yAxisKey) return false;
         // Forecasting requires a date column
@@ -1057,11 +1063,40 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
 
                             {/* Column Selection */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {/* Dimension / X-Axis */}
-                                {manualConfig.type !== ChartType.KPI && (
+                                {manualConfig.type === ChartType.TABLE ? (
+                                    <div className="col-span-full">
+                                        <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Select Columns (Multiple)</label>
+                                        <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-60 overflow-y-auto p-3 border rounded-xl ${colors.borderSecondary} ${colors.bgPrimary}`}>
+                                            {allColumns.map(col => {
+                                                const isSelected = manualConfig.columns?.includes(col) || false;
+                                                return (
+                                                    <label key={col} className={`flex items-center gap-2 text-[11px] cursor-pointer ${colors.textSecondary} hover:text-indigo-400 transition-colors`}>
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={isSelected}
+                                                            onChange={(e) => {
+                                                                const cols = manualConfig.columns || [];
+                                                                if (e.target.checked) {
+                                                                    setManualConfig({...manualConfig, columns: [...cols, col]});
+                                                                } else {
+                                                                    setManualConfig({...manualConfig, columns: cols.filter(c => c !== col)});
+                                                                }
+                                                            }}
+                                                            className="rounded border-slate-400 text-indigo-500 focus:ring-indigo-500 bg-transparent"
+                                                        />
+                                                        <span className="truncate" title={col}>{col}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Dimension / X-Axis */}
+                                        {manualConfig.type !== ChartType.KPI && (
                                     <div>
                                         <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>
-                                            {manualConfig.type === ChartType.HORIZONTAL_BAR ? 'Y-Axis (Category)' : 'X-Axis (Dimension)'}
+                                            {manualConfig.type === ChartType.HORIZONTAL_BAR ? 'Y-Axis (Category)' : manualConfig.type === ChartType.MAP ? 'Location (Country Column)' : 'X-Axis (Dimension)'}
                                         </label>
                                         <div className="relative">
                                             <select
@@ -1080,7 +1115,7 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                 {/* Metric / Data Key */}
                                 <div>
                                     <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>
-                                        {manualConfig.type === ChartType.HORIZONTAL_BAR ? 'X-Axis (Metric)' : 'Metric (Value)'}
+                                        {manualConfig.type === ChartType.HORIZONTAL_BAR ? 'X-Axis (Metric)' : manualConfig.type === ChartType.MAP ? 'Metric (Value/Heatmap)' : 'Metric (Value)'}
                                     </label>
                                     <div className="relative">
                                         <select
@@ -1144,6 +1179,8 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                             <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
                                         </div>
                                     </div>
+                                )}
+                                </>
                                 )}
 
                                 {/* Forecasting Date Column Selector */}

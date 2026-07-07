@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
     BarChart, Bar, LineChart, Line, PieChart, Pie, AreaChart, Area,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, Brush, LabelList,
@@ -24,6 +25,7 @@ import { DashboardLoader } from './DashboardLoader';
 import { DashboardShareModal } from './DashboardShareModal';
 import { ChartAnalyticsModal } from './ChartAnalyticsModal';
 import { AiInsightSidebar } from './AiInsightSidebar';
+import { MapChart } from './MapChart';
 
 
 interface DashboardProps {
@@ -703,9 +705,125 @@ const DateFilterSlider = React.memo(({
     );
 });
 
-const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true, columnMetadata, columnCurrencies, isExporting = false, fontSettings }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean, columnMetadata?: any, columnCurrencies?: { [key: string]: string }, isExporting?: boolean, fontSettings?: { fontFamily: string, fontSize: number, isBold: boolean, isItalic: boolean } }) => {
+const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true, columnMetadata, columnCurrencies, isExporting = false, fontSettings, onUpdateConfig }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean, columnMetadata?: any, columnCurrencies?: { [key: string]: string }, isExporting?: boolean, fontSettings?: { fontFamily: string, fontSize: number, isBold: boolean, isItalic: boolean }, onUpdateConfig?: (configId: string, updates: Partial<ChartConfig>) => void }) => {
     const colors = getThemeClasses(theme);
     if (!data || data.length === 0) return <div className={`flex items-center justify-center h-full ${colors.textMuted} text-sm`}>No Data Available</div>;
+
+    // Cell selection state
+    const [isDragging, setIsDragging] = useState(false);
+    const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+    const [showColorPicker, setShowColorPicker] = useState(false);
+    const [pickerPosition, setPickerPosition] = useState({ x: 0, y: 0 });
+    const [toolsContainer, setToolsContainer] = useState<HTMLElement | null>(null);
+
+    useEffect(() => {
+        // Find the portal target in the chart card header
+        setToolsContainer(document.getElementById(`chart-tools-${config.id}${isExpanded ? '-expanded' : ''}`));
+    }, [config.id, isExpanded]);
+
+    const handleMouseDown = useCallback((e: React.MouseEvent, cellId: string) => {
+        setIsDragging(true);
+        setSelectedCells(new Set([cellId]));
+        setShowColorPicker(false);
+    }, []);
+
+    const handleMouseEnter = useCallback((e: React.MouseEvent, cellId: string) => {
+        if (isDragging) {
+            setSelectedCells(prev => new Set([...prev, cellId]));
+        }
+    }, [isDragging]);
+
+    const handleMouseUp = useCallback((e: React.MouseEvent) => {
+        if (isDragging) {
+            setIsDragging(false);
+            if (selectedCells.size > 0) {
+                // Ensure popover stays within viewport loosely by offsetting
+                setPickerPosition({ x: Math.min(e.clientX, window.innerWidth - 150), y: Math.max(e.clientY - 60, 20) });
+                setShowColorPicker(true);
+            }
+        }
+    }, [isDragging, selectedCells]);
+
+    // Close color picker on outside click
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            const el = document.getElementById('cell-color-picker');
+            if (el && !el.contains(e.target as Node)) {
+                setShowColorPicker(false);
+                setSelectedCells(new Set());
+            }
+        };
+        const handleGlobalMouseUp = (e: MouseEvent) => {
+            if (isDragging) {
+                setIsDragging(false);
+            }
+        };
+        if (showColorPicker || isDragging) {
+            window.addEventListener('mousedown', handleClickOutside);
+            window.addEventListener('mouseup', handleGlobalMouseUp);
+        }
+        return () => {
+            window.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('mouseup', handleGlobalMouseUp);
+        };
+    }, [showColorPicker, isDragging]);
+
+    const applyCellStyles = (bgColor?: string, fgColor?: string) => {
+        if (!onUpdateConfig) return;
+        const newStyles = { ...(config.cellStyles || {}) };
+        selectedCells.forEach(cellId => {
+            newStyles[cellId] = {
+                ...newStyles[cellId],
+                ...(bgColor !== undefined && { backgroundColor: bgColor }),
+                ...(fgColor !== undefined && { fontColor: fgColor }),
+            };
+        });
+        onUpdateConfig(config.id, { cellStyles: newStyles });
+    };
+
+    const renderColorPicker = () => {
+        if (!showColorPicker || selectedCells.size === 0) return null;
+        
+        const firstCellId = Array.from(selectedCells)[0];
+        const currentBg = config.cellStyles?.[firstCellId]?.backgroundColor || '#000000';
+        const currentText = config.cellStyles?.[firstCellId]?.fontColor || '#000000';
+
+        const pickerUI = (
+            <div
+                id="cell-color-picker"
+                className={`flex items-center gap-2 p-1.5 rounded-xl border transition-all shadow-sm ${theme === 'dark' ? 'bg-slate-800 border-indigo-500/30' : 'bg-white border-indigo-200'}`}
+            >
+                <div className="text-[10px] font-black uppercase tracking-wider text-indigo-500 px-1">Style</div>
+                <div className="w-px h-4 bg-indigo-500/20 mx-0.5"></div>
+                <div className="flex gap-1.5">
+                    <div className="flex items-center gap-1 group relative" title="Background Color">
+                        <div className="w-6 h-6 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 relative cursor-pointer group-hover:ring-2 ring-indigo-500/50 transition-all">
+                            <input type="color" value={currentBg} className="absolute -top-2 -left-2 w-10 h-10 cursor-pointer p-0 border-0" onChange={e => applyCellStyles(e.target.value, undefined)} />
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1 group relative" title="Text Color">
+                        <div className="w-6 h-6 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 relative cursor-pointer group-hover:ring-2 ring-indigo-500/50 transition-all bg-white">
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 font-bold text-[11px]" style={{ color: currentText }}>A</div>
+                            <input type="color" value={currentText} className="absolute -top-2 -left-2 w-10 h-10 cursor-pointer p-0 border-0 opacity-0" onChange={e => applyCellStyles(undefined, e.target.value)} />
+                        </div>
+                    </div>
+                </div>
+                <button onClick={() => { setShowColorPicker(false); setSelectedCells(new Set()); }} className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 transition-colors ml-0.5">
+                    <X className="w-3.5 h-3.5" />
+                </button>
+            </div>
+        );
+
+        if (toolsContainer) {
+            return createPortal(pickerUI, toolsContainer);
+        }
+
+        return (
+            <div className="fixed z-[9999]" style={{ top: pickerPosition.y, left: pickerPosition.x }}>
+                {pickerUI}
+            </div>
+        );
+    };
 
     const handleChartClick = (d: any) => {
         if (!onItemClick) return;
@@ -1868,18 +1986,24 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                 </ResponsiveContainer>
             );
         case ChartType.TABLE: {
-            const tableTotal = data.reduce((acc, row) => acc + (Number(row[config.dataKey]) || 0), 0);
-            const tableTotal2 = config.dataKey2 ? data.reduce((acc, row) => acc + (Number(row[config.dataKey2]) || 0), 0) : 0;
-            const fmtNum = (v: number, key: string) => formatByColumn(v, key);
+            const tableCols = config.columns && config.columns.length > 0 
+                ? config.columns 
+                : [config.xAxisKey, config.dataKey, config.dataKey2].filter(Boolean) as string[];
+                
             return (
                 <div style={{ width: '100%', height: '100%', overflow: 'auto' }} className="custom-chart-scrollbar">
                     <table className="w-full border-collapse" style={{ fontSize: isExporting ? '7.5px' : '11px' }}>
                         <thead>
                             <tr style={{ background: theme === 'dark' ? '#1e293b' : '#e2e8f0' }}>
                                 <th className={`px-2 py-1 text-center font-bold text-[7.5px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`}>#</th>
-                                <th className={`px-3 py-1 text-left font-bold text-[7.5px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`}>{config.xAxisKey}</th>
-                                <th className={`px-3 py-1 text-right font-bold text-[7.5px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`}>{config.dataKey}</th>
-                                {config.dataKey2 && <th className={`px-3 py-1 text-right font-bold text-[7.5px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`}>{config.dataKey2}</th>}
+                                {tableCols.map(col => {
+                                    const isNumeric = data.length > 0 && (typeof data[0][col] === 'number' || (typeof data[0][col] === 'string' && !isNaN(Number(String(data[0][col]).replace(/[^0-9.-]+/g,"")))));
+                                    return (
+                                        <th key={col} className={`px-3 py-1 ${isNumeric ? 'text-right' : 'text-left'} font-bold text-[7.5px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`}>
+                                            {col}
+                                        </th>
+                                    );
+                                })}
                             </tr>
                         </thead>
                         <tbody>
@@ -1887,24 +2011,38 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                 <tr key={i}
                                     style={{ background: i % 2 === 0 ? (theme === 'dark' ? 'rgba(30,41,59,0.3)' : 'rgba(241,245,249,0.5)') : 'transparent' }}
                                     className="transition-colors cursor-pointer"
-                                    onClick={() => onItemClick && onItemClick(row[config.xAxisKey])}
+                                    onClick={(e) => {
+                                        if (!isDragging && selectedCells.size === 0 && onItemClick && config.xAxisKey) {
+                                            onItemClick(row[config.xAxisKey]);
+                                        }
+                                    }}
                                 >
                                     <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-[10px]'} text-center ${theme === 'dark' ? 'text-slate-600' : 'text-slate-400'} font-mono`}>{i + 1}</td>
-                                    <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{formatByColumn(row[config.xAxisKey], config.xAxisKey)}</td>
-                                    <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold text-right font-mono ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>{fmtNum(Number(row[config.dataKey]) || 0, config.dataKey)}</td>
-                                    {config.dataKey2 && <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold text-right font-mono ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>{fmtNum(Number(row[config.dataKey2]) || 0, config.dataKey2)}</td>}
+                                    {tableCols.map(col => {
+                                        const cellId = `${row[config.xAxisKey]}-${col}`;
+                                        const customStyle = config.cellStyles?.[cellId];
+                                        const isSelected = selectedCells.has(cellId);
+                                        const isNumeric = typeof row[col] === 'number' || (typeof row[col] === 'string' && !isNaN(Number(row[col].replace(/[^0-9.-]+/g,""))));
+                                        
+                                        return (
+                                            <td 
+                                                key={col}
+                                                className={`px-3 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} ${isNumeric ? 'text-right font-mono font-medium' : 'text-left font-medium'} ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'} transition-all ${isSelected ? 'ring-2 ring-indigo-500 ring-inset opacity-80 bg-indigo-500/20' : ''}`}
+                                                style={{ backgroundColor: customStyle?.backgroundColor, color: customStyle?.fontColor }}
+                                                onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, cellId); }}
+                                                onMouseEnter={(e) => handleMouseEnter(e, cellId)}
+                                                onMouseUp={(e) => { e.stopPropagation(); handleMouseUp(e); }}
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                {formatByColumn(row[col], col)}
+                                            </td>
+                                        );
+                                    })}
                                 </tr>
                             ))}
                         </tbody>
-                        <tfoot>
-                            <tr style={{ background: theme === 'dark' ? '#0f172a' : '#f1f5f9', borderTop: `2px solid ${theme === 'dark' ? '#6366f1' : '#818cf8'}` }}>
-                                <td className={`px-2 py-1.5 ${isExporting ? 'text-[7.5px]' : 'text-[10px]'} font-bold text-center ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Σ</td>
-                                <td className={`px-3 py-1.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>{data.length} rows</td>
-                                <td className={`px-3 py-1.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-black text-right font-mono ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-700'}`}>{fmtNum(tableTotal, config.dataKey)}</td>
-                                {config.dataKey2 && <td className={`px-3 py-1.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} font-black text-right font-mono ${theme === 'dark' ? 'text-emerald-300' : 'text-emerald-700'}`}>{fmtNum(tableTotal2, config.dataKey2)}</td>}
-                            </tr>
-                        </tfoot>
                     </table>
+                    {renderColorPicker()}
                 </div>
             );
         }
@@ -1982,22 +2120,37 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                         })()}
                                     </td>
                                     {mxVals.map(x => {
+                                        const cellId = `${x}-${y}`;
+                                        const customStyle = config.cellStyles?.[cellId];
+                                        const isSelected = selectedCells.has(cellId);
+                                        
                                         const cell = data.find((d: any) => d.x === x && d.y === y);
                                         const val = cell?.value ?? 0;
                                         const t = (val - mMinVal) / mRange;
+                                        const defaultBg = getCellBg(val);
+                                        const defaultColor = t > 0.6 ? '#ffffff' : (theme === 'dark' ? '#94a3b8' : '#475569');
+                                        
                                         return (
-                                            <td key={`${x}-${y}`}
-                                                className={`px-0.5 py-1 text-center font-bold border-r cursor-pointer transition-all`}
+                                            <td key={cellId}
+                                                className={`px-0.5 py-1 text-center font-bold border-r select-none transition-all ${isSelected ? 'ring-2 ring-indigo-500 ring-inset opacity-80' : ''}`}
                                                 style={{
                                                     borderColor: themeColors.chartGrid,
-                                                    backgroundColor: getCellBg(val),
-                                                    color: t > 0.6 ? '#ffffff' : (theme === 'dark' ? '#94a3b8' : '#475569'),
+                                                    backgroundColor: customStyle?.backgroundColor || defaultBg,
+                                                    color: customStyle?.fontColor || defaultColor,
                                                     height: isExporting ? '24px' : 'auto',
                                                     overflow: 'hidden',
                                                     textOverflow: 'clip'
                                                 }}
                                                 title={`${config.yAxisKey}: ${formatByColumn(y, config.yAxisKey)}\n${config.xAxisKey}: ${formatByColumn(x, config.xAxisKey)}\n${config.dataKey}: ${val}`}
-                                                onClick={() => onItemClick && onItemClick(x)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (!isDragging && selectedCells.size === 0 && onItemClick) {
+                                                        onItemClick(x);
+                                                    }
+                                                }}
+                                                onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, cellId); }}
+                                                onMouseEnter={(e) => handleMouseEnter(e, cellId)}
+                                                onMouseUp={(e) => { e.stopPropagation(); handleMouseUp(e); }}
                                             >
                                                 {fmtMatrixNum(val)}
                                             </td>
@@ -2023,7 +2176,21 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                             </tr>
                         </tfoot>
                     </table>
+                    {renderColorPicker()}
                 </div>
+            );
+        }
+        
+        case ChartType.MAP: {
+            return (
+                <MapChart
+                    data={data}
+                    countryKey={config.xAxisKey}
+                    dataKey={config.dataKey}
+                    baseColor={config.color}
+                    fontSettings={fontSettings}
+                    theme={theme}
+                />
             );
         }
 
@@ -2487,6 +2654,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
             delete next[chartId];
             return next;
         });
+    }, []);
+
+    // Update specific properties of a chart config
+    const updateChartConfig = useCallback((chartId: string, updates: Partial<ChartConfig>) => {
+        setCurrentCharts(prev => prev.map(chart => {
+            if (chart.id === chartId) {
+                return { ...chart, ...updates };
+            }
+            return chart;
+        }));
     }, []);
 
     // --- TIME INTELLIGENCE LOGIC ---
@@ -3481,6 +3658,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             columnCurrencies={dataModel.columnCurrencies}
                                             isAnimationActive={true}
                                             fontSettings={fontSettings}
+                                            onUpdateConfig={updateChartConfig}
                                         />
                                     )}
                                 </div>
@@ -3516,12 +3694,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                         <p className={`text-sm ${colors.textMuted} font-medium mt-0.5`}>{expandedChartConfig.description || 'Forecast Analysis & Trend Projection'}</p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => setExpandedChartId(null)}
-                                    className={`p-2.5 ${colors.bgTertiary} hover:bg-red-500/20 hover:text-red-500 rounded-xl transition-all ${colors.textMuted} border border-transparent hover:border-red-500/30 shadow-sm`}
-                                >
-                                    <X className="w-6 h-6" />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <div id={`chart-tools-${expandedChartConfig.id}-expanded`} className="empty:hidden" />
+                                    <button
+                                        onClick={() => setExpandedChartId(null)}
+                                        className={`p-2.5 ${colors.bgTertiary} hover:bg-red-500/20 hover:text-red-500 rounded-xl transition-all ${colors.textMuted} border border-transparent hover:border-red-500/30 shadow-sm`}
+                                    >
+                                        <X className="w-6 h-6" />
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Control Bar for Forecast Charts */}
@@ -3539,6 +3720,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                             <div className="flex-1 px-8 py-6 min-h-0 relative">
                                 <RenderChart
                                     config={expandedChartConfig}
+                                    onUpdateConfig={updateChartConfig}
                                     data={(() => {
                                         const baseData = expandedChartConfig.ignoreGlobalFilters ? dataModel.data : filteredData;
                                         const chartData = applyChartFilters(baseData, expandedChartConfig.id);
@@ -4176,6 +4358,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                             </button>
                                                         </div>
                                                     )}
+                                                    {/* Portal target for Cell Color Picker */}
+                                                    <div id={`chart-tools-${chart.id}`} className="empty:hidden" />
+                                                    
                                                     <div className="relative">
                                                         <button
                                                             onClick={() => {
@@ -4352,6 +4537,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             <div className="flex-1 w-full min-h-0 min-w-0 overflow-hidden" style={{ fontFamily: chart.fontFamily || fontSettings.fontFamily }}>
                                                 <RenderChart
                                                     config={chart}
+                                                    onUpdateConfig={updateChartConfig}
                                                     data={aggregatedData}
                                                     theme={theme}
                                                     isAnimationActive={!isExporting}

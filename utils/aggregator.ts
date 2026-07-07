@@ -133,9 +133,14 @@ export const aggregateData = (data: ProcessedRow[], config: ChartConfig): any[] 
     return result;
   }
 
+  // --- TABLE: Always return raw data up to 2000 rows ---
+  if (config.type === 'TABLE') {
+    return workingData.slice(0, 2000);
+  }
+
   if (config.aggregation === AggregationType.NONE) {
-    // For Trend charts and Tables, we want more data points to show the full story.
-    if (config.type === 'LINE' || config.type === 'AREA' || config.type === 'TABLE') {
+    // For Trend charts, we want more data points to show the full story.
+    if (config.type === 'LINE' || config.type === 'AREA') {
       return workingData.slice(0, 2000);
     }
     // For Bar/Pie, too many slices look bad, so we keep a tighter limit
