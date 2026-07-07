@@ -155,6 +155,21 @@ export interface ChartConfig {
   cellStyles?: {
     [cellId: string]: { backgroundColor?: string; fontColor?: string }
   };
+
+  // Conditional formatting rules for matrix table (gradient color scale)
+  conditionalFormatting?: ConditionalFormattingRule[];
+}
+
+export interface ConditionalFormattingRule {
+  id: string;
+  type: 'fontColor' | 'cellColor'; // which attribute to format
+  formatStyle: 'gradient';           // always gradient for now
+  applyTo: 'values' | 'totals' | 'all';
+  baseField: string;                 // dataKey to base on
+  emptyAs: 'zero' | 'blank';
+  min: { type: 'lowest' | 'custom'; value?: number; color: string };
+  center: { enabled: boolean; type: 'middle' | 'custom'; value?: number; color: string };
+  max: { type: 'highest' | 'custom'; value?: number; color: string };
 }
 
 // ---- Line-chart analytics (Power BI-style options) ----

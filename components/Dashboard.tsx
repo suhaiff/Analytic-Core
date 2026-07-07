@@ -5,14 +5,14 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, Brush, LabelList,
     ScatterChart, Scatter, ZAxis, ComposedChart, ReferenceLine
 } from 'recharts';
-import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType, SavedDashboard, AccessLevel, AnalyticsLinesConfig, ForecastUnits } from '../types';
+import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType, SavedDashboard, AccessLevel, AnalyticsLinesConfig, ForecastUnits, ConditionalFormattingRule } from '../types';
 import { aggregateData } from '../utils/aggregator';
 import {
     LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2,
     X, Home, Save, Edit, RefreshCw, Plus, ArrowRight, ArrowLeft, Filter, Trash2,
     ChevronDown, Check, MousePointer2, Table as TableIcon, Grid3x3, AlertTriangle,
     Type, Bold, Italic, Minus as MinusIcon, Plus as PlusIcon, Search, SearchSlash,
-    Sparkles, Users, ArrowDownAZ
+    Sparkles, Users, ArrowDownAZ, Palette
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -2081,6 +2081,66 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                 }
             };
 
+            // --- Conditional Formatting helpers ---
+            const cfRules = config.conditionalFormatting || [];
+            const cellColorRule = cfRules.find(r => r.type === 'cellColor');
+            const fontColorRule = cfRules.find(r => r.type === 'fontColor');
+
+            // Interpolate between two hex colors given t in [0,1]
+            const lerpColor = (a: string, b: string, t: number) => {
+                const parse = (hex: string) => {
+                    const h = hex.replace('#', '');
+                    return [parseInt(h.substring(0, 2), 16), parseInt(h.substring(2, 4), 16), parseInt(h.substring(4, 6), 16)];
+                };
+                const [ar, ag, ab] = parse(a);
+                const [br, bg, bb] = parse(b);
+                const r = Math.round(ar + (br - ar) * t);
+                const g = Math.round(ag + (bg - ag) * t);
+                const bl = Math.round(ab + (bb - ab) * t);
+                return `rgb(${r},${g},${bl})`;
+            };
+
+            const getGradientColor = (rule: typeof cellColorRule, val: number, allVals: number[]) => {
+                if (!rule) return undefined;
+                const lo = rule.min.type === 'custom' && rule.min.value !== undefined ? rule.min.value : Math.min(...allVals);
+                const hi = rule.max.type === 'custom' && rule.max.value !== undefined ? rule.max.value : Math.max(...allVals);
+                const range = hi - lo || 1;
+                const t = Math.max(0, Math.min(1, (val - lo) / range));
+                if (rule.center.enabled) {
+                    const mid = rule.center.type === 'custom' && rule.center.value !== undefined ? rule.center.value : (lo + hi) / 2;
+                    const tMid = Math.max(0, Math.min(1, (mid - lo) / range));
+                    if (t <= tMid) {
+                        const localT = tMid > 0 ? t / tMid : 0;
+                        return lerpColor(rule.min.color, rule.center.color, localT);
+                    } else {
+                        const localT = (1 - tMid) > 0 ? (t - tMid) / (1 - tMid) : 1;
+                        return lerpColor(rule.center.color, rule.max.color, localT);
+                    }
+                }
+                return lerpColor(rule.min.color, rule.max.color, t);
+            };
+
+            // Values used for scale across different applyTo contexts
+            const valueOnlyVals = allValues;
+            const totalVals = [...Object.values(rowTotals), ...Object.values(colTotals), grandTotal];
+            const allContextVals = [...valueOnlyVals, ...totalVals];
+
+            const getCFCellBg = (val: number, isTotalCell: boolean) => {
+                if (!cellColorRule) return undefined;
+                if (cellColorRule.applyTo === 'values' && isTotalCell) return undefined;
+                if (cellColorRule.applyTo === 'totals' && !isTotalCell) return undefined;
+                const pool = cellColorRule.applyTo === 'values' ? valueOnlyVals : cellColorRule.applyTo === 'totals' ? totalVals : allContextVals;
+                return getGradientColor(cellColorRule, val, pool);
+            };
+
+            const getCFFontColor = (val: number, isTotalCell: boolean) => {
+                if (!fontColorRule) return undefined;
+                if (fontColorRule.applyTo === 'values' && isTotalCell) return undefined;
+                if (fontColorRule.applyTo === 'totals' && !isTotalCell) return undefined;
+                const pool = fontColorRule.applyTo === 'values' ? valueOnlyVals : fontColorRule.applyTo === 'totals' ? totalVals : allContextVals;
+                return getGradientColor(fontColorRule, val, pool);
+            };
+
             const matrixFontSize = isExporting ? (mxVals.length > 15 ? '6px' : (mxVals.length > 8 ? '7.5px' : '9px')) : '11px';
 
             return (
@@ -2129,14 +2189,18 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                         const t = (val - mMinVal) / mRange;
                                         const defaultBg = getCellBg(val);
                                         const defaultColor = t > 0.6 ? '#ffffff' : (theme === 'dark' ? '#94a3b8' : '#475569');
+
+                                        // Apply conditional formatting (overrides defaults but not manual cell styles)
+                                        const cfBg = getCFCellBg(val, false);
+                                        const cfFont = getCFFontColor(val, false);
                                         
                                         return (
                                             <td key={cellId}
                                                 className={`px-0.5 py-1 text-center font-bold border-r select-none transition-all ${isSelected ? 'ring-2 ring-indigo-500 ring-inset opacity-80' : ''}`}
                                                 style={{
                                                     borderColor: themeColors.chartGrid,
-                                                    backgroundColor: customStyle?.backgroundColor || defaultBg,
-                                                    color: customStyle?.fontColor || defaultColor,
+                                                    backgroundColor: customStyle?.backgroundColor || cfBg || defaultBg,
+                                                    color: customStyle?.fontColor || cfFont || defaultColor,
                                                     height: isExporting ? '24px' : 'auto',
                                                     overflow: 'hidden',
                                                     textOverflow: 'clip'
@@ -2156,23 +2220,47 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                             </td>
                                         );
                                     })}
-                                    <td className={`px-3 py-2 text-center font-black text-xs ${theme === 'dark' ? 'text-indigo-300 bg-slate-800/40' : 'text-indigo-700 bg-slate-100/60'}`}>
-                                        {fmtMatrixNum(rowTotals[y as string] || 0)}
-                                    </td>
+                                    {/* Row Total — apply totals conditional formatting */}
+                                    {(() => {
+                                        const rowVal = rowTotals[y as string] || 0;
+                                        const cfTotalBg = getCFCellBg(rowVal, true);
+                                        const cfTotalFont = getCFFontColor(rowVal, true);
+                                        return (
+                                            <td className={`px-3 py-2 text-center font-black text-xs ${!cfTotalBg && !cfTotalFont ? (theme === 'dark' ? 'text-indigo-300 bg-slate-800/40' : 'text-indigo-700 bg-slate-100/60') : ''}`}
+                                                style={{ backgroundColor: cfTotalBg || undefined, color: cfTotalFont || undefined }}>
+                                                {fmtMatrixNum(rowVal)}
+                                            </td>
+                                        );
+                                    })()}
                                 </tr>
                             ))}
                         </tbody>
                         <tfoot>
                             <tr style={{ background: theme === 'dark' ? '#0f172a' : '#f1f5f9', borderTop: `2px solid ${theme === 'dark' ? '#6366f1' : '#818cf8'}` }}>
                                 <td className={`px-3 py-2.5 font-bold text-[9px] uppercase tracking-widest border-r ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`} style={{ borderColor: themeColors.chartGrid }}>Total</td>
-                                {mxVals.map(x => (
-                                    <td key={x} className={`px-2 py-2.5 text-center font-black text-xs border-r ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-700'}`} style={{ borderColor: themeColors.chartGrid }}>
-                                        {fmtMatrixNum(colTotals[x as string] || 0)}
-                                    </td>
-                                ))}
-                                <td className={`px-3 py-2.5 text-center font-black text-xs ${theme === 'dark' ? 'text-amber-400' : 'text-amber-600'}`}>
-                                    {fmtMatrixNum(grandTotal)}
-                                </td>
+                                {mxVals.map(x => {
+                                    const colVal = colTotals[x as string] || 0;
+                                    const cfColBg = getCFCellBg(colVal, true);
+                                    const cfColFont = getCFFontColor(colVal, true);
+                                    return (
+                                        <td key={x}
+                                            className={`px-2 py-2.5 text-center font-black text-xs border-r ${!cfColBg && !cfColFont ? (theme === 'dark' ? 'text-indigo-300' : 'text-indigo-700') : ''}`}
+                                            style={{ borderColor: themeColors.chartGrid, backgroundColor: cfColBg || undefined, color: cfColFont || undefined }}>
+                                            {fmtMatrixNum(colVal)}
+                                        </td>
+                                    );
+                                })}
+                                {/* Grand Total */}
+                                {(() => {
+                                    const cfGrandBg = getCFCellBg(grandTotal, true);
+                                    const cfGrandFont = getCFFontColor(grandTotal, true);
+                                    return (
+                                        <td className={`px-3 py-2.5 text-center font-black text-xs ${!cfGrandBg && !cfGrandFont ? (theme === 'dark' ? 'text-amber-400' : 'text-amber-600') : ''}`}
+                                            style={{ backgroundColor: cfGrandBg || undefined, color: cfGrandFont || undefined }}>
+                                            {fmtMatrixNum(grandTotal)}
+                                        </td>
+                                    );
+                                })()}
                             </tr>
                         </tfoot>
                     </table>
@@ -2181,6 +2269,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
             );
         }
         
+
         case ChartType.MAP: {
             return (
                 <MapChart
@@ -2536,6 +2625,51 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     // --- Top N / Bottom N State ---
     const [topBottomMenuOpen, setTopBottomMenuOpen] = useState<string | null>(null);
     const TOPBOTTOM_ELIGIBLE_TYPES = new Set(['BAR', 'LINE', 'HORIZONTAL_BAR', 'GROUPED_BAR', 'STACKED_BAR', 'COMBO', 'WATERFALL', 'TABLE']);
+
+    // --- Conditional Formatting State ---
+    const [condFmtDropdownOpen, setCondFmtDropdownOpen] = useState<string | null>(null);
+    const [condFmtModalChartId, setCondFmtModalChartId] = useState<string | null>(null);
+    const [condFmtModalType, setCondFmtModalType] = useState<'fontColor' | 'cellColor'>('cellColor');
+    const [condFmtDraft, setCondFmtDraft] = useState<ConditionalFormattingRule | null>(null);
+
+    const openCondFmtModal = (chartId: string, type: 'fontColor' | 'cellColor', existingRule?: ConditionalFormattingRule) => {
+        const chart = currentCharts.find(c => c.id === chartId);
+        if (!chart) return;
+        const existing = existingRule || chart.conditionalFormatting?.find(r => r.type === type);
+        setCondFmtDraft(existing ? { ...existing } : {
+            id: `cf-${Date.now()}`,
+            type,
+            formatStyle: 'gradient',
+            applyTo: 'values',
+            baseField: chart.dataKey,
+            emptyAs: 'zero',
+            min: { type: 'lowest', color: '#a93226' },
+            center: { enabled: true, type: 'middle', color: '#2980b9' },
+            max: { type: 'highest', color: '#a93226' },
+        });
+        setCondFmtModalChartId(chartId);
+        setCondFmtModalType(type);
+        setCondFmtDropdownOpen(null);
+    };
+
+    const applyCondFmtRule = () => {
+        if (!condFmtModalChartId || !condFmtDraft) return;
+        setCurrentCharts(prev => prev.map(c => {
+            if (c.id !== condFmtModalChartId) return c;
+            const existing = c.conditionalFormatting || [];
+            const others = existing.filter(r => r.type !== condFmtDraft.type);
+            return { ...c, conditionalFormatting: [...others, condFmtDraft] };
+        }));
+        setCondFmtModalChartId(null);
+        setCondFmtDraft(null);
+    };
+
+    const clearCondFmtRule = (chartId: string, type: 'fontColor' | 'cellColor') => {
+        setCurrentCharts(prev => prev.map(c => {
+            if (c.id !== chartId) return c;
+            return { ...c, conditionalFormatting: (c.conditionalFormatting || []).filter(r => r.type !== type) };
+        }));
+    };
 
     const updateChartTopBottom = useCallback((chartId: string, sortOrder: 'ASC' | 'DESC' | undefined, topN: number | undefined) => {
         setCurrentCharts(prev => prev.map(c => {
@@ -3778,6 +3912,183 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                     />
                 )}
 
+                {/* === Conditional Formatting Modal === */}
+                {condFmtModalChartId && condFmtDraft && (() => {
+                    const cfChart = currentCharts.find(c => c.id === condFmtModalChartId);
+                    const numericCols = cfChart ? (dataModel.numericColumns || []) : [];
+                    const gradientCss = condFmtDraft.center.enabled
+                        ? `linear-gradient(to right, ${condFmtDraft.min.color}, ${condFmtDraft.center.color}, ${condFmtDraft.max.color})`
+                        : `linear-gradient(to right, ${condFmtDraft.min.color}, ${condFmtDraft.max.color})`;
+                    return (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}>
+                            <div className={`w-full max-w-xl rounded-3xl border shadow-2xl ${theme === 'dark' ? 'bg-slate-900 border-slate-700/60' : 'bg-white border-slate-200'} overflow-hidden`}>
+                                {/* Modal Header */}
+                                <div className={`flex items-center justify-between px-6 py-5 border-b ${theme === 'dark' ? 'border-slate-700/60' : 'border-slate-200'}`}>
+                                    <div>
+                                        <h2 className={`text-base font-black ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                                            {condFmtDraft.type === 'fontColor' ? 'Font Color' : 'Cell Color'} — {cfChart?.dataKey}
+                                        </h2>
+                                        <p className={`text-[11px] mt-0.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Gradient conditional formatting</p>
+                                    </div>
+                                    <button onClick={() => { setCondFmtModalChartId(null); setCondFmtDraft(null); }} className={`p-2 rounded-xl transition-all ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                <div className="px-6 py-5 flex flex-col gap-5">
+                                    {/* Row 1: Format Style + Apply To */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Format Style</label>
+                                            <div className={`flex items-center px-3 py-2.5 rounded-xl border text-xs font-medium ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                                                Gradient
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Apply To</label>
+                                            <select
+                                                value={condFmtDraft.applyTo}
+                                                onChange={e => setCondFmtDraft(prev => prev ? { ...prev, applyTo: e.target.value as any } : prev)}
+                                                className={`px-3 py-2.5 rounded-xl border text-xs font-medium outline-none focus:ring-2 focus:ring-violet-500/40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
+                                            >
+                                                <option value="values">Values only</option>
+                                                <option value="totals">Totals only</option>
+                                                <option value="all">Values and Totals</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Row 2: Base Field + Empty As */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>What field should we base this on?</label>
+                                            <select
+                                                value={condFmtDraft.baseField}
+                                                onChange={e => setCondFmtDraft(prev => prev ? { ...prev, baseField: e.target.value } : prev)}
+                                                className={`px-3 py-2.5 rounded-xl border text-xs font-medium outline-none focus:ring-2 focus:ring-violet-500/40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
+                                            >
+                                                {numericCols.map(col => <option key={col} value={col}>{col}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>How should we format empty values?</label>
+                                            <select
+                                                value={condFmtDraft.emptyAs}
+                                                onChange={e => setCondFmtDraft(prev => prev ? { ...prev, emptyAs: e.target.value as any } : prev)}
+                                                className={`px-3 py-2.5 rounded-xl border text-xs font-medium outline-none focus:ring-2 focus:ring-violet-500/40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
+                                            >
+                                                <option value="zero">As zero</option>
+                                                <option value="blank">As blank (skip)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Row 3: Min / Center / Max */}
+                                    <div className={`grid gap-3 ${condFmtDraft.center.enabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                        {/* Min */}
+                                        <div className="flex flex-col gap-2">
+                                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Minimum</label>
+                                            <select
+                                                value={condFmtDraft.min.type}
+                                                onChange={e => setCondFmtDraft(prev => prev ? { ...prev, min: { ...prev.min, type: e.target.value as any } } : prev)}
+                                                className={`px-2 py-2 rounded-xl border text-xs font-medium outline-none focus:ring-2 focus:ring-violet-500/40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
+                                            >
+                                                <option value="lowest">Lowest value</option>
+                                                <option value="custom">Custom</option>
+                                            </select>
+                                            {condFmtDraft.min.type === 'custom' && (
+                                                <input type="number" placeholder="Enter a value" value={condFmtDraft.min.value ?? ''} onChange={e => setCondFmtDraft(prev => prev ? { ...prev, min: { ...prev.min, value: Number(e.target.value) } } : prev)}
+                                                    className={`px-2 py-2 rounded-xl border text-xs outline-none focus:ring-2 focus:ring-violet-500/40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`} />
+                                            )}
+                                            <div className="flex items-center gap-2">
+                                                <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600 cursor-pointer flex-shrink-0 shadow-sm">
+                                                    <input type="color" value={condFmtDraft.min.color} onChange={e => setCondFmtDraft(prev => prev ? { ...prev, min: { ...prev.min, color: e.target.value } } : prev)} className="absolute -top-1 -left-1 w-10 h-10 cursor-pointer border-0 p-0" />
+                                                </div>
+                                                <span className={`text-[10px] font-mono ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{condFmtDraft.min.color}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Center (togglable) */}
+                                        {condFmtDraft.center.enabled && (
+                                            <div className="flex flex-col gap-2">
+                                                <div className="flex items-center justify-between">
+                                                    <label className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Center</label>
+                                                    <button onClick={() => setCondFmtDraft(prev => prev ? { ...prev, center: { ...prev.center, enabled: false } } : prev)} className="text-[9px] text-red-400 hover:text-red-300 font-bold uppercase tracking-wider">remove</button>
+                                                </div>
+                                                <select
+                                                    value={condFmtDraft.center.type}
+                                                    onChange={e => setCondFmtDraft(prev => prev ? { ...prev, center: { ...prev.center, type: e.target.value as any } } : prev)}
+                                                    className={`px-2 py-2 rounded-xl border text-xs font-medium outline-none focus:ring-2 focus:ring-violet-500/40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
+                                                >
+                                                    <option value="middle">Middle value</option>
+                                                    <option value="custom">Custom</option>
+                                                </select>
+                                                {condFmtDraft.center.type === 'custom' && (
+                                                    <input type="number" placeholder="Enter a value" value={condFmtDraft.center.value ?? ''} onChange={e => setCondFmtDraft(prev => prev ? { ...prev, center: { ...prev.center, value: Number(e.target.value) } } : prev)}
+                                                        className={`px-2 py-2 rounded-xl border text-xs outline-none focus:ring-2 focus:ring-violet-500/40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`} />
+                                                )}
+                                                <div className="flex items-center gap-2">
+                                                    <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600 cursor-pointer flex-shrink-0 shadow-sm">
+                                                        <input type="color" value={condFmtDraft.center.color} onChange={e => setCondFmtDraft(prev => prev ? { ...prev, center: { ...prev.center, color: e.target.value } } : prev)} className="absolute -top-1 -left-1 w-10 h-10 cursor-pointer border-0 p-0" />
+                                                    </div>
+                                                    <span className={`text-[10px] font-mono ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{condFmtDraft.center.color}</span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Max */}
+                                        <div className="flex flex-col gap-2">
+                                            <label className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Maximum</label>
+                                            <select
+                                                value={condFmtDraft.max.type}
+                                                onChange={e => setCondFmtDraft(prev => prev ? { ...prev, max: { ...prev.max, type: e.target.value as any } } : prev)}
+                                                className={`px-2 py-2 rounded-xl border text-xs font-medium outline-none focus:ring-2 focus:ring-violet-500/40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
+                                            >
+                                                <option value="highest">Highest value</option>
+                                                <option value="custom">Custom</option>
+                                            </select>
+                                            {condFmtDraft.max.type === 'custom' && (
+                                                <input type="number" placeholder="Enter a value" value={condFmtDraft.max.value ?? ''} onChange={e => setCondFmtDraft(prev => prev ? { ...prev, max: { ...prev.max, value: Number(e.target.value) } } : prev)}
+                                                    className={`px-2 py-2 rounded-xl border text-xs outline-none focus:ring-2 focus:ring-violet-500/40 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`} />
+                                            )}
+                                            <div className="flex items-center gap-2">
+                                                <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600 cursor-pointer flex-shrink-0 shadow-sm">
+                                                    <input type="color" value={condFmtDraft.max.color} onChange={e => setCondFmtDraft(prev => prev ? { ...prev, max: { ...prev.max, color: e.target.value } } : prev)} className="absolute -top-1 -left-1 w-10 h-10 cursor-pointer border-0 p-0" />
+                                                </div>
+                                                <span className={`text-[10px] font-mono ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{condFmtDraft.max.color}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Add middle color toggle */}
+                                    {!condFmtDraft.center.enabled && (
+                                        <label className="flex items-center gap-2.5 cursor-pointer group">
+                                            <div onClick={() => setCondFmtDraft(prev => prev ? { ...prev, center: { ...prev.center, enabled: true } } : prev)}
+                                                className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all border-slate-500 group-hover:border-violet-500`}>
+                                            </div>
+                                            <span className={`text-xs font-medium ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'} group-hover:text-violet-400 transition-colors`}>Add a middle color</span>
+                                        </label>
+                                    )}
+
+                                    {/* Gradient Preview */}
+                                    <div className="flex flex-col gap-2">
+                                        <div className="h-6 rounded-xl shadow-inner" style={{ background: gradientCss }} />
+                                    </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div className={`flex items-center justify-between px-6 py-4 border-t ${theme === 'dark' ? 'border-slate-700/60' : 'border-slate-200'}`}>
+                                    <a href="#" className="text-[11px] text-violet-400 hover:text-violet-300 font-medium transition-colors" onClick={e => e.preventDefault()}>Learn more about conditional formatting</a>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => { setCondFmtModalChartId(null); setCondFmtDraft(null); }} className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${theme === 'dark' ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Cancel</button>
+                                        <button onClick={applyCondFmtRule} className="px-5 py-2 rounded-xl text-xs font-black bg-violet-600 text-white hover:bg-violet-500 transition-all shadow-lg shadow-violet-900/30 active:scale-95">OK</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+
                 <div id="dashboard-container" className={`min-h-screen ${theme === 'dark' ? 'bg-[#0b0f1a]' : 'bg-slate-50'} flex flex-col ${colors.textSecondary} print:${theme === 'dark' ? 'bg-slate-950' : 'bg-white'} relative overflow-hidden`}>
                     {/* Background Ambiance Blobs */}
                     <div className="absolute top-0 right-0 -mr-40 -mt-40 w-[600px] h-[600px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none animate-blob" />
@@ -4332,7 +4643,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                 </div>
                                             </div>
 
-                                            <div className={`absolute top-6 right-6 z-20 chart-controls no-print flex gap-2 items-center transition-all duration-500 opacity-0 translate-y-[-10px] group-hover:opacity-100 group-hover:translate-y-0 ${chartFilterMenuOpen === chart.id || topBottomMenuOpen === chart.id ? 'opacity-100 translate-y-0' : ''}`}>
+                                            <div className={`absolute top-6 right-6 z-20 chart-controls no-print flex gap-2 items-center transition-all duration-500 opacity-0 translate-y-[-10px] group-hover:opacity-100 group-hover:translate-y-0 ${chartFilterMenuOpen === chart.id || topBottomMenuOpen === chart.id || condFmtDropdownOpen === chart.id ? 'opacity-100 translate-y-0' : ''}`}>
                                                 <div className={`flex items-center gap-1.5 p-1.5 glass-panel rounded-2xl border ${colors.borderPrimary} shadow-xl`}>
                                                     {hasChartFilters && (
                                                         <button
@@ -4394,6 +4705,57 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                         >
                                                             <Search className="w-4 h-4" />
                                                         </button>
+                                                    )}
+                                                    {/* Conditional Formatting — only for MATRIX charts */}
+                                                    {chart.type === ChartType.MATRIX && (
+                                                        <div className="relative">
+                                                            <button
+                                                                onClick={() => setCondFmtDropdownOpen(condFmtDropdownOpen === chart.id ? null : chart.id)}
+                                                                className={`p-2 rounded-xl transition-all duration-300 active:scale-90 ${condFmtDropdownOpen === chart.id || (chart.conditionalFormatting && chart.conditionalFormatting.length > 0) ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/40' : `${colors.bgTertiary} ${colors.textMuted} hover:text-white hover:bg-violet-500/70`}`}
+                                                                title="Conditional Formatting"
+                                                            >
+                                                                <Palette className="w-4 h-4" />
+                                                            </button>
+                                                            {condFmtDropdownOpen === chart.id && (
+                                                                <>
+                                                                    <div className="fixed inset-0 z-40" onClick={() => setCondFmtDropdownOpen(null)} />
+                                                                    <div className={`absolute top-full right-0 mt-2 w-52 overflow-hidden ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 flex flex-col p-1.5 pointer-events-auto`}>
+                                                                        <div className={`px-3 py-2 text-[10px] font-black uppercase tracking-widest ${colors.textMuted}`}>Conditional Formatting</div>
+                                                                        <button
+                                                                            onClick={() => openCondFmtModal(chart.id, 'fontColor')}
+                                                                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs transition-all ${chart.conditionalFormatting?.some(r => r.type === 'fontColor') ? 'bg-violet-500/15 text-violet-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary} hover:${colors.textPrimary}`}`}
+                                                                        >
+                                                                            <span className="w-5 h-5 rounded-md bg-gradient-to-b from-slate-600 to-slate-800 flex items-center justify-center text-[10px] font-black text-white">A</span>
+                                                                            <span>Font Color</span>
+                                                                            {chart.conditionalFormatting?.some(r => r.type === 'fontColor') && <Check className="w-3.5 h-3.5 ml-auto" />}
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => openCondFmtModal(chart.id, 'cellColor')}
+                                                                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs transition-all ${chart.conditionalFormatting?.some(r => r.type === 'cellColor') ? 'bg-violet-500/15 text-violet-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary} hover:${colors.textPrimary}`}`}
+                                                                        >
+                                                                            <span className="w-5 h-5 rounded-md bg-gradient-to-r from-red-500 via-blue-500 to-red-500 flex items-center justify-center" />
+                                                                            <span>Cell Color</span>
+                                                                            {chart.conditionalFormatting?.some(r => r.type === 'cellColor') && <Check className="w-3.5 h-3.5 ml-auto" />}
+                                                                        </button>
+                                                                        {chart.conditionalFormatting && chart.conditionalFormatting.length > 0 && (
+                                                                            <>
+                                                                                <div className={`h-px ${colors.borderPrimary} my-1 mx-2 bg-slate-700/40`} />
+                                                                                {chart.conditionalFormatting.map(rule => (
+                                                                                    <button
+                                                                                        key={rule.id}
+                                                                                        onClick={() => clearCondFmtRule(chart.id, rule.type)}
+                                                                                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-red-400 hover:bg-red-500/10 transition-colors`}
+                                                                                    >
+                                                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                                                        <span>Clear {rule.type === 'fontColor' ? 'Font' : 'Cell'} Rule</span>
+                                                                                    </button>
+                                                                                ))}
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     )}
                                                     <button
                                                         onClick={() => setExpandedChartId(chart.id)}
