@@ -2602,6 +2602,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     const fontSettings = useMemo(() => ({ fontFamily, fontSize, isBold: isBoldFont, isItalic: isItalicFont }), [fontFamily, fontSize, isBoldFont, isItalicFont]);
     const FONT_OPTIONS = ['Inter', 'Times New Roman', 'Arial', 'Roboto', 'Georgia', 'Courier New'];
 
+    // --- BACKGROUND TEMPLATES STATE ---
+    const [bgTemplate, setBgTemplate] = useState<string>('');
+    const [showBgTemplates, setShowBgTemplates] = useState(false);
+    
+    const LIGHT_TEMPLATES = [
+        { id: 'light-1', name: 'Clean Canvas', style: { background: '#f8fafc' } },
+        { id: 'light-2', name: 'Soft Silk', style: { background: 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%)' } },
+        { id: 'light-3', name: 'Subtle Dots', style: { backgroundColor: '#f8fafc', backgroundImage: 'radial-gradient(#cbd5e1 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' } },
+        { id: 'light-4', name: 'Blueprint Grid', style: { backgroundColor: '#f8fafc', backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)', backgroundSize: '40px 40px' } },
+        { id: 'light-5', name: 'Diagonal Stripes', style: { backgroundColor: '#f8fafc', backgroundImage: 'repeating-linear-gradient(45deg, #f1f5f9 0, #f1f5f9 2px, transparent 2px, transparent 12px)' } },
+    ];
+
+    const DARK_TEMPLATES = [
+        { id: 'dark-1', name: 'Deep Slate', style: { background: '#0f172a' } },
+        { id: 'dark-2', name: 'Midnight Depth', style: { background: 'linear-gradient(135deg, #0f172a 0%, #020617 100%)' } },
+        { id: 'dark-3', name: 'Starlight Dots', style: { backgroundColor: '#0f172a', backgroundImage: 'radial-gradient(#334155 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' } },
+        { id: 'dark-4', name: 'Cyber Grid', style: { backgroundColor: '#0f172a', backgroundImage: 'linear-gradient(#1e293b 1px, transparent 1px), linear-gradient(90deg, #1e293b 1px, transparent 1px)', backgroundSize: '40px 40px' } },
+        { id: 'dark-5', name: 'Neon Stripes', style: { backgroundColor: '#0f172a', backgroundImage: 'repeating-linear-gradient(45deg, #1e293b 0, #1e293b 2px, transparent 2px, transparent 12px)' } },
+    ];
+
+    const activeTemplates = theme === 'dark' ? DARK_TEMPLATES : LIGHT_TEMPLATES;
+    const activeBgTemplate = activeTemplates.find(t => t.id === bgTemplate);
+    const activeBgStyle = activeBgTemplate ? activeBgTemplate.style : {};
+
     // --- TIME INTELLIGENCE STATE ---
     const [chartDrillStates, setChartDrillStates] = useState<{ [chartId: string]: { level: 'year' | 'month' | 'day', year: number | null, month: number | null } }>({});
 
@@ -4089,7 +4113,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                     );
                 })()}
 
-                <div id="dashboard-container" className={`min-h-screen ${theme === 'dark' ? 'bg-[#0b0f1a]' : 'bg-slate-50'} flex flex-col ${colors.textSecondary} print:${theme === 'dark' ? 'bg-slate-950' : 'bg-white'} relative overflow-hidden`}>
+                <div id="dashboard-container" className={`min-h-screen ${theme === 'dark' ? 'bg-[#0b0f1a]' : 'bg-slate-50'} flex flex-col ${colors.textSecondary} print:${theme === 'dark' ? 'bg-slate-950' : 'bg-white'} relative overflow-hidden`} style={activeBgStyle}>
                     {/* Background Ambiance Blobs */}
                     <div className="absolute top-0 right-0 -mr-40 -mt-40 w-[600px] h-[600px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none animate-blob" />
                     <div className="absolute bottom-0 left-0 -ml-40 -mb-40 w-[600px] h-[600px] bg-violet-500/5 rounded-full blur-[120px] pointer-events-none animate-blob animation-delay-2000" />
@@ -4188,6 +4212,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                         <Sparkles className="w-4 h-4" />
                                         <span className="hidden sm:inline">Ai Insight</span>
                                     </button>
+
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setShowBgTemplates(prev => !prev)}
+                                            className={`px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 flex items-center gap-2 shadow-sm ${showBgTemplates ? 'bg-indigo-600 border-indigo-500 text-white shadow-indigo-900/40' : `${colors.bgPrimary} ${colors.textPrimary} border ${colors.borderSecondary} hover:border-indigo-500/30 hover:text-indigo-500`} active:scale-95`}
+                                        >
+                                            <Palette className="w-4 h-4" />
+                                            <span className="hidden sm:inline">Backgrounds</span>
+                                        </button>
+                                        
+                                        {showBgTemplates && (
+                                            <>
+                                                <div className="fixed inset-0 z-40" onClick={() => setShowBgTemplates(false)} />
+                                                <div className={`absolute top-full right-0 mt-2 w-56 p-3 rounded-2xl border shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                                                    <h4 className={`text-[10px] font-black uppercase tracking-widest mb-2 px-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Dashboard Backgrounds</h4>
+                                                    <div className="flex flex-col gap-1.5">
+                                                        {(theme === 'dark' ? DARK_TEMPLATES : LIGHT_TEMPLATES).map(tpl => (
+                                                            <button
+                                                                key={tpl.id}
+                                                                onClick={() => { setBgTemplate(tpl.id); setShowBgTemplates(false); }}
+                                                                className={`flex items-center justify-between px-3 py-2 rounded-xl transition-all ${bgTemplate === tpl.id ? 'bg-indigo-500/10 border-indigo-500/30' : 'hover:bg-slate-500/10 border-transparent'} border`}
+                                                            >
+                                                                <div className="flex items-center gap-2.5">
+                                                                    <div className="w-5 h-5 rounded shadow-sm border border-slate-500/20" style={tpl.style} />
+                                                                    <span className={`text-xs font-medium ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>{tpl.name}</span>
+                                                                </div>
+                                                                {bgTemplate === tpl.id && <Check className="w-3.5 h-3.5 text-indigo-500" />}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
 
                                     <ThemeToggle className="scale-100 sm:scale-110 ml-0 sm:ml-1" />
 
@@ -4959,11 +5017,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
                 {/* --- PDF EXPORT VIEW (Hidden Off-screen) --- */}
                 {isExportingPDF && (
-                    <div id="pdf-export-view" style={{ position: 'absolute', top: '-10000px', left: '-10000px', width: '1200px', background: theme === 'dark' ? '#0f172a' : '#f8fafc' }}>
+                    <div id="pdf-export-view" style={{ position: 'absolute', top: '-10000px', left: '-10000px', width: '1200px', background: theme === 'dark' ? '#0f172a' : '#f8fafc', ...activeBgStyle }}>
                         {pdfExportPages.map((page, pIdx) => (
-                            <div key={pIdx} data-pdf-page style={{ width: '1200px', height: '1696px', padding: '60px', position: 'relative', overflow: 'hidden', background: theme === 'dark' ? '#0f172a' : '#f8fafc', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
-                                {/* Top Gradient Bar */}
-                                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'linear-gradient(to right, #6366f1, #a855f7)' }}></div>
+                            <div key={pIdx} data-pdf-page style={{ width: '1200px', height: '1696px', padding: '96px 72px 72px 72px', position: 'relative', overflow: 'hidden', background: theme === 'dark' ? '#0f172a' : '#f8fafc', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', ...activeBgStyle }}>
+                                {/* --- Premium High-Visibility Border System --- */}
+                                {/* Structural Dark/Contrasting Frame */}
+                                <div style={{ position: 'absolute', top: '24px', left: '24px', right: '24px', bottom: '24px', pointerEvents: 'none', zIndex: 50, border: `3px solid ${theme === 'dark' ? '#334155' : '#475569'}`, borderRadius: '16px', overflow: 'hidden' }}>
+                                    {/* Inner Refined Padding Line */}
+                                    <div style={{ position: 'absolute', top: '8px', left: '8px', right: '8px', bottom: '8px', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#cbd5e1'}`, borderRadius: '8px' }}></div>
+                                    
+                                    {/* Bold Top Branding Ribbon */}
+                                    <div style={{ position: 'absolute', top: '0', left: '0', right: '0', height: '18px', background: 'linear-gradient(to right, #4f46e5, #8b5cf6, #ec4899)' }}></div>
+                                    
+                                    {/* Bottom Branding Accent Ribbon */}
+                                    <div style={{ position: 'absolute', bottom: '0', left: '0', right: '0', height: '6px', background: 'linear-gradient(to right, #4f46e5, #8b5cf6, #ec4899)' }}></div>
+                                </div>
 
                                 {/* Page Header */}
                                 {page.isFirstPageOfPDF && (
@@ -5004,7 +5072,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     minWidth: '220px',
                                                     minHeight: '90px', 
                                                     background: theme === 'dark' ? '#1e293b' : '#ffffff', 
-                                                    border: `1px solid ${theme === 'dark' ? '#334155' : '#e5e7eb'}`, 
+                                                    border: `1px solid ${theme === 'dark' ? '#475569' : '#94a3b8'}`, 
                                                     padding: '16px 20px 20px 20px', 
                                                     borderRadius: '14px', 
                                                     textAlign: 'center', 
@@ -5033,7 +5101,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                 {/* Charts Grid */}
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '30px', flex: 1, width: '100%', alignContent: 'flex-start' }}>
                                     {page.charts.map((chart, cIdx) => (
-                                        <div key={chart.id} style={{ width: 'calc(50% - 15px)', background: theme === 'dark' ? '#1e293b' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#334155' : '#e5e7eb'}`, padding: '24px 24px 20px 24px', borderRadius: '16px', height: '420px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflow: 'hidden', boxShadow: 'none' }}>
+                                        <div key={chart.id} style={{ width: 'calc(50% - 15px)', background: theme === 'dark' ? '#1e293b' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#475569' : '#94a3b8'}`, padding: '24px 24px 20px 24px', borderRadius: '16px', height: '420px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflow: 'hidden', boxShadow: 'none' }}>
                                             <div style={{ marginBottom: '12px', flexShrink: 0, overflow: 'visible' }}>
                                                 <h4 style={{ fontSize: '15px', fontWeight: '700', color: theme === 'dark' ? '#f1f5f9' : '#1e293b', margin: '0 0 2px 0', lineHeight: '1.4', overflow: 'visible', wordBreak: 'break-word' }}>{chart.title}</h4>
                                                 <p style={{ fontSize: '11px', color: theme === 'dark' ? '#64748b' : '#94a3b8', margin: '0', lineHeight: '1.3', overflow: 'visible', wordBreak: 'break-word' }}>{chart.description}</p>
