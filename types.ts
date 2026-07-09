@@ -80,6 +80,26 @@ export interface AggregatedColumnDefinition {
   aggregation: AggregationType;
 }
 
+// ── Data Modelling (Association) ────────────────────────────────────────────
+export type CardinalityType = 'ONE_TO_ONE' | 'ONE_TO_MANY' | 'MANY_TO_ONE' | 'MANY_TO_MANY';
+export type CrossFilterDirection = 'SINGLE' | 'BOTH';
+
+export interface TableRelationship {
+  id: string;
+  fromTable: string;       // table name
+  fromColumn: string;      // column name
+  toTable: string;
+  toColumn: string;
+  cardinality: CardinalityType;
+  crossFilter: CrossFilterDirection;
+  isActive: boolean;
+}
+
+export interface TableCardPosition {
+  x: number;
+  y: number;
+}
+
 export interface DataModel {
   name: string;
   data: ProcessedRow[];
@@ -95,6 +115,10 @@ export interface DataModel {
   joinConfigs?: JoinConfig[];
   appendConfigs?: AppendConfig[];
   tableConfigs?: { [tableId: string]: { headerIndex: number; name: string } };
+  // Data Modelling layer
+  relationships?: TableRelationship[];
+  tablePositions?: { [tableName: string]: TableCardPosition };
+  modellingTables?: { id: string; name: string; columns: string[] }[];
 }
 
 export enum AggregationType {

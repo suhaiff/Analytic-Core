@@ -1,6 +1,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 const Landing = lazy(() => import('./components/Landing').then(m => ({ default: m.Landing })));
 const DataConfig = lazy(() => import('./components/DataConfig').then(m => ({ default: m.DataConfig })));
+const DataModelling = lazy(() => import('./components/DataModelling').then(m => ({ default: m.DataModelling })));
 const ChartBuilder = lazy(() => import('./components/ChartBuilder').then(m => ({ default: m.ChartBuilder })));
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
 const DataProfiling = lazy(() => import('./components/DataProfiling').then(m => ({ default: m.DataProfiling })));
@@ -40,6 +41,7 @@ enum Step {
   LANDING = 0,
   DATA_PROFILING = 'DATA_PROFILING',
   CONFIG = 1,
+  DATA_MODELLING = 'DATA_MODELLING',
   BUILDER = 2,
   DASHBOARD = 3,
   ML_MODELS = 'ML_MODELS',
@@ -432,6 +434,11 @@ function AppContent() {
 
   const handleConfigFinalize = (model: DataModel) => {
     setDataModel(model);
+    setStep(Step.DATA_MODELLING);
+  };
+
+  const handleModellingComplete = (model: DataModel) => {
+    setDataModel(model);
     setStep(Step.BUILDER);
   };
 
@@ -725,6 +732,15 @@ function AppContent() {
             uploadedFileId={uploadedFileId}
             sourceType={sourceType}
             onFinalize={handleConfigFinalize}
+            onHome={handleReturnHomeRequest}
+          />
+        )}
+
+        {step === Step.DATA_MODELLING && dataModel && (
+          <DataModelling
+            dataModel={dataModel}
+            onComplete={handleModellingComplete}
+            onBack={() => setStep(Step.CONFIG)}
             onHome={handleReturnHomeRequest}
           />
         )}

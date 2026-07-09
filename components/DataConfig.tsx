@@ -371,6 +371,13 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             };
         });
 
+        // Build per-table column maps for the Data Modelling layer
+        const modellingTables = tables.map(t => {
+            const idx = headerIndices[t.id] || 0;
+            const cols = t.rawData?.rows?.[idx] || [];
+            return { id: t.id, name: t.name, columns: cols.filter((c: string) => c && c.trim()) };
+        });
+
         const model: DataModel = {
             name: dashboardTitle.trim() || tables.map(t => t.name).join(' + '),
             data: processedData,
@@ -385,7 +392,8 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             headerIndex: tables.length === 1 ? (headerIndices[tables[0].id] || 0) : undefined,
             joinConfigs: joins,
             appendConfigs: appends,
-            tableConfigs: tableConfigs
+            tableConfigs: tableConfigs,
+            modellingTables: modellingTables.length > 1 ? modellingTables : undefined,
         };
 
         // Log configuration to server

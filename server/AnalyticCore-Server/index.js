@@ -872,11 +872,11 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         // Check if it's an Excel or SQL file
         const extension = originalname.split('.').pop().toLowerCase();
         const isExcelFile = mimetype.includes('spreadsheet') || mimetype.includes('excel') ||
-            extension === 'xlsx' || extension === 'xls';
+            ['xlsx', 'xls', 'xml', 'csv', 'json'].includes(extension) || mimetype.includes('xml') || mimetype.includes('csv') || mimetype.includes('json');
         const isSqlFile = mimetype.includes('sql') || mimetype === 'text/plain' || extension === 'sql';
 
         if (!isExcelFile && !isSqlFile) {
-            return res.status(400).json({ error: 'Only Excel (.xlsx, .xls) and SQL (.sql) dump files are supported' });
+            return res.status(400).json({ error: 'Only Excel (.xlsx, .xls), CSV, JSON, XML and SQL (.sql) dump files are supported' });
         }
 
         // Handle SQL files differently - just store file info and return
