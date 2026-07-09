@@ -14,6 +14,7 @@ const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').th
 const MLModelHub = lazy(() => import('./components/ml/MLModelHub').then(m => ({ default: m.MLModelHub })));
 const SubscriptionPricing = lazy(() => import('./components/SubscriptionPricing').then(m => ({ default: m.SubscriptionPricing })));
 const PermissionGate = lazy(() => import('./components/PermissionGate').then(m => ({ default: m.PermissionGate })));
+const Details = lazy(() => import('./components/Details').then(m => ({ default: m.Details })));
 
 import { processFile } from './utils/fileParser';
 import { processRawData, performJoins } from './utils/dataProcessing';
@@ -42,7 +43,8 @@ enum Step {
   BUILDER = 2,
   DASHBOARD = 3,
   ML_MODELS = 'ML_MODELS',
-  PRICING = 'PRICING'
+  PRICING = 'PRICING',
+  DETAILS = 'DETAILS'
 }
 
 interface ToastState {
@@ -648,7 +650,12 @@ function AppContent() {
           <Overview 
             user={currentUser} 
             onNavigateToLanding={() => setStep(Step.LANDING)} 
+            onNavigateToDetails={() => setStep(Step.DETAILS)}
           />
+        )}
+
+        {step === Step.DETAILS && (
+          <Details onNavigateToLanding={() => setStep(Step.LANDING)} />
         )}
 
         {step === Step.LANDING && (

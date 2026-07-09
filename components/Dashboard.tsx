@@ -2604,27 +2604,55 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
     // --- BACKGROUND TEMPLATES STATE ---
     const [bgTemplate, setBgTemplate] = useState<string>('');
+    const [bgCustomColor, setBgCustomColor] = useState<string>('');
+    const [bgCustomImage, setBgCustomImage] = useState<string>('');
     const [showBgTemplates, setShowBgTemplates] = useState(false);
     
     const LIGHT_TEMPLATES = [
-        { id: 'light-1', name: 'Clean Canvas', style: { background: '#f8fafc' } },
-        { id: 'light-2', name: 'Soft Silk', style: { background: 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%)' } },
-        { id: 'light-3', name: 'Subtle Dots', style: { backgroundColor: '#f8fafc', backgroundImage: 'radial-gradient(#cbd5e1 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' } },
-        { id: 'light-4', name: 'Blueprint Grid', style: { backgroundColor: '#f8fafc', backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)', backgroundSize: '40px 40px' } },
-        { id: 'light-5', name: 'Diagonal Stripes', style: { backgroundColor: '#f8fafc', backgroundImage: 'repeating-linear-gradient(45deg, #f1f5f9 0, #f1f5f9 2px, transparent 2px, transparent 12px)' } },
+        { id: 'light-1', name: 'Frost Glass', style: { background: 'linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(241,245,249,0.8) 100%)', backdropFilter: 'blur(10px)' } },
+        { id: 'light-2', name: 'Prismatic Light', style: { background: 'linear-gradient(45deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%)' } },
+        { id: 'light-3', name: 'Subtle Dots', style: { backgroundColor: 'transparent', backgroundImage: 'radial-gradient(rgba(148, 163, 184, 0.4) 2px, transparent 2px)', backgroundSize: '30px 30px' } },
+        { id: 'light-4', name: 'Modern Mesh', style: { backgroundColor: 'transparent', backgroundImage: 'linear-gradient(rgba(226, 232, 240, 0.8) 1px, transparent 1px), linear-gradient(90deg, rgba(226, 232, 240, 0.8) 1px, transparent 1px)', backgroundSize: '40px 40px' } },
+        { id: 'light-5', name: 'Soft Waves', style: { background: 'radial-gradient(circle at top left, #e0c3fc 0%, #8ec5fc 100%)' } },
     ];
 
     const DARK_TEMPLATES = [
-        { id: 'dark-1', name: 'Deep Slate', style: { background: '#0f172a' } },
-        { id: 'dark-2', name: 'Midnight Depth', style: { background: 'linear-gradient(135deg, #0f172a 0%, #020617 100%)' } },
-        { id: 'dark-3', name: 'Starlight Dots', style: { backgroundColor: '#0f172a', backgroundImage: 'radial-gradient(#334155 1.5px, transparent 1.5px)', backgroundSize: '24px 24px' } },
-        { id: 'dark-4', name: 'Cyber Grid', style: { backgroundColor: '#0f172a', backgroundImage: 'linear-gradient(#1e293b 1px, transparent 1px), linear-gradient(90deg, #1e293b 1px, transparent 1px)', backgroundSize: '40px 40px' } },
-        { id: 'dark-5', name: 'Neon Stripes', style: { backgroundColor: '#0f172a', backgroundImage: 'repeating-linear-gradient(45deg, #1e293b 0, #1e293b 2px, transparent 2px, transparent 12px)' } },
+        { id: 'dark-1', name: 'Deep Space', style: { background: 'radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%)' } },
+        { id: 'dark-2', name: 'Midnight Nebula', style: { background: 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)' } },
+        { id: 'dark-3', name: 'Starlight Dots', style: { backgroundColor: 'transparent', backgroundImage: 'radial-gradient(rgba(71, 85, 105, 0.6) 2px, transparent 2px)', backgroundSize: '30px 30px' } },
+        { id: 'dark-4', name: 'Cyber Grid', style: { backgroundColor: 'transparent', backgroundImage: 'linear-gradient(rgba(30, 64, 175, 0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(30, 64, 175, 0.3) 1px, transparent 1px)', backgroundSize: '50px 50px' } },
+        { id: 'dark-5', name: 'Aurora Dark', style: { background: 'linear-gradient(45deg, #1a2a6c, #11998e, #38ef7d)', opacity: 0.95 } },
     ];
 
     const activeTemplates = theme === 'dark' ? DARK_TEMPLATES : LIGHT_TEMPLATES;
     const activeBgTemplate = activeTemplates.find(t => t.id === bgTemplate);
-    const activeBgStyle = activeBgTemplate ? activeBgTemplate.style : {};
+    const activeBgStyle = useMemo(() => {
+        let style: React.CSSProperties = activeBgTemplate ? { ...activeBgTemplate.style } : {};
+        if (bgCustomColor) {
+            style.backgroundColor = bgCustomColor;
+            style.background = undefined; // Override background shorthand if color is chosen
+        }
+        if (bgCustomImage) {
+            style.backgroundImage = style.backgroundImage ? `url(${bgCustomImage}), ${style.backgroundImage}` : `url(${bgCustomImage})`;
+            style.backgroundSize = style.backgroundSize ? `cover, ${style.backgroundSize}` : 'cover';
+            style.backgroundPosition = 'center';
+            style.backgroundRepeat = 'no-repeat';
+        }
+        return style;
+    }, [activeBgTemplate, bgCustomColor, bgCustomImage]);
+
+    const handleBgImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                if (event.target?.result) {
+                    setBgCustomImage(event.target.result as string);
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     // --- TIME INTELLIGENCE STATE ---
     const [chartDrillStates, setChartDrillStates] = useState<{ [chartId: string]: { level: 'year' | 'month' | 'day', year: number | null, month: number | null } }>({});
@@ -3480,7 +3508,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
             const pageElements = document.querySelectorAll('[data-pdf-page]');
             if (!pageElements.length) throw new Error("Export elements not found");
 
-            const bgColor = theme === 'dark' ? '#0f172a' : '#f8fafc';
+            const bgColor = bgCustomColor || (theme === 'dark' ? '#0f172a' : '#f8fafc');
             const pdfWidth = pdf.internal.pageSize.getWidth();
             const pdfHeight = pdf.internal.pageSize.getHeight();
 
@@ -4225,13 +4253,49 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                         {showBgTemplates && (
                                             <>
                                                 <div className="fixed inset-0 z-40" onClick={() => setShowBgTemplates(false)} />
-                                                <div className={`absolute top-full right-0 mt-2 w-56 p-3 rounded-2xl border shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-                                                    <h4 className={`text-[10px] font-black uppercase tracking-widest mb-2 px-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Dashboard Backgrounds</h4>
+                                                <div className={`absolute top-full right-0 mt-2 w-64 p-3 rounded-2xl border shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} max-h-[80vh] overflow-y-auto`}>
+                                                    <div className="flex items-center justify-between mb-2 px-2">
+                                                        <h4 className={`text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Backgrounds</h4>
+                                                        {(bgTemplate || bgCustomColor || bgCustomImage) && (
+                                                            <button
+                                                                onClick={() => { setBgTemplate(''); setBgCustomColor(''); setBgCustomImage(''); setShowBgTemplates(false); }}
+                                                                className="text-[10px] font-bold text-red-500 hover:text-red-400 uppercase transition-colors px-1"
+                                                            >
+                                                                Remove
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {/* Color & Image Pickers */}
+                                                    <div className="flex items-center gap-2 mb-3 px-2">
+                                                        <div className="flex flex-col flex-1">
+                                                            <label className={`text-[9px] font-bold uppercase mb-1 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>Color</label>
+                                                            <div className={`relative h-8 rounded-lg overflow-hidden border ${theme === 'dark' ? 'border-slate-700' : 'border-slate-300'}`}>
+                                                                <input
+                                                                    type="color"
+                                                                    value={bgCustomColor || (theme === 'dark' ? '#0f172a' : '#ffffff')}
+                                                                    onChange={(e) => setBgCustomColor(e.target.value)}
+                                                                    className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-col flex-1">
+                                                            <label className={`text-[9px] font-bold uppercase mb-1 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>Image</label>
+                                                            <label className={`w-full h-8 flex items-center justify-center rounded-lg border border-dashed cursor-pointer transition-colors ${theme === 'dark' ? 'border-slate-600 hover:bg-slate-700' : 'border-slate-300 hover:bg-slate-100'}`}>
+                                                                <span className="text-[10px] font-bold">Upload</span>
+                                                                <input type="file" accept="image/*" className="hidden" onChange={handleBgImageUpload} />
+                                                            </label>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className={`h-px w-full my-2 ${theme === 'dark' ? 'bg-slate-700/50' : 'bg-slate-200/50'}`} />
+                                                    
+                                                    <h4 className={`text-[10px] font-black uppercase tracking-widest mb-2 px-2 mt-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>Templates</h4>
                                                     <div className="flex flex-col gap-1.5">
                                                         {(theme === 'dark' ? DARK_TEMPLATES : LIGHT_TEMPLATES).map(tpl => (
                                                             <button
                                                                 key={tpl.id}
-                                                                onClick={() => { setBgTemplate(tpl.id); setShowBgTemplates(false); }}
+                                                                onClick={() => { setBgTemplate(tpl.id); }}
                                                                 className={`flex items-center justify-between px-3 py-2 rounded-xl transition-all ${bgTemplate === tpl.id ? 'bg-indigo-500/10 border-indigo-500/30' : 'hover:bg-slate-500/10 border-transparent'} border`}
                                                             >
                                                                 <div className="flex items-center gap-2.5">
