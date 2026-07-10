@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../utils/fetchWithAuth';
 import React, { useState, useEffect } from 'react';
 import { Check, CheckCircle2, Building2, ChevronDown, ChevronUp, Sparkles, CreditCard, LayoutDashboard, BrainCircuit, FileText } from 'lucide-react';
 import { API_BASE } from '../config/api';
@@ -56,12 +57,12 @@ export const SubscriptionPricing: React.FC<SubscriptionPricingProps> = ({ onBack
     const fetchPricingData = async () => {
       try {
         const fetchPromises = [
-          fetch(`${API_BASE}/subscriptions/plans`),
-          fetch(`${API_BASE}/subscriptions/modules`)
+          fetchWithAuth(`${API_BASE}/subscriptions/plans`),
+          fetchWithAuth(`${API_BASE}/subscriptions/modules`)
         ];
 
         if (user && user.organization_id) {
-          fetchPromises.push(fetch(`${API_BASE}/subscriptions/${user.organization_id}`));
+          fetchPromises.push(fetchWithAuth(`${API_BASE}/subscriptions/${user.organization_id}`));
         }
 
         const responses = await Promise.all(fetchPromises);

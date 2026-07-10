@@ -562,14 +562,99 @@ export const DataModelling: React.FC<DataModellingProps> = ({ dataModel, onCompl
 
   // ── Finalize ──────────────────────────────────────────────────────────────
   const handleComplete = () => {
+    let mergedData = [...(tables[0]?.data || dataModel.data || [])];
+    let mergedColumns = [...(tables[0]?.columns || dataModel.columns || [])];
+
+    if (relationships.length > 0 && tables.length > 0) {
+      const baseTable = tables[0];
+      
+      // 1. Prefix base table
+      mergedData = baseTable.data.map(row => {
+        const newRow: any = { ...row };
+        baseTable.columns.forEach(col => {
+          newRow[`${baseTable.name}.${col}`] = row[col];
+        });
+        return newRow;
+      });
+      mergedColumns = baseTable.columns.map(c => `${baseTable.name}.${c}`);
+      
+      const joinedTables = new Set([baseTable.name]);
+      let relationshipsToProcess = [...relationships];
+      let iterations = 0;
+
+      // Iteratively join tables that are connected to the already joined tables (handles Star schema)
+      while (relationshipsToProcess.length > 0 && iterations < 10) {
+        iterations++;
+        const currentRels = [...relationshipsToProcess];
+        relationshipsToProcess = [];
+
+        for (const rel of currentRels) {
+          const isFromJoined = joinedTables.has(rel.fromTable);
+          const isToJoined = joinedTables.has(rel.toTable);
+
+          if (isFromJoined && !isToJoined) {
+             const toTable = tables.find(t => t.name === rel.toTable);
+             if (toTable) {
+                const rightMap = new Map();
+                toTable.data.forEach(row => {
+                   rightMap.set(String(row[rel.toColumn]), row);
+                });
+
+                mergedData = mergedData.map(row => {
+                   const joinKey = String(row[`${rel.fromTable}.${rel.fromColumn}`] ?? row[rel.fromColumn]);
+                   const match = rightMap.get(joinKey);
+                   const newRow = { ...row };
+                   toTable.columns.forEach(col => {
+                      const val = match ? match[col] : null;
+                      newRow[`${toTable.name}.${col}`] = val;
+                      newRow[col] = val; // fallback for AI processing un-prefixed
+                   });
+                   return newRow;
+                });
+                toTable.columns.forEach(col => mergedColumns.push(`${toTable.name}.${col}`));
+                joinedTables.add(toTable.name);
+             }
+          } else if (isToJoined && !isFromJoined) {
+             const fromTable = tables.find(t => t.name === rel.fromTable);
+             if (fromTable) {
+                const rightMap = new Map();
+                fromTable.data.forEach(row => {
+                   rightMap.set(String(row[rel.fromColumn]), row);
+                });
+
+                mergedData = mergedData.map(row => {
+                   const joinKey = String(row[`${rel.toTable}.${rel.toColumn}`] ?? row[rel.toColumn]);
+                   const match = rightMap.get(joinKey);
+                   const newRow = { ...row };
+                   fromTable.columns.forEach(col => {
+                      const val = match ? match[col] : null;
+                      newRow[`${fromTable.name}.${col}`] = val;
+                      newRow[col] = val;
+                   });
+                   return newRow;
+                });
+                fromTable.columns.forEach(col => mergedColumns.push(`${fromTable.name}.${col}`));
+                joinedTables.add(fromTable.name);
+             }
+          } else if (!isFromJoined && !isToJoined) {
+             relationshipsToProcess.push(rel);
+          }
+        }
+      }
+      mergedColumns = Array.from(new Set(mergedColumns));
+    }
+
     const enriched: DataModel = {
       ...dataModel,
+      data: mergedData,
+      columns: mergedColumns,
       relationships,
       tablePositions: positions,
       modellingTables: tables,
     };
     onComplete(enriched);
   };
+
 
   const handleSkip = () => {
     onComplete(dataModel);

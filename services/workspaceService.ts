@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../utils/fetchWithAuth';
 import { WorkspaceFolder, SavedDashboard, WorkspaceGroup } from '../types';
 import { API_BASE } from '../config/api';
 
@@ -5,7 +6,7 @@ const API_URL = API_BASE;
 
 export const workspaceService = {
     async getFolders(userId: number): Promise<WorkspaceFolder[]> {
-        const response = await fetch(`${API_URL}/workspace/folders?userId=${userId}`);
+        const response = await fetchWithAuth(`${API_URL}/workspace/folders?userId=${userId}`);
         if (!response.ok) throw new Error('Failed to fetch workspace folders');
         return await response.json();
     },
@@ -16,7 +17,7 @@ export const workspaceService = {
         accessUsers: { id: number; level: string }[], 
         accessGroups: { id: string; level: string }[]
     ): Promise<WorkspaceFolder> {
-        const response = await fetch(`${API_URL}/workspace/folders`, {
+        const response = await fetchWithAuth(`${API_URL}/workspace/folders`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ownerId, name, accessUsers, accessGroups })
@@ -35,7 +36,7 @@ export const workspaceService = {
         accessGroups: { id: string; level: string }[],
         requestingUserId: number
     ): Promise<void> {
-        const response = await fetch(`${API_URL}/workspace/folders/${folderId}`, {
+        const response = await fetchWithAuth(`${API_URL}/workspace/folders/${folderId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, accessUsers, accessGroups, requestingUserId })
@@ -47,7 +48,7 @@ export const workspaceService = {
     },
 
     async deleteFolder(folderId: string, requestingUserId: number): Promise<void> {
-        const response = await fetch(
+        const response = await fetchWithAuth(
             `${API_URL}/workspace/folders/${folderId}?userId=${requestingUserId}`,
             { method: 'DELETE' }
         );
@@ -58,7 +59,7 @@ export const workspaceService = {
     },
 
     async getFolderDashboards(folderId: string, userId: number): Promise<{ dashboards: SavedDashboard[], effectiveLevel: string }> {
-        const response = await fetch(
+        const response = await fetchWithAuth(
             `${API_URL}/workspace/folders/${folderId}/dashboards?userId=${userId}`
         );
         if (!response.ok) throw new Error('Failed to fetch folder dashboards');
@@ -67,13 +68,13 @@ export const workspaceService = {
 
     // Workspace Groups
     async getGroups(userId: number): Promise<WorkspaceGroup[]> {
-        const response = await fetch(`${API_URL}/workspace/groups?userId=${userId}`);
+        const response = await fetchWithAuth(`${API_URL}/workspace/groups?userId=${userId}`);
         if (!response.ok) throw new Error('Failed to fetch workspace groups');
         return await response.json();
     },
 
     async createGroup(ownerId: number, name: string, userIds: number[]): Promise<WorkspaceGroup> {
-        const response = await fetch(`${API_URL}/workspace/groups`, {
+        const response = await fetchWithAuth(`${API_URL}/workspace/groups`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ownerId, name, userIds })
@@ -86,7 +87,7 @@ export const workspaceService = {
     },
 
     async updateGroup(groupId: string, name: string, userIds: number[], requestingUserId: number): Promise<void> {
-        const response = await fetch(`${API_URL}/workspace/groups/${groupId}`, {
+        const response = await fetchWithAuth(`${API_URL}/workspace/groups/${groupId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, userIds, requestingUserId })
@@ -98,7 +99,7 @@ export const workspaceService = {
     },
 
     async deleteGroup(groupId: string, userId: number): Promise<void> {
-        const response = await fetch(`${API_URL}/workspace/groups/${groupId}?userId=${userId}`, {
+        const response = await fetchWithAuth(`${API_URL}/workspace/groups/${groupId}?userId=${userId}`, {
             method: 'DELETE'
         });
         if (!response.ok) {

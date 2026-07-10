@@ -14,7 +14,8 @@ const fs = require('fs');
 const axios = require('axios');
 const FormData = require('form-data');
 const XLSX = require('xlsx');
-const supabaseService = require('./supabaseService');
+const globalSupabaseService = require('./supabaseService');
+const SupabaseService = globalSupabaseService.SupabaseService;
 const brevoService = require('./brevoService');
 const googleSheetsService = require('./googleSheetsService');
 const sharepointService = require('./sharepointService');
@@ -136,21 +137,43 @@ const loginLimiter = rateLimit({
 });
 
 // Auth Endpoints
+// RLS Middleware: Extracts JWT from Authorization header and creates a scoped Supabase client
+app.use((req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        req.token = token;
+        req.supabaseService = new SupabaseService(token);
+    } else {
+        req.supabaseService = globalSupabaseService; // Fallback to service role if no token (use carefully)
+    }
+    next();
+});
+
 app.post('/api/login', loginLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await supabaseService.getUserByEmail(email);
-
-        if (user && user.password === password) {
-            // Don't send password back
-            const { password, otp_code, otp_expires_at, ...userWithoutSensitive } = user;
-            res.json(userWithoutSensitive);
+        
+        // Use Supabase Auth for login
+        const authData = await req.supabaseService.signIn(email, password);
+        
+        // Get additional user profile data from public.users
+        const user = await req.supabaseService.getUserByEmail(email);
+        
+        if (user) {
+            const { password: _, otp_code, otp_expires_at, ...userWithoutSensitive } = user;
+            // Return both the JWT token and the user profile
+            res.json({
+                ...userWithoutSensitive,
+                access_token: authData.session.access_token,
+                refresh_token: authData.session.refresh_token
+            });
         } else {
-            res.status(401).json({ error: 'Invalid credentials' });
+            res.status(401).json({ error: 'User profile not found' });
         }
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(401).json({ error: 'Invalid credentials or login failed' });
     }
 });
 
@@ -158,22 +181,20 @@ app.post('/api/signup', async (req, res) => {
     try {
         const { name, email, phone, company, job_title, domain } = req.body;
 
-        // Check if user already exists
-        const existingUser = await supabaseService.getUserByEmail(email);
+        const existingUser = await req.supabaseService.getUserByEmail(email);
         if (existingUser) {
             return res.status(400).json({ error: 'Email already exists' });
         }
 
-        // Generate temporary password
         const tempPassword = generateTempPassword();
 
-        const newUser = await supabaseService.createUser(
+        // This will now create the user in auth.users and link to public.users
+        const newUser = await req.supabaseService.createUser(
             name, email, tempPassword, 'USER',
             phone, company, job_title, domain,
-            null, false, true // must_change_password = true
+            null, false, true 
         );
 
-        // Send temporary password email
         await brevoService.sendTemporaryPasswordEmail(email, name, tempPassword);
 
         res.json({ ...newUser, emailSent: true });
@@ -186,7 +207,7 @@ app.post('/api/signup', async (req, res) => {
 // User Management (Admin)
 app.get('/api/users', async (req, res) => {
     try {
-        const users = await supabaseService.getUsers();
+        const users = await req.supabaseService.getUsers();
         res.json(users);
     } catch (error) {
         console.error('Get users error:', error);
@@ -197,7 +218,7 @@ app.get('/api/users', async (req, res) => {
 app.delete('/api/users/:id', async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
-        await supabaseService.deleteUser(userId);
+        await req.supabaseService.deleteUser(userId);
         res.json({ message: 'User deleted successfully' });
     } catch (error) {
         console.error('Delete user error:', error);
@@ -224,7 +245,7 @@ app.post('/api/admin/users/bulk', async (req, res) => {
                 const { name, email, role, phone, company, job_title, domain } = userData;
                 
                 // Check if user already exists
-                const existingUser = await supabaseService.getUserByEmail(email);
+                const existingUser = await req.supabaseService.getUserByEmail(email);
                 if (existingUser) {
                     results.failed++;
                     results.errors.push({ email, error: 'Email already exists' });
@@ -234,7 +255,7 @@ app.post('/api/admin/users/bulk', async (req, res) => {
                 // Generate temporary password for each user
                 const tempPassword = generateTempPassword();
 
-                await supabaseService.createUser(
+                await req.supabaseService.createUser(
                     name, 
                     email, 
                     tempPassword,
@@ -279,7 +300,7 @@ app.put('/api/users/:id/password', async (req, res) => {
         }
 
         // Verify current password
-        const { data: user, error: fetchError } = await supabaseService.supabase
+        const { data: user, error: fetchError } = await req.supabaseService.supabase
             .from('users')
             .select('password')
             .eq('id', userId)
@@ -293,7 +314,7 @@ app.put('/api/users/:id/password', async (req, res) => {
             return res.status(401).json({ error: 'Current password is incorrect' });
         }
 
-        await supabaseService.updateUserPassword(userId, newPassword);
+        await req.supabaseService.updateUserPassword(userId, newPassword);
         res.json({ message: 'Password updated successfully' });
     } catch (error) {
         console.error('Change password error:', error);
@@ -307,7 +328,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         const { email } = req.body;
         if (!email) return res.status(400).json({ error: 'Email is required' });
 
-        const user = await supabaseService.getUserByEmail(email);
+        const user = await req.supabaseService.getUserByEmail(email);
         if (!user) {
             // Don't reveal if email exists or not for security
             return res.json({ message: 'If the email exists, an OTP has been sent' });
@@ -316,7 +337,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         const otp = generateOtp();
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
-        await supabaseService.setUserOtp(email, otp, expiresAt);
+        await req.supabaseService.setUserOtp(email, otp, expiresAt);
         await brevoService.sendOtpEmail(email, user.name, otp);
 
         res.json({ message: 'OTP sent to your email' });
@@ -332,7 +353,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
         const { email, otp } = req.body;
         if (!email || !otp) return res.status(400).json({ error: 'Email and OTP are required' });
 
-        const user = await supabaseService.getUserByEmail(email);
+        const user = await req.supabaseService.getUserByEmail(email);
         if (!user) {
             return res.status(400).json({ error: 'Invalid email or OTP' });
         }
@@ -342,7 +363,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
         }
 
         if (new Date(user.otp_expires_at) < new Date()) {
-            await supabaseService.clearUserOtp(email);
+            await req.supabaseService.clearUserOtp(email);
             return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
         }
 
@@ -365,17 +386,17 @@ app.post('/api/auth/reset-password', async (req, res) => {
             return res.status(400).json({ error: 'Password must be at least 8 characters' });
         }
 
-        const user = await supabaseService.getUserByEmail(email);
+        const user = await req.supabaseService.getUserByEmail(email);
         if (!user || !user.otp_code || user.otp_code !== otp) {
             return res.status(400).json({ error: 'Invalid email or OTP' });
         }
 
         if (new Date(user.otp_expires_at) < new Date()) {
-            await supabaseService.clearUserOtp(email);
+            await req.supabaseService.clearUserOtp(email);
             return res.status(400).json({ error: 'OTP has expired' });
         }
 
-        await supabaseService.updateUserPasswordByEmail(email, newPassword);
+        await req.supabaseService.updateUserPasswordByEmail(email, newPassword);
         res.json({ message: 'Password reset successfully' });
     } catch (error) {
         console.error('Reset password error:', error);
@@ -391,7 +412,7 @@ app.post('/api/organizations', async (req, res) => {
     try {
         const { name } = req.body;
         if (!name) return res.status(400).json({ error: 'Missing organization name' });
-        const org = await supabaseService.createOrganization(name);
+        const org = await req.supabaseService.createOrganization(name);
         res.json(org);
     } catch (error) {
         console.error('Create organization error:', error);
@@ -401,7 +422,7 @@ app.post('/api/organizations', async (req, res) => {
 
 app.get('/api/organizations', async (req, res) => {
     try {
-        const orgs = await supabaseService.getOrganizations();
+        const orgs = await req.supabaseService.getOrganizations();
         res.json(orgs);
     } catch (error) {
         console.error('Get organizations error:', error);
@@ -411,7 +432,7 @@ app.get('/api/organizations', async (req, res) => {
 
 app.delete('/api/organizations/:id', async (req, res) => {
     try {
-        await supabaseService.deleteOrganization(req.params.id);
+        await req.supabaseService.deleteOrganization(req.params.id);
         res.json({ message: 'Organization deleted' });
     } catch (error) {
         console.error('Delete organization error:', error);
@@ -421,7 +442,7 @@ app.delete('/api/organizations/:id', async (req, res) => {
 
 app.get('/api/organizations/:id/users', async (req, res) => {
     try {
-        const users = await supabaseService.getUsersByOrganization(req.params.id);
+        const users = await req.supabaseService.getUsersByOrganization(req.params.id);
         res.json(users);
     } catch (error) {
         console.error('Get organization users error:', error);
@@ -437,7 +458,7 @@ app.put('/api/users/:id/organization', async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         const { organizationId } = req.body;
-        await supabaseService.updateUserOrganization(userId, organizationId);
+        await req.supabaseService.updateUserOrganization(userId, organizationId);
         res.json({ message: 'User organization updated' });
     } catch (error) {
         console.error('Update user organization error:', error);
@@ -449,7 +470,7 @@ app.put('/api/users/:id/superuser', async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         const { isSuperuser } = req.body;
-        await supabaseService.updateUserSuperuser(userId, isSuperuser);
+        await req.supabaseService.updateUserSuperuser(userId, isSuperuser);
         res.json({ message: 'User superuser status updated' });
     } catch (error) {
         console.error('Update user superuser error:', error);
@@ -461,7 +482,7 @@ app.put('/api/users/:id/pricing', async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         const { pricing } = req.body;
-        await supabaseService.updateUserPricing(userId, pricing);
+        await req.supabaseService.updateUserPricing(userId, pricing);
         res.json({ message: 'User pricing updated' });
     } catch (error) {
         console.error('Update user pricing error:', error);
@@ -473,7 +494,7 @@ app.put('/api/users/:id/duration', async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         const { duration } = req.body;
-        await supabaseService.updateUserDuration(userId, duration);
+        await req.supabaseService.updateUserDuration(userId, duration);
         res.json({ message: 'User duration updated' });
     } catch (error) {
         console.error('Update user duration error:', error);
@@ -492,7 +513,7 @@ app.post('/api/dashboards/:id/access', async (req, res) => {
         if (!userId || !accessLevel || !grantedBy) {
             return res.status(400).json({ error: 'Missing userId, accessLevel, or grantedBy' });
         }
-        const result = await supabaseService.grantDashboardAccess(dashboardId, userId, accessLevel, grantedBy);
+        const result = await req.supabaseService.grantDashboardAccess(dashboardId, userId, accessLevel, grantedBy);
         res.json(result);
     } catch (error) {
         console.error('Grant dashboard access error:', error);
@@ -507,7 +528,7 @@ app.delete('/api/dashboards/:id/access/:userId', async (req, res) => {
         const userId = parseInt(req.params.userId);
         const requestingUserId = parseInt(req.query.requestingUserId);
         if (!requestingUserId) return res.status(400).json({ error: 'Missing requestingUserId' });
-        await supabaseService.revokeDashboardAccess(dashboardId, userId, requestingUserId);
+        await req.supabaseService.revokeDashboardAccess(dashboardId, userId, requestingUserId);
         res.json({ message: 'Access revoked' });
     } catch (error) {
         console.error('Revoke dashboard access error:', error);
@@ -519,7 +540,7 @@ app.delete('/api/dashboards/:id/access/:userId', async (req, res) => {
 app.get('/api/dashboards/:id/access', async (req, res) => {
     try {
         const dashboardId = parseInt(req.params.id);
-        const accessList = await supabaseService.getDashboardAccessList(dashboardId);
+        const accessList = await req.supabaseService.getDashboardAccessList(dashboardId);
         res.json(accessList);
     } catch (error) {
         console.error('Get dashboard access error:', error);
@@ -531,7 +552,7 @@ app.get('/api/dashboards/shared', async (req, res) => {
     try {
         const userId = parseInt(req.query.userId);
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
-        const dashboards = await supabaseService.getSharedDashboards(userId);
+        const dashboards = await req.supabaseService.getSharedDashboards(userId);
         res.json(dashboards);
     } catch (error) {
         console.error('Get shared dashboards error:', error);
@@ -573,7 +594,7 @@ app.post('/api/dashboards', async (req, res) => {
         }
 
         console.log('✅ Validation passed, calling createDashboard...');
-        const result = await supabaseService.createDashboard(userId, name, dataModel, chartConfigs, sections, filterColumns, folderId, isWorkspace);
+        const result = await req.supabaseService.createDashboard(userId, name, dataModel, chartConfigs, sections, filterColumns, folderId, isWorkspace);
         console.log('✅ Dashboard created successfully:', result);
         res.json(result);
     } catch (error) {
@@ -604,7 +625,7 @@ app.put('/api/dashboards/:id', async (req, res) => {
         }
 
         const { name, dataModel, chartConfigs, sections, filterColumns, folderId, isWorkspace } = dashboard;
-        const result = await supabaseService.updateDashboard(id, name, dataModel, chartConfigs, sections, filterColumns, folderId, isWorkspace);
+        const result = await req.supabaseService.updateDashboard(id, name, dataModel, chartConfigs, sections, filterColumns, folderId, isWorkspace);
         console.log('✅ Dashboard updated successfully:', id);
         res.json(result);
     } catch (error) {
@@ -616,7 +637,7 @@ app.put('/api/dashboards/:id', async (req, res) => {
 app.get('/api/dashboards', async (req, res) => {
     try {
         const userId = parseInt(req.query.userId);
-        const dashboards = await supabaseService.getDashboardsByUser(userId);
+        const dashboards = await req.supabaseService.getDashboardsByUser(userId);
         res.json(dashboards);
     } catch (error) {
         console.error('Get dashboards error:', error);
@@ -629,7 +650,7 @@ app.get('/api/dashboards/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid dashboard id' });
-        const dashboard = await supabaseService.getDashboardById(id);
+        const dashboard = await req.supabaseService.getDashboardById(id);
         if (!dashboard) return res.status(404).json({ error: 'Dashboard not found' });
         res.json(dashboard);
     } catch (error) {
@@ -641,7 +662,7 @@ app.get('/api/dashboards/:id', async (req, res) => {
 app.delete('/api/dashboards/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        await supabaseService.deleteDashboard(id);
+        await req.supabaseService.deleteDashboard(id);
         res.json({ message: 'Dashboard deleted' });
     } catch (error) {
         console.error('Delete dashboard error:', error);
@@ -652,7 +673,7 @@ app.delete('/api/dashboards/:id', async (req, res) => {
 // Admin: Get All Dashboards
 app.get('/api/admin/dashboards', async (req, res) => {
     try {
-        const dashboards = await supabaseService.getAllDashboards();
+        const dashboards = await req.supabaseService.getAllDashboards();
         res.json(dashboards);
     } catch (error) {
         console.error('Get all dashboards error:', error);
@@ -671,12 +692,12 @@ app.post('/api/workspace/folders', async (req, res) => {
         if (!ownerId || !name) {
             return res.status(400).json({ error: 'Missing ownerId or name' });
         }
-        const folder = await supabaseService.createWorkspaceFolder(ownerId, name, accessUsers, accessGroups);
+        const folder = await req.supabaseService.createWorkspaceFolder(ownerId, name, accessUsers, accessGroups);
         
         // Background: Send emails
         (async () => {
             try {
-                const owner = await supabaseService.getUserById(ownerId);
+                const owner = await req.supabaseService.getUserById(ownerId);
                 if (owner) {
                     // Send creation email to owner
                     await brevoService.sendWorkspaceCreatedEmail(owner.email, owner.name, name);
@@ -684,7 +705,7 @@ app.post('/api/workspace/folders', async (req, res) => {
                     // Send invites to other users
                     const invitedUserIds = accessUsers.filter(u => u.id.toString() !== ownerId.toString()).map(u => u.id);
                     if (invitedUserIds.length > 0) {
-                        const invitedUsers = await supabaseService.getUsersByIds(invitedUserIds);
+                        const invitedUsers = await req.supabaseService.getUsersByIds(invitedUserIds);
                         for (const invitedUser of invitedUsers) {
                             const level = accessUsers.find(u => u.id.toString() === invitedUser.id.toString())?.level || 'VIEWER';
                             await brevoService.sendWorkspaceInviteEmail(invitedUser.email, invitedUser.name, name, owner.name, level);
@@ -708,7 +729,7 @@ app.get('/api/workspace/folders', async (req, res) => {
     try {
         const userId = parseInt(req.query.userId);
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
-        const folders = await supabaseService.getAccessibleFolders(userId);
+        const folders = await req.supabaseService.getAccessibleFolders(userId);
         res.json(folders);
     } catch (error) {
         console.error('Get workspace folders error:', error);
@@ -725,22 +746,22 @@ app.put('/api/workspace/folders/:id', async (req, res) => {
         }
 
         // Identify new users before updating
-        const currentMembers = await supabaseService.getWorkspaceFolderMembers(folderId);
+        const currentMembers = await req.supabaseService.getWorkspaceFolderMembers(folderId);
         const currentMemberIds = currentMembers.map(m => m.user_id.toString());
         
-        await supabaseService.updateWorkspaceFolder(folderId, name, accessUsers, accessGroups, requestingUserId);
+        await req.supabaseService.updateWorkspaceFolder(folderId, name, accessUsers, accessGroups, requestingUserId);
         
         // Background: Send invites to NEWLY added users
         (async () => {
             try {
-                const inviter = await supabaseService.getUserById(requestingUserId);
+                const inviter = await req.supabaseService.getUserById(requestingUserId);
                 const newInvitedUsers = accessUsers.filter(u => 
                     u.id.toString() !== requestingUserId.toString() && 
                     !currentMemberIds.includes(u.id.toString())
                 );
 
                 if (inviter && newInvitedUsers.length > 0) {
-                    const invitedUsers = await supabaseService.getUsersByIds(newInvitedUsers.map(u => u.id));
+                    const invitedUsers = await req.supabaseService.getUsersByIds(newInvitedUsers.map(u => u.id));
                     for (const invitedUser of invitedUsers) {
                         const level = accessUsers.find(u => u.id.toString() === invitedUser.id.toString())?.level || 'VIEWER';
                         await brevoService.sendWorkspaceInviteEmail(invitedUser.email, invitedUser.name, name, inviter.name, level);
@@ -765,7 +786,7 @@ app.delete('/api/workspace/folders/:id', async (req, res) => {
         const folderId = req.params.id;
         const requestingUserId = parseInt(req.query.userId);
         if (!requestingUserId) return res.status(400).json({ error: 'Missing userId' });
-        await supabaseService.deleteWorkspaceFolder(folderId, requestingUserId);
+        await req.supabaseService.deleteWorkspaceFolder(folderId, requestingUserId);
         res.json({ message: 'Folder deleted' });
     } catch (error) {
         console.error('Delete workspace folder error:', error);
@@ -780,7 +801,7 @@ app.get('/api/workspace/folders/:id/dashboards', async (req, res) => {
         const folderId = req.params.id;
         const userId = parseInt(req.query.userId);
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
-        const result = await supabaseService.getFolderDashboards(folderId, userId);
+        const result = await req.supabaseService.getFolderDashboards(folderId, userId);
         res.json(result);
     } catch (error) {
         console.error('Get folder dashboards error:', error);
@@ -800,7 +821,7 @@ app.post('/api/workspace/groups', async (req, res) => {
         if (!ownerId || !name) {
             return res.status(400).json({ error: 'Missing ownerId or name' });
         }
-        const group = await supabaseService.createWorkspaceGroup(ownerId, name, userIds);
+        const group = await req.supabaseService.createWorkspaceGroup(ownerId, name, userIds);
         res.json(group);
     } catch (error) {
         console.error('Create workspace group error:', error);
@@ -813,7 +834,7 @@ app.get('/api/workspace/groups', async (req, res) => {
     try {
         const userId = parseInt(req.query.userId);
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
-        const groups = await supabaseService.getWorkspaceGroups(userId);
+        const groups = await req.supabaseService.getWorkspaceGroups(userId);
         res.json(groups);
     } catch (error) {
         console.error('Get workspace groups error:', error);
@@ -829,7 +850,7 @@ app.put('/api/workspace/groups/:id', async (req, res) => {
         if (!name || !requestingUserId) {
             return res.status(400).json({ error: 'Missing name or requestingUserId' });
         }
-        await supabaseService.updateWorkspaceGroup(groupId, name, userIds, requestingUserId);
+        await req.supabaseService.updateWorkspaceGroup(groupId, name, userIds, requestingUserId);
         res.json({ message: 'Group updated' });
     } catch (error) {
         console.error('Update workspace group error:', error);
@@ -844,7 +865,7 @@ app.delete('/api/workspace/groups/:id', async (req, res) => {
         const groupId = req.params.id;
         const requestingUserId = parseInt(req.query.userId);
         if (!requestingUserId) return res.status(400).json({ error: 'Missing userId' });
-        await supabaseService.deleteWorkspaceGroup(groupId, requestingUserId);
+        await req.supabaseService.deleteWorkspaceGroup(groupId, requestingUserId);
         res.json({ message: 'Group deleted' });
     } catch (error) {
         console.error('Delete workspace group error:', error);
@@ -881,7 +902,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
         // Handle SQL files differently - just store file info and return
         if (isSqlFile) {
-            const fileId = await supabaseService.createFile(
+            const fileId = await req.supabaseService.createFile(
                 parseInt(userId),
                 originalname,
                 'application/sql',
@@ -911,7 +932,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         console.log(`Processing file: ${originalname} with ${sheetCount} sheets`);
 
         // 1. Create file record in Supabase
-        const fileId = await supabaseService.createFile(
+        const fileId = await req.supabaseService.createFile(
             parseInt(userId),
             originalname,
             mimetype,
@@ -934,7 +955,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
             console.log(`Processing sheet "${sheetName}": ${rowCount} rows, ${columnCount} columns`);
 
             // Create sheet record
-            const sheetId = await supabaseService.createSheet(
+            const sheetId = await req.supabaseService.createSheet(
                 fileId,
                 sheetName,
                 i,
@@ -956,7 +977,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
                 // When batch is full or it's the last row, insert
                 if (currentBatch.length === batchSize || rowIndex === sheetData.length - 1) {
-                    await supabaseService.createExcelDataBatch(sheetId, currentBatch);
+                    await req.supabaseService.createExcelDataBatch(sheetId, currentBatch);
                     console.log(`  Inserted ${rowIndex + 1}/${sheetData.length} rows for sheet "${sheetName}"`);
                     currentBatch = []; // Reset batch
                 }
@@ -967,7 +988,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
         // 3. Log to file_upload_log
         const now = new Date();
-        await supabaseService.createFileUploadLog(
+        await req.supabaseService.createFileUploadLog(
             fileId,
             now.toISOString().split('T')[0],
             now.toTimeString().split(' ')[0],
@@ -1064,7 +1085,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         // Try to log the error
         try {
             const now = new Date();
-            await supabaseService.createFileUploadLog(
+            await req.supabaseService.createFileUploadLog(
                 0, // fileId might not exist yet
                 now.toISOString().split('T')[0],
                 now.toTimeString().split(' ')[0],
@@ -1086,7 +1107,7 @@ app.post('/api/log-config', async (req, res) => {
         const { fileName, columns, joinConfigs } = req.body;
 
         // Log to Supabase
-        await supabaseService.createDataConfigLog(fileName, columns, joinConfigs);
+        await req.supabaseService.createDataConfigLog(fileName, columns, joinConfigs);
 
         // Also log to Excel file for backward compatibility
         const logFilePath = path.join(__dirname, '..', 'user file log.xlsx');
@@ -1140,7 +1161,7 @@ app.post('/api/log-config', async (req, res) => {
 // Admin: Get All Uploads
 app.get('/api/admin/uploads', async (req, res) => {
     try {
-        const uploads = await supabaseService.getAllUploads();
+        const uploads = await req.supabaseService.getAllUploads();
         res.json(uploads);
     } catch (error) {
         console.error('Get all uploads error:', error);
@@ -1152,7 +1173,7 @@ app.get('/api/admin/uploads', async (req, res) => {
 app.get('/api/uploads/:id/content', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const fileContent = await supabaseService.getFileContent(id);
+        const fileContent = await req.supabaseService.getFileContent(id);
 
         console.log(`Retrieved file content for ID ${id} with ${fileContent.sheets.length} sheets`);
         res.json(fileContent);
@@ -1205,7 +1226,7 @@ app.post('/api/google-sheets/import', async (req, res) => {
             lastRefresh: new Date().toISOString()
         };
 
-        const fileId = await supabaseService.createFile(
+        const fileId = await req.supabaseService.createFile(
             parseInt(userId),
             title || `GS: ${spreadsheetId}`,
             'application/vnd.google-apps.spreadsheet',
@@ -1226,7 +1247,7 @@ app.post('/api/google-sheets/import', async (req, res) => {
                 const columnCount = data[0].length;
 
                 // Create sheet record
-                const sheetId = await supabaseService.createSheet(
+                const sheetId = await req.supabaseService.createSheet(
                     fileId,
                     sheetName,
                     i,
@@ -1241,7 +1262,7 @@ app.post('/api/google-sheets/import', async (req, res) => {
                         rowIndex: j + index,
                         rowData: row
                     }));
-                    await supabaseService.createExcelDataBatch(sheetId, chunk);
+                    await req.supabaseService.createExcelDataBatch(sheetId, chunk);
                 }
 
                 importedResults.push({
@@ -1271,7 +1292,7 @@ app.post('/api/google-sheets/import', async (req, res) => {
 app.post('/api/google-sheets/refresh/:fileId', async (req, res) => {
     try {
         const fileId = parseInt(req.params.fileId);
-        const file = await supabaseService.getFileById(fileId);
+        const file = await req.supabaseService.getFileById(fileId);
 
         if (!file || !file.source_info || file.source_info.type !== 'google_sheet') {
             return res.status(400).json({ error: 'File is not a Google Sheet or missing source info' });
@@ -1311,7 +1332,7 @@ app.post('/api/google-sheets/refresh/:fileId', async (req, res) => {
         }
 
         // 2. Update data in Supabase
-        await supabaseService.updateFileData(fileId, updatedSheets);
+        await req.supabaseService.updateFileData(fileId, updatedSheets);
 
         res.json({
             message: 'Google Sheet refreshed successfully',
@@ -1558,7 +1579,7 @@ app.post('/api/sharepoint/user/import', async (req, res) => {
             userId: parseInt(userId)  // Track which user imported this
         };
 
-        const fileId = await supabaseService.createFile(
+        const fileId = await req.supabaseService.createFile(
             parseInt(userId),
             title || `SP: ${listName}`,
             'application/vnd.ms-sharepoint',
@@ -1568,7 +1589,7 @@ app.post('/api/sharepoint/user/import', async (req, res) => {
         );
 
         // Create sheet record
-        const sheetId = await supabaseService.createSheet(
+        const sheetId = await req.supabaseService.createSheet(
             fileId,
             listName || 'SharePoint List',
             0,
@@ -1583,7 +1604,7 @@ app.post('/api/sharepoint/user/import', async (req, res) => {
                 rowIndex: j + index,
                 rowData: row
             }));
-            await supabaseService.createExcelDataBatch(sheetId, chunk);
+            await req.supabaseService.createExcelDataBatch(sheetId, chunk);
         }
 
         console.log('SharePoint OAuth import completed successfully');
@@ -1700,7 +1721,7 @@ app.post('/api/sharepoint/import', async (req, res) => {
             refreshMode: 'manual'
         };
 
-        const fileId = await supabaseService.createFile(
+        const fileId = await req.supabaseService.createFile(
             parseInt(userId),
             title || `SP: ${listName}`,
             'application/vnd.ms-sharepoint',
@@ -1710,7 +1731,7 @@ app.post('/api/sharepoint/import', async (req, res) => {
         );
 
         // 3. Create sheet record
-        const sheetId = await supabaseService.createSheet(
+        const sheetId = await req.supabaseService.createSheet(
             fileId,
             listName || 'SharePoint List',
             0,
@@ -1725,7 +1746,7 @@ app.post('/api/sharepoint/import', async (req, res) => {
                 rowIndex: j + index,
                 rowData: row
             }));
-            await supabaseService.createExcelDataBatch(sheetId, chunk);
+            await req.supabaseService.createExcelDataBatch(sheetId, chunk);
         }
 
         console.log('SharePoint import completed successfully');
@@ -1746,7 +1767,7 @@ app.post('/api/sharepoint/import', async (req, res) => {
 app.post('/api/sharepoint/refresh/:fileId', async (req, res) => {
     try {
         const fileId = parseInt(req.params.fileId);
-        const file = await supabaseService.getFileById(fileId);
+        const file = await req.supabaseService.getFileById(fileId);
 
         if (!file || !file.source_info || file.source_info.type !== 'sharepoint') {
             return res.status(400).json({ error: 'File is not a SharePoint list or missing source info' });
@@ -1764,7 +1785,7 @@ app.post('/api/sharepoint/refresh/:fileId', async (req, res) => {
 
         // 2. Update data in Supabase
         const listName = file.source_info.listName || 'SharePoint List';
-        await supabaseService.updateFileData(fileId, [{ name: listName, data: result.data }]);
+        await req.supabaseService.updateFileData(fileId, [{ name: listName, data: result.data }]);
 
         res.json({
             message: 'SharePoint list refreshed successfully',
@@ -1785,7 +1806,7 @@ app.post('/api/sql/metadata', async (req, res) => {
         if (!fileId) return res.status(400).json({ error: 'Missing file ID' });
 
         // Get file info from database
-        const file = await supabaseService.getFileById(fileId);
+        const file = await req.supabaseService.getFileById(fileId);
         if (!file) return res.status(404).json({ error: 'File not found' });
 
         // Get the uploaded file path from uploads directory
@@ -1935,7 +1956,7 @@ app.post('/api/sql/import', async (req, res) => {
             refreshMode: 'manual'
         };
 
-        const fileId = await supabaseService.createFile(
+        const fileId = await req.supabaseService.createFile(
             parseInt(userId),
             title || `${type.toUpperCase()}: ${tableName}`,
             `application/x-${type}`,
@@ -1945,7 +1966,7 @@ app.post('/api/sql/import', async (req, res) => {
         );
 
         // 3. Create sheet record
-        const sheetId = await supabaseService.createSheet(
+        const sheetId = await req.supabaseService.createSheet(
             fileId,
             tableName,
             0,
@@ -1960,7 +1981,7 @@ app.post('/api/sql/import', async (req, res) => {
                 rowIndex: j + index,
                 rowData: row
             }));
-            await supabaseService.createExcelDataBatch(sheetId, chunk);
+            await req.supabaseService.createExcelDataBatch(sheetId, chunk);
         }
 
         console.log('SQL import completed successfully');
@@ -1990,7 +2011,7 @@ app.post('/api/sql/import-file', async (req, res) => {
         console.log(`Importing SQL tables: ${tables.join(', ')} for user ${userId}`);
 
         // Get file info
-        const file = await supabaseService.getFileById(fileId);
+        const file = await req.supabaseService.getFileById(fileId);
         if (!file) return res.status(404).json({ error: 'File not found' });
 
         // Get the uploaded file path
@@ -2029,7 +2050,7 @@ app.post('/api/sql/import-file', async (req, res) => {
                 refreshMode: 'static'
             };
 
-            const importedFileId = await supabaseService.createFile(
+            const importedFileId = await req.supabaseService.createFile(
                 parseInt(userId),
                 title || `SQL: ${table}`,
                 'application/sql',
@@ -2039,7 +2060,7 @@ app.post('/api/sql/import-file', async (req, res) => {
             );
 
             // Create sheet record
-            const sheetId = await supabaseService.createSheet(
+            const sheetId = await req.supabaseService.createSheet(
                 importedFileId,
                 table,
                 0,
@@ -2055,7 +2076,7 @@ app.post('/api/sql/import-file', async (req, res) => {
                     rowIndex: j + index,
                     rowData: row
                 }));
-                await supabaseService.createExcelDataBatch(sheetId, chunk);
+                await req.supabaseService.createExcelDataBatch(sheetId, chunk);
             }
 
             importedTables.push({
@@ -2176,7 +2197,7 @@ app.post('/api/sql-db/import', async (req, res) => {
             lastRefresh: new Date().toISOString()
         };
 
-        const fileId = await supabaseService.createFile(
+        const fileId = await req.supabaseService.createFile(
             parseInt(userId),
             title || `${engine.toUpperCase()}: ${database}`,
             'application/sql',
@@ -2200,7 +2221,7 @@ app.post('/api/sql-db/import', async (req, res) => {
                 const columnCount = result.headers.length;
 
                 // Create sheet for this table
-                const sheetId = await supabaseService.createSheet(
+                const sheetId = await req.supabaseService.createSheet(
                     fileId,
                     tableName,
                     i,
@@ -2215,7 +2236,7 @@ app.post('/api/sql-db/import', async (req, res) => {
                         rowIndex: j + index,
                         rowData: row
                     }));
-                    await supabaseService.createExcelDataBatch(sheetId, chunk);
+                    await req.supabaseService.createExcelDataBatch(sheetId, chunk);
                 }
 
                 importedResults.push({
@@ -2249,7 +2270,7 @@ app.post('/api/sql-db/refresh/:fileId', async (req, res) => {
         const fileId = parseInt(req.params.fileId);
         const { password } = req.body; // Password required for refresh
 
-        const file = await supabaseService.getFileById(fileId);
+        const file = await req.supabaseService.getFileById(fileId);
 
         if (!file || !file.source_info || file.source_info.type !== 'sql_database') {
             return res.status(400).json({ error: 'File is not a SQL database import or missing source info' });
@@ -2274,7 +2295,7 @@ app.post('/api/sql-db/refresh/:fileId', async (req, res) => {
         }
 
         // 2. Update data in Supabase
-        await supabaseService.updateFileData(fileId, [{ name: table, data: result.rows }]);
+        await req.supabaseService.updateFileData(fileId, [{ name: table, data: result.rows }]);
 
         // 3. Update sourceInfo with last refresh time
         const updatedSourceInfo = {
@@ -2282,7 +2303,7 @@ app.post('/api/sql-db/refresh/:fileId', async (req, res) => {
             lastRefresh: new Date().toISOString()
         };
 
-        await supabaseService.supabase
+        await req.supabaseService.supabase
             .from('uploaded_files')
             .update({ source_info: updatedSourceInfo })
             .eq('id', fileId);
@@ -2319,7 +2340,7 @@ app.post('/api/admin/api-errors', async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields: error_type, error_message, source' });
         }
 
-        await supabaseService.createApiErrorLog({
+        await req.supabaseService.createApiErrorLog({
             error_type,
             error_message,
             source,
@@ -2342,7 +2363,7 @@ app.post('/api/admin/api-errors', async (req, res) => {
  */
 app.get('/api/admin/api-errors', async (req, res) => {
     try {
-        const errors = await supabaseService.getApiErrorLogs();
+        const errors = await req.supabaseService.getApiErrorLogs();
         res.json(errors);
     } catch (error) {
         console.error('Get API errors error:', error.message);
@@ -2355,7 +2376,7 @@ app.get('/api/admin/api-errors', async (req, res) => {
  */
 app.get('/api/admin/api-errors/count', async (req, res) => {
     try {
-        const count = await supabaseService.getUnresolvedApiErrorCount();
+        const count = await req.supabaseService.getUnresolvedApiErrorCount();
         res.json({ count });
     } catch (error) {
         console.error('Get API error count error:', error.message);
@@ -2369,7 +2390,7 @@ app.get('/api/admin/api-errors/count', async (req, res) => {
 app.put('/api/admin/api-errors/:id/resolve', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        await supabaseService.resolveApiError(id);
+        await req.supabaseService.resolveApiError(id);
         res.json({ message: 'Error resolved' });
     } catch (error) {
         console.error('Resolve API error:', error.message);
@@ -2382,7 +2403,7 @@ app.put('/api/admin/api-errors/:id/resolve', async (req, res) => {
  */
 app.put('/api/admin/api-errors/resolve-all', async (req, res) => {
     try {
-        await supabaseService.resolveAllApiErrors();
+        await req.supabaseService.resolveAllApiErrors();
         res.json({ message: 'All errors resolved' });
     } catch (error) {
         console.error('Resolve all API errors:', error.message);
@@ -2395,7 +2416,7 @@ app.put('/api/admin/api-errors/resolve-all', async (req, res) => {
  */
 app.delete('/api/admin/api-errors/resolved', async (req, res) => {
     try {
-        await supabaseService.clearResolvedApiErrors();
+        await req.supabaseService.clearResolvedApiErrors();
         res.json({ message: 'Resolved errors cleared' });
     } catch (error) {
         console.error('Clear resolved API errors:', error.message);
@@ -2413,7 +2434,7 @@ app.delete('/api/admin/api-errors/resolved', async (req, res) => {
 app.get('/api/dashboards/:id/refresh-schedule', async (req, res) => {
     try {
         const dashboardId = parseInt(req.params.id);
-        const schedule = await supabaseService.getRefreshSchedule(dashboardId);
+        const schedule = await req.supabaseService.getRefreshSchedule(dashboardId);
         res.json(schedule || null);
     } catch (error) {
         console.error('Get refresh schedule error:', error);
@@ -2434,7 +2455,7 @@ app.post('/api/dashboards/:id/refresh-schedule', async (req, res) => {
         }
 
         // Verify user is admin or dashboard owner
-        const { data: dashboard } = await supabaseService.supabase
+        const { data: dashboard } = await req.supabaseService.supabase
             .from('dashboards')
             .select('user_id')
             .eq('id', dashboardId)
@@ -2444,7 +2465,7 @@ app.post('/api/dashboards/:id/refresh-schedule', async (req, res) => {
             return res.status(404).json({ error: 'Dashboard not found' });
         }
 
-        const { data: user } = await supabaseService.supabase
+        const { data: user } = await req.supabaseService.supabase
             .from('users')
             .select('role, is_superuser')
             .eq('id', userId)
@@ -2454,7 +2475,7 @@ app.post('/api/dashboards/:id/refresh-schedule', async (req, res) => {
             return res.status(403).json({ error: 'Only dashboard owner or admin can set refresh schedule' });
         }
 
-        const schedule = await supabaseService.createRefreshSchedule(
+        const schedule = await req.supabaseService.createRefreshSchedule(
             dashboardId,
             userId,
             sourceType,
@@ -2484,7 +2505,7 @@ app.delete('/api/dashboards/:id/refresh-schedule', async (req, res) => {
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
         // Verify user is admin or dashboard owner
-        const { data: dashboard } = await supabaseService.supabase
+        const { data: dashboard } = await req.supabaseService.supabase
             .from('dashboards')
             .select('user_id')
             .eq('id', dashboardId)
@@ -2492,7 +2513,7 @@ app.delete('/api/dashboards/:id/refresh-schedule', async (req, res) => {
 
         if (!dashboard) return res.status(404).json({ error: 'Dashboard not found' });
 
-        const { data: user } = await supabaseService.supabase
+        const { data: user } = await req.supabaseService.supabase
             .from('users')
             .select('role, is_superuser')
             .eq('id', userId)
@@ -2502,7 +2523,7 @@ app.delete('/api/dashboards/:id/refresh-schedule', async (req, res) => {
             return res.status(403).json({ error: 'Only dashboard owner or admin can delete refresh schedule' });
         }
 
-        await supabaseService.deleteRefreshSchedule(dashboardId);
+        await req.supabaseService.deleteRefreshSchedule(dashboardId);
         res.json({ message: 'Refresh schedule deleted' });
     } catch (error) {
         console.error('Delete refresh schedule error:', error);
@@ -2561,14 +2582,14 @@ app.post('/api/dashboards/:id/refresh-now', async (req, res) => {
 
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
-        const schedule = await supabaseService.getRefreshSchedule(dashboardId);
+        const schedule = await req.supabaseService.getRefreshSchedule(dashboardId);
         if (!schedule) return res.status(404).json({ error: 'No refresh schedule found for this dashboard' });
 
         // Execute refresh
         await executeRefresh(schedule);
 
         // Get updated schedule
-        const updatedSchedule = await supabaseService.getRefreshSchedule(dashboardId);
+        const updatedSchedule = await req.supabaseService.getRefreshSchedule(dashboardId);
         res.json({ message: 'Refresh completed', schedule: updatedSchedule });
     } catch (error) {
         console.error('Manual refresh error:', error);
@@ -2588,7 +2609,7 @@ async function executeRefresh(schedule) {
     console.log(`⏰ [Refresh] Executing refresh for dashboard ${dashboard_id} (source: ${source_type})`);
 
     // Mark as running
-    await supabaseService.updateLastRefresh(dashboard_id, 'running');
+    await globalSupabaseService.updateLastRefresh(dashboard_id, 'running');
 
     try {
         let freshData = null;
@@ -2635,7 +2656,7 @@ async function executeRefresh(schedule) {
         }
 
         // 2. Process data and reconstruct DataModel
-        const { data: dashboard } = await supabaseService.supabase
+        const { data: dashboard } = await globalSupabaseService.supabase
             .from('dashboards')
             .select('data_model')
             .eq('id', dashboard_id)
@@ -2703,15 +2724,15 @@ async function executeRefresh(schedule) {
 
         if (freshData) {
             console.log(`⏰ [Refresh] Updating dashboard ${dashboard_id} with ${freshData.data ? freshData.data.length : 0} processed rows`);
-            await supabaseService.updateDashboardDataModel(dashboard_id, freshData);
-            await supabaseService.updateLastRefresh(dashboard_id, 'success');
+            await globalSupabaseService.updateDashboardDataModel(dashboard_id, freshData);
+            await globalSupabaseService.updateLastRefresh(dashboard_id, 'success');
             console.log(`✅ [Refresh] Dashboard ${dashboard_id} refreshed successfully`);
         } else {
             throw new Error('No fresh data could be fetched');
         }
     } catch (error) {
         console.error(`❌ [Refresh] Failed to refresh dashboard ${dashboard_id}:`, error.message);
-        await supabaseService.updateLastRefresh(dashboard_id, 'failed', error.message);
+        await globalSupabaseService.updateLastRefresh(dashboard_id, 'failed', error.message);
     }
 }
 
@@ -3028,7 +3049,7 @@ async function runScheduler() {
     schedulerRunning = true;
 
     try {
-        const schedules = await supabaseService.getDueSchedules();
+        const schedules = await globalSupabaseService.getDueSchedules();
         console.log(`⏰ [Scheduler] Polled ${schedules.length} active schedule(s) at ${new Date().toISOString()}`);
         
         for (const schedule of schedules) {
@@ -3057,7 +3078,7 @@ console.log(`⏰ Scheduled refresh engine started (polling every ${SCHEDULER_INT
 const server = app.listen(port, () => {
     console.log(`Server running on port ${port} with Supabase integration`);
     console.log('Supabase Configuration:');
-    console.log(`  Project URL: ${supabaseService.supabaseUrl}`);
+    console.log(`  Project URL: ${globalSupabaseService.supabaseUrl}`);
 });
 
 // Handle 'EADDRINUSE' specifically to provide helpful feedback

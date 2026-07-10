@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../utils/fetchWithAuth';
 import { API_BASE } from '../config/api';
 
 export interface ApiErrorLog {
@@ -27,7 +28,7 @@ export const apiErrorService = {
         user_email?: string;
     }): Promise<void> {
         try {
-            await fetch(`${API_URL}/admin/api-errors`, {
+            await fetchWithAuth(`${API_URL}/admin/api-errors`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(error)
@@ -42,7 +43,7 @@ export const apiErrorService = {
      * Get all API error logs (admin only)
      */
     async getErrors(): Promise<ApiErrorLog[]> {
-        const response = await fetch(`${API_URL}/admin/api-errors`);
+        const response = await fetchWithAuth(`${API_URL}/admin/api-errors`);
         if (!response.ok) {
             throw new Error('Failed to fetch API errors');
         }
@@ -54,7 +55,7 @@ export const apiErrorService = {
      */
     async getUnresolvedCount(): Promise<number> {
         try {
-            const response = await fetch(`${API_URL}/admin/api-errors/count`);
+            const response = await fetchWithAuth(`${API_URL}/admin/api-errors/count`);
             if (!response.ok) return 0;
             const data = await response.json();
             return data.count || 0;
@@ -67,7 +68,7 @@ export const apiErrorService = {
      * Mark an error as resolved
      */
     async resolveError(id: number): Promise<void> {
-        const response = await fetch(`${API_URL}/admin/api-errors/${id}/resolve`, {
+        const response = await fetchWithAuth(`${API_URL}/admin/api-errors/${id}/resolve`, {
             method: 'PUT'
         });
         if (!response.ok) {
@@ -79,7 +80,7 @@ export const apiErrorService = {
      * Mark all errors as resolved
      */
     async resolveAll(): Promise<void> {
-        const response = await fetch(`${API_URL}/admin/api-errors/resolve-all`, {
+        const response = await fetchWithAuth(`${API_URL}/admin/api-errors/resolve-all`, {
             method: 'PUT'
         });
         if (!response.ok) {
@@ -91,7 +92,7 @@ export const apiErrorService = {
      * Delete old resolved errors
      */
     async clearResolved(): Promise<void> {
-        const response = await fetch(`${API_URL}/admin/api-errors/resolved`, {
+        const response = await fetchWithAuth(`${API_URL}/admin/api-errors/resolved`, {
             method: 'DELETE'
         });
         if (!response.ok) {

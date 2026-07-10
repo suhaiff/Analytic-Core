@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../utils/fetchWithAuth';
 import { User } from '../types';
 import { API_BASE } from '../config/api';
 
@@ -5,7 +6,7 @@ const API_URL = API_BASE;
 
 export const authService = {
     async login(email: string, password: string): Promise<User> {
-        const response = await fetch(`${API_URL}/login`, {
+        const response = await fetchWithAuth(`${API_URL}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
@@ -21,7 +22,7 @@ export const authService = {
     },
 
     async signup(name: string, email: string, phone?: string, company?: string, job_title?: string, domain?: string): Promise<any> {
-        const response = await fetch(`${API_URL}/signup`, {
+        const response = await fetchWithAuth(`${API_URL}/signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, email, phone, company, job_title, domain })
@@ -46,7 +47,7 @@ export const authService = {
     },
 
     async getUsers(): Promise<User[]> {
-        const response = await fetch(`${API_URL}/users`);
+        const response = await fetchWithAuth(`${API_URL}/users`);
         if (!response.ok) {
             const data = await response.json();
             throw new Error(data.error || 'Failed to fetch users');
@@ -55,7 +56,7 @@ export const authService = {
     },
 
     async deleteUser(id: number): Promise<void> {
-        const response = await fetch(`${API_URL}/users/${id}`, {
+        const response = await fetchWithAuth(`${API_URL}/users/${id}`, {
             method: 'DELETE'
         });
 
@@ -67,7 +68,7 @@ export const authService = {
 
     // Password Management
     async changePassword(userId: number, currentPassword: string, newPassword: string): Promise<void> {
-        const response = await fetch(`${API_URL}/users/${userId}/password`, {
+        const response = await fetchWithAuth(`${API_URL}/users/${userId}/password`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ currentPassword, newPassword })
@@ -88,7 +89,7 @@ export const authService = {
     },
 
     async forgotPassword(email: string): Promise<any> {
-        const response = await fetch(`${API_URL}/auth/forgot-password`, {
+        const response = await fetchWithAuth(`${API_URL}/auth/forgot-password`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
@@ -102,7 +103,7 @@ export const authService = {
     },
 
     async verifyOtp(email: string, otp: string): Promise<any> {
-        const response = await fetch(`${API_URL}/auth/verify-otp`, {
+        const response = await fetchWithAuth(`${API_URL}/auth/verify-otp`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, otp })
@@ -116,7 +117,7 @@ export const authService = {
     },
 
     async resetPassword(email: string, otp: string, newPassword: string): Promise<any> {
-        const response = await fetch(`${API_URL}/auth/reset-password`, {
+        const response = await fetchWithAuth(`${API_URL}/auth/reset-password`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, otp, newPassword })
@@ -131,7 +132,7 @@ export const authService = {
 
     // Organization Management
     async getOrganizations(): Promise<any[]> {
-        const response = await fetch(`${API_URL}/organizations`);
+        const response = await fetchWithAuth(`${API_URL}/organizations`);
         if (!response.ok) {
             const data = await response.json();
             throw new Error(data.error || 'Failed to fetch organizations');
@@ -140,7 +141,7 @@ export const authService = {
     },
 
     async createOrganization(name: string): Promise<any> {
-        const response = await fetch(`${API_URL}/organizations`, {
+        const response = await fetchWithAuth(`${API_URL}/organizations`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name })
@@ -153,7 +154,7 @@ export const authService = {
     },
 
     async deleteOrganization(id: string): Promise<void> {
-        const response = await fetch(`${API_URL}/organizations/${id}`, {
+        const response = await fetchWithAuth(`${API_URL}/organizations/${id}`, {
             method: 'DELETE'
         });
         if (!response.ok) {
@@ -163,14 +164,14 @@ export const authService = {
     },
 
     async getOrganizationUsers(orgId: string): Promise<any[]> {
-        const response = await fetch(`${API_URL}/organizations/${orgId}/users`);
+        const response = await fetchWithAuth(`${API_URL}/organizations/${orgId}/users`);
         if (!response.ok) throw new Error('Failed to fetch organization users');
         return await response.json();
     },
 
     // User Organization & Superuser
     async updateUserOrganization(userId: number, organizationId: string | null): Promise<void> {
-        const response = await fetch(`${API_URL}/users/${userId}/organization`, {
+        const response = await fetchWithAuth(`${API_URL}/users/${userId}/organization`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ organizationId })
@@ -182,7 +183,7 @@ export const authService = {
     },
 
     async updateUserSuperuser(userId: number, isSuperuser: boolean): Promise<void> {
-        const response = await fetch(`${API_URL}/users/${userId}/superuser`, {
+        const response = await fetchWithAuth(`${API_URL}/users/${userId}/superuser`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ isSuperuser })
@@ -194,7 +195,7 @@ export const authService = {
     },
 
     async updateUserPricing(userId: number, pricing: 'Pro' | 'Premium'): Promise<void> {
-        const response = await fetch(`${API_URL}/users/${userId}/pricing`, {
+        const response = await fetchWithAuth(`${API_URL}/users/${userId}/pricing`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ pricing })
@@ -206,7 +207,7 @@ export const authService = {
     },
 
     async updateUserDuration(userId: number, duration: string): Promise<void> {
-        const response = await fetch(`${API_URL}/users/${userId}/duration`, {
+        const response = await fetchWithAuth(`${API_URL}/users/${userId}/duration`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ duration })
@@ -218,7 +219,7 @@ export const authService = {
     },
     
     async bulkSignup(users: any[]): Promise<any> {
-        const response = await fetch(`${API_URL}/admin/users/bulk`, {
+        const response = await fetchWithAuth(`${API_URL}/admin/users/bulk`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ users })

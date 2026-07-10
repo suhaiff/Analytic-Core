@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../../utils/fetchWithAuth';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { authService } from '../../services/authService';
 import { dashboardService } from '../../services/dashboardService';
@@ -111,14 +112,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
             const count = errors.filter(e => !e.resolved).length;
             setUnresolvedCount(count);
             // Also load payment requests
-            const prRes = await fetch(`${(await import('../../config/api')).API_BASE}/payment-requests`);
+            const prRes = await fetchWithAuth(`${(await import('../../config/api')).API_BASE}/payment-requests`);
             if (prRes.ok) {
                 const prData = await prRes.json();
                 setPaymentRequests(prData);
                 setPendingPaymentCount(prData.filter((p: any) => p.status === 'PENDING').length);
             }
             // Load available modules to map module_ids to names
-            const modRes = await fetch(`${(await import('../../config/api')).API_BASE}/subscriptions/modules`);
+            const modRes = await fetchWithAuth(`${(await import('../../config/api')).API_BASE}/subscriptions/modules`);
             if (modRes.ok) {
                 setAvailableModules(await modRes.json());
             }
@@ -132,7 +133,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
     const fetchPendingPaymentCount = useCallback(async () => {
         try {
             const { API_BASE } = await import('../../config/api');
-            const res = await fetch(`${API_BASE}/payment-requests/pending-count`);
+            const res = await fetchWithAuth(`${API_BASE}/payment-requests/pending-count`);
             if (res.ok) {
                 const data = await res.json();
                 setPendingPaymentCount(data.count || 0);
@@ -175,7 +176,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
         setProcessingPayment(id);
         try {
             const { API_BASE } = await import('../../config/api');
-            const res = await fetch(`${API_BASE}/payment-requests/${id}/approve`, {
+            const res = await fetchWithAuth(`${API_BASE}/payment-requests/${id}/approve`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ admin_note: note, reviewed_by: user?.name || 'Admin' })
@@ -196,7 +197,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, user, 
         setProcessingPayment(id);
         try {
             const { API_BASE } = await import('../../config/api');
-            const res = await fetch(`${API_BASE}/payment-requests/${id}/reject`, {
+            const res = await fetchWithAuth(`${API_BASE}/payment-requests/${id}/reject`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ admin_note: note, reviewed_by: user?.name || 'Admin' })

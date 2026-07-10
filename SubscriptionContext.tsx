@@ -1,3 +1,4 @@
+import { fetchWithAuth } from './utils/fetchWithAuth';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { API_BASE } from './config/api';
 
@@ -27,7 +28,7 @@ export const SubscriptionProvider: React.FC<{
 
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE}/subscriptions/${organizationId}`);
+      const response = await fetchWithAuth(`${API_BASE}/subscriptions/${organizationId}`);
       if (!response.ok) {
         setLoading(false);
         return;
@@ -56,7 +57,7 @@ export const SubscriptionProvider: React.FC<{
           return;
         }
 
-        const modResponse = await fetch(`${API_BASE}/subscriptions/modules`);
+        const modResponse = await fetchWithAuth(`${API_BASE}/subscriptions/modules`);
         if (modResponse.ok) {
           const allModules = await modResponse.json();
           const activeFeatures = new Set<string>();

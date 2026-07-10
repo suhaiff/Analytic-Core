@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../utils/fetchWithAuth';
 import { RefreshSchedule } from '../types';
 import { API_BASE } from '../config/api';
 
@@ -5,7 +6,7 @@ const API_URL = API_BASE;
 
 export const scheduledRefreshService = {
     async getSchedule(dashboardId: string): Promise<RefreshSchedule | null> {
-        const response = await fetch(`${API_URL}/dashboards/${dashboardId}/refresh-schedule`);
+        const response = await fetchWithAuth(`${API_URL}/dashboards/${dashboardId}/refresh-schedule`);
         if (!response.ok) throw new Error('Failed to fetch refresh schedule');
         const data = await response.json();
         return data || null;
@@ -22,7 +23,7 @@ export const scheduledRefreshService = {
         timezone?: string,
         refreshMonthDay?: number | null
     ): Promise<RefreshSchedule> {
-        const response = await fetch(`${API_URL}/dashboards/${dashboardId}/refresh-schedule`, {
+        const response = await fetchWithAuth(`${API_URL}/dashboards/${dashboardId}/refresh-schedule`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -44,7 +45,7 @@ export const scheduledRefreshService = {
     },
 
     async deleteSchedule(dashboardId: string, userId: number): Promise<void> {
-        const response = await fetch(
+        const response = await fetchWithAuth(
             `${API_URL}/dashboards/${dashboardId}/refresh-schedule?userId=${userId}`,
             { method: 'DELETE' }
         );
@@ -55,7 +56,7 @@ export const scheduledRefreshService = {
     },
 
     async testConnection(sourceType: string, sourceCredentials: any): Promise<{ success: boolean; message: string; metadata?: any }> {
-        const response = await fetch(`${API_URL}/refresh-schedule/test-connection`, {
+        const response = await fetchWithAuth(`${API_URL}/refresh-schedule/test-connection`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sourceType, sourceCredentials })
@@ -68,7 +69,7 @@ export const scheduledRefreshService = {
     },
 
     async refreshNow(dashboardId: string, userId: number): Promise<any> {
-        const response = await fetch(`${API_URL}/dashboards/${dashboardId}/refresh-now`, {
+        const response = await fetchWithAuth(`${API_URL}/dashboards/${dashboardId}/refresh-now`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId })

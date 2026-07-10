@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../../utils/fetchWithAuth';
 import React, { useState, useEffect } from 'react';
 import { Settings, Plus, Edit2, Trash2, LayoutDashboard, CheckCircle2, ChevronRight, Save, X, DollarSign, Box } from 'lucide-react';
 import { API_BASE } from '../../config/api';
@@ -70,9 +71,9 @@ export const AdminSubscriptionManagement: React.FC = () => {
   const fetchData = async () => {
     try {
       const [plansRes, modulesRes, featuresRes] = await Promise.all([
-        fetch(`${API_BASE}/subscriptions/plans`),
-        fetch(`${API_BASE}/subscriptions/modules`),
-        fetch(`${API_BASE}/subscriptions/features`)
+        fetchWithAuth(`${API_BASE}/subscriptions/plans`),
+        fetchWithAuth(`${API_BASE}/subscriptions/modules`),
+        fetchWithAuth(`${API_BASE}/subscriptions/features`)
       ]);
 
       if (plansRes.ok) setPlans(await plansRes.json());
@@ -101,7 +102,7 @@ export const AdminSubscriptionManagement: React.FC = () => {
     e.preventDefault();
     if (!editingPlan) return;
     try {
-      const res = await fetch(`${API_BASE}/admin/subscriptions/plans/${editingPlan.id}/price`, {
+      const res = await fetchWithAuth(`${API_BASE}/admin/subscriptions/plans/${editingPlan.id}/price`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -121,7 +122,7 @@ export const AdminSubscriptionManagement: React.FC = () => {
   const handleAddModule = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE}/admin/subscriptions/modules`, {
+      const res = await fetchWithAuth(`${API_BASE}/admin/subscriptions/modules`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newModuleForm)
@@ -140,7 +141,7 @@ export const AdminSubscriptionManagement: React.FC = () => {
     e.preventDefault();
     if (!isAddingFeatureTo || !selectedFeatureId) return;
     try {
-      const res = await fetch(`${API_BASE}/admin/subscriptions/modules/${isAddingFeatureTo}/features`, {
+      const res = await fetchWithAuth(`${API_BASE}/admin/subscriptions/modules/${isAddingFeatureTo}/features`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ feature_id: selectedFeatureId })
@@ -158,7 +159,7 @@ export const AdminSubscriptionManagement: React.FC = () => {
   const handleCreateFeature = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE}/admin/subscriptions/features`, {
+      const res = await fetchWithAuth(`${API_BASE}/admin/subscriptions/features`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newFeatureForm)
@@ -177,7 +178,7 @@ export const AdminSubscriptionManagement: React.FC = () => {
     e.preventDefault();
     if (!editingFeature) return;
     try {
-      const res = await fetch(`${API_BASE}/admin/subscriptions/features/${editingFeature.id}`, {
+      const res = await fetchWithAuth(`${API_BASE}/admin/subscriptions/features/${editingFeature.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

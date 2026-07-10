@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../../utils/fetchWithAuth';
 import React, { useState } from 'react';
 import { Globe, X, Plus, Trash2, Eye, AlertCircle, CheckCircle, Loader, ChevronDown } from 'lucide-react';
 import { useTheme } from '../../ThemeContext';
@@ -69,7 +70,7 @@ export const ApiImportModal: React.FC<ApiImportModalProps> = ({ onClose, onImpor
         fetchOptions.body = body;
       }
 
-      const res = await fetch(fetchUrl, fetchOptions);
+      const res = await fetchWithAuth(fetchUrl, fetchOptions);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }

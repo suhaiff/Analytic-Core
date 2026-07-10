@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../utils/fetchWithAuth';
 import React, { useState, useRef, useCallback } from 'react';
 import { X, Upload, CheckCircle2, Clock, AlertCircle, QrCode, Shield, Smartphone, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { API_BASE } from '../config/api';
@@ -81,7 +82,7 @@ export const PaymentQRModal: React.FC<PaymentQRModalProps> = ({
       formData.append('module_ids', JSON.stringify(moduleIds));
       if (organizationId) formData.append('organization_id', organizationId);
 
-      const res = await fetch(`${API_BASE}/payment-requests`, {
+      const res = await fetchWithAuth(`${API_BASE}/payment-requests`, {
         method: 'POST',
         body: formData,
       });

@@ -17,16 +17,23 @@ interface DataConfigProps {
     fileName: string;
     onFinalize: (model: DataModel) => void;
     onHome: () => void;
+    onTablesChange?: (tables: DataTable[]) => void;
     uploadedFileId?: number; // Optional: ID of uploaded file for viewing
     sourceType?: 'file' | 'google_sheet' | 'sharepoint' | 'sql_dump' | 'sql_database';
 }
 
-export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName, onFinalize, onHome, uploadedFileId, sourceType = 'file' }) => {
+export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName, onFinalize, onHome, onTablesChange, uploadedFileId, sourceType = 'file' }) => {
     const { theme } = useTheme();
     const colors = getThemeClasses(theme);
 
     // Tables State
     const [tables, setTables] = useState<DataTable[]>(initialTables);
+
+    useEffect(() => {
+        if (onTablesChange) {
+            onTablesChange(tables);
+        }
+    }, [tables, onTablesChange]);
 
     // Dashboard Title State
     const [dashboardTitle, setDashboardTitle] = useState('');
@@ -371,11 +378,16 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             };
         });
 
-        // Build per-table column maps for the Data Modelling layer
+        // Build per-table column maps and data for the Data Modelling layer
         const modellingTables = tables.map(t => {
             const idx = headerIndices[t.id] || 0;
-            const cols = t.rawData?.rows?.[idx] || [];
-            return { id: t.id, name: t.name, columns: cols.filter((c: string) => c && c.trim()) };
+            const processed = processRawData(t.rawData, idx);
+            return { 
+                id: t.id, 
+                name: t.name, 
+                columns: processed.headers.filter(c => c && c.trim()),
+                data: processed.rows
+            };
         });
 
         const model: DataModel = {

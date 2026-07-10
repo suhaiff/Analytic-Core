@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../utils/fetchWithAuth';
 import { DashboardAccessEntry, DashboardAccessLevel, SavedDashboard } from '../types';
 import { API_BASE } from '../config/api';
 
@@ -10,7 +11,7 @@ export const dashboardAccessService = {
         accessLevel: DashboardAccessLevel,
         grantedBy: number
     ): Promise<DashboardAccessEntry> {
-        const response = await fetch(`${API_URL}/dashboards/${dashboardId}/access`, {
+        const response = await fetchWithAuth(`${API_URL}/dashboards/${dashboardId}/access`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, accessLevel, grantedBy })
@@ -27,7 +28,7 @@ export const dashboardAccessService = {
         userId: number,
         requestingUserId: number
     ): Promise<void> {
-        const response = await fetch(
+        const response = await fetchWithAuth(
             `${API_URL}/dashboards/${dashboardId}/access/${userId}?requestingUserId=${requestingUserId}`,
             { method: 'DELETE' }
         );
@@ -38,13 +39,13 @@ export const dashboardAccessService = {
     },
 
     async getAccessList(dashboardId: string): Promise<DashboardAccessEntry[]> {
-        const response = await fetch(`${API_URL}/dashboards/${dashboardId}/access`);
+        const response = await fetchWithAuth(`${API_URL}/dashboards/${dashboardId}/access`);
         if (!response.ok) throw new Error('Failed to fetch access list');
         return await response.json();
     },
 
     async getSharedDashboards(userId: number): Promise<SavedDashboard[]> {
-        const response = await fetch(`${API_URL}/dashboards/shared?userId=${userId}`);
+        const response = await fetchWithAuth(`${API_URL}/dashboards/shared?userId=${userId}`);
         if (!response.ok) throw new Error('Failed to fetch shared dashboards');
         return await response.json();
     }

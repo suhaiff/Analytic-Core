@@ -733,6 +733,7 @@ function AppContent() {
             sourceType={sourceType}
             onFinalize={handleConfigFinalize}
             onHome={handleReturnHomeRequest}
+            onTablesChange={setInitialTables}
           />
         )}
 

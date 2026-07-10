@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../utils/fetchWithAuth';
 import { SavedDashboard } from '../types';
 import { API_BASE } from '../config/api';
 
@@ -5,13 +6,13 @@ const API_URL = API_BASE;
 
 export const dashboardService = {
     async getUserDashboards(userId: number): Promise<SavedDashboard[]> {
-        const response = await fetch(`${API_URL}/dashboards?userId=${userId}`);
+        const response = await fetchWithAuth(`${API_URL}/dashboards?userId=${userId}`);
         if (!response.ok) throw new Error('Failed to fetch dashboards');
         return await response.json();
     },
 
     async getDashboardById(id: string | number): Promise<SavedDashboard | null> {
-        const response = await fetch(`${API_URL}/dashboards/${id}`);
+        const response = await fetchWithAuth(`${API_URL}/dashboards/${id}`);
         if (response.status === 404) return null;
         if (!response.ok) throw new Error('Failed to fetch dashboard');
         return await response.json();
@@ -24,7 +25,7 @@ export const dashboardService = {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 30000);
             
-            const response = await fetch(`${API_URL}/dashboards`, {
+            const response = await fetchWithAuth(`${API_URL}/dashboards`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -69,7 +70,7 @@ export const dashboardService = {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
             
-            const response = await fetch(`${API_URL}/dashboards/${id}`, {
+            const response = await fetchWithAuth(`${API_URL}/dashboards/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -106,14 +107,14 @@ export const dashboardService = {
     },
 
     async deleteDashboard(id: string): Promise<void> {
-        const response = await fetch(`${API_URL}/dashboards/${id}`, {
+        const response = await fetchWithAuth(`${API_URL}/dashboards/${id}`, {
             method: 'DELETE'
         });
         if (!response.ok) throw new Error('Failed to delete dashboard');
     },
 
     async getAllDashboards(): Promise<(SavedDashboard & { user_name: string, user_email: string })[]> {
-        const response = await fetch(`${API_URL}/admin/dashboards`);
+        const response = await fetchWithAuth(`${API_URL}/admin/dashboards`);
         if (!response.ok) throw new Error('Failed to fetch all dashboards');
         return await response.json();
     }

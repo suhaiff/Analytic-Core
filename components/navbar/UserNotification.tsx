@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../../utils/fetchWithAuth';
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, CheckCircle2, Clock, XCircle, X } from 'lucide-react';
 import { useTheme } from '../../ThemeContext';
@@ -34,7 +35,7 @@ export const UserNotification: React.FC<UserNotificationProps> = ({ user }) => {
         setLoading(true);
         try {
             const { API_BASE } = await import('../../config/api');
-            const res = await fetch(`${API_BASE}/payment-requests/user/${user.id}`);
+            const res = await fetchWithAuth(`${API_BASE}/payment-requests/user/${user.id}`);
             if (res.ok) {
                 const data = await res.json();
                 setNotifications(data || []);

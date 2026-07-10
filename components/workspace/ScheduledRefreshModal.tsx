@@ -1,3 +1,4 @@
+import { fetchWithAuth } from '../../utils/fetchWithAuth';
 import React, { useState, useEffect } from 'react';
 import {
   X, Loader2, Check, ChevronRight, FileSpreadsheet, Database, Globe,
@@ -259,7 +260,7 @@ export const ScheduledRefreshModal: React.FC<ScheduledRefreshModalProps> = ({
     setConnecting(true);
     setError('');
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3001`}/api/sql/tables`, {
+      const response = await fetchWithAuth(`${import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3001`}/api/sql/tables`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(sqlConfig)

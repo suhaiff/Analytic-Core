@@ -1,16 +1,17 @@
 const { createClient } = require('@supabase/supabase-js');
 
 class SupabaseService {
-    constructor() {
+    constructor(jwtToken = null) {
         // IMPORTANT: All credentials MUST be stored in .env file
         // NEVER hardcode credentials in source code!
         this.supabaseUrl = process.env.SUPABASE_URL;
-        this.supabaseKey = process.env.SUPABASE_KEY;
+        this.supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+        this.supabaseAnonKey = process.env.SUPABASE_ANON_KEY || this.supabaseKey; // Fallback for dev
 
         // Validate that all required environment variables are present
         if (!this.supabaseUrl || !this.supabaseKey) {
             console.warn('⚠️  Supabase credentials missing or invalid. Database operations will not work.');
-            console.warn('   Required env vars: SUPABASE_URL, SUPABASE_KEY');
+            console.warn('   Required env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY');
             console.warn('   Please create a new Supabase project and update your .env file.');
             this.supabase = null;
             return;
@@ -18,12 +19,35 @@ class SupabaseService {
 
         // Initialize Supabase client
         try {
-            this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
-            console.log('✓ Supabase client initialized successfully');
+            if (jwtToken) {
+                this.supabase = createClient(this.supabaseUrl, this.supabaseAnonKey, {
+                    global: {
+                        headers: {
+                            Authorization: `Bearer ${jwtToken}`
+                        }
+                    }
+                });
+                this.isScoped = true;
+            } else {
+                this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
+                this.isScoped = false;
+            }
         } catch (error) {
             console.error('✗ Failed to initialize Supabase client:', error.message);
             this.supabase = null;
         }
+    }
+
+    // Create a Supabase client scoped to a specific user's JWT for RLS
+    getScopedClient(jwtToken) {
+        if (!jwtToken) return this.supabase;
+        return createClient(this.supabaseUrl, this.supabaseAnonKey, {
+            global: {
+                headers: {
+                    Authorization: `Bearer ${jwtToken}`
+                }
+            }
+        });
     }
 
     // ==================== User Management ====================
@@ -100,17 +124,43 @@ class SupabaseService {
         }
     }
 
+    async signIn(email, password) {
+        try {
+            const { data, error } = await this.supabase.auth.signInWithPassword({
+                email,
+                password
+            });
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.error('Error signing in with Supabase Auth:', error.message);
+            throw error;
+        }
+    }
+
     async createUser(name, email, password, role = 'USER', phone = null, company = null, job_title = null, domain = null, organization_id = null, is_superuser = false, must_change_password = false) {
         try {
+            // 1. Create user in Supabase Auth first
+            const { data: authData, error: authError } = await this.supabase.auth.admin.createUser({
+                email,
+                password,
+                email_confirm: true
+            });
+
+            if (authError) throw authError;
+            
+            const authId = authData.user.id;
+
             const insertData = {
                 name,
                 email,
-                password,
+                password, // Legacy field, kept for backwards compatibility during migration
                 role,
                 phone,
                 company,
                 job_title,
                 domain,
+                auth_id: authId, // Link to Supabase Auth
                 is_superuser: is_superuser || false,
                 must_change_password: must_change_password || false,
                 created_at: new Date().toISOString()
@@ -123,7 +173,11 @@ class SupabaseService {
                 .select()
                 .single();
 
-            if (error) throw error;
+            if (error) {
+                // Rollback auth user creation if public.users fails
+                await this.supabase.auth.admin.deleteUser(authId);
+                throw error;
+            }
 
             // Don't return password
             const { password: _, ...userWithoutPassword } = data;
@@ -2080,4 +2134,6 @@ class SupabaseService {
     }
 }
 
-module.exports = new SupabaseService();
+const globalInstance = new SupabaseService();
+globalInstance.SupabaseService = SupabaseService;
+module.exports = globalInstance;
