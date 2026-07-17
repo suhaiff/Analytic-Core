@@ -101,6 +101,33 @@ export const formatNumber = (value: number | string | null | undefined, decimals
 };
 
 /**
+ * Formats a number with K, M, B suffixes (International numbering system)
+ * @param value - The numeric value to format
+ * @param currencySymbol - Optional currency symbol to prefix
+ * @returns Formatted compact number string
+ */
+export const formatCompactInternational = (value: number | string | null | undefined, currencySymbol?: string): string => {
+    if (value === null || value === undefined || value === '') return currencySymbol ? `${currencySymbol}0` : '0';
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return currencySymbol ? `${currencySymbol}0` : '0';
+
+    const absVal = Math.abs(num);
+    const sign = num < 0 ? '-' : '';
+    const prefix = currencySymbol ? `${sign}${currencySymbol}` : sign;
+    
+    if (absVal >= 1.0e9) return `${prefix}${(absVal / 1.0e9).toFixed(1)}B`;
+    if (absVal >= 1.0e6) return `${prefix}${(absVal / 1.0e6).toFixed(1)}M`;
+    if (absVal >= 1.0e3) return `${prefix}${(absVal / 1.0e3).toFixed(1)}K`;
+    
+    const hasDecimals = absVal % 1 !== 0;
+    return `${prefix}${new Intl.NumberFormat('en-IN', {
+        minimumFractionDigits: hasDecimals ? 2 : 0,
+        maximumFractionDigits: hasDecimals ? 2 : 0,
+    }).format(absVal)}`;
+};
+
+
+/**
  * Detects if a column is an ID field
  * @param columnName - The name of the column to check
  * @returns true if it's likely an ID field
@@ -376,7 +403,7 @@ export const formatCurrencyValue = (value: number, currencyCode: string = 'INR')
 /**
  * Formats a value based on its column name and optional DataModel metadata
  */
-export const smartFormat = (value: any, columnName: string, columnMetadata?: any, columnCurrencies?: { [key: string]: string }): string => {
+export const smartFormat = (value: any, columnName: string, columnMetadata?: any, columnCurrencies?: { [key: string]: string }, compactMode?: boolean): string => {
     if (value === null || value === undefined || value === '') {
         return '-';
     }
@@ -399,13 +426,13 @@ export const smartFormat = (value: any, columnName: string, columnMetadata?: any
             switch (type) {
                 case 'CURRENCY':
                     const currencyCode = columnCurrencies?.[columnName] || 'INR';
-                    return formatCurrencyValue(numValue, currencyCode);
+                    return compactMode ? formatCompactInternational(numValue, CURRENCY_SYMBOLS[currencyCode] || currencyCode) : formatCurrencyValue(numValue, currencyCode);
                 case 'INTEGER':
-                    return formatNumber(numValue, 0);
+                    return compactMode ? formatCompactInternational(numValue) : formatNumber(numValue, 0);
                 case 'PERCENT':
                     return `${formatNumber(numValue, 1)}%`;
                 case 'DECIMAL':
-                    return formatNumber(numValue, 2);
+                    return compactMode ? formatCompactInternational(numValue) : formatNumber(numValue, 2);
             }
         }
 
@@ -432,12 +459,12 @@ export const smartFormat = (value: any, columnName: string, columnMetadata?: any
     // IMPORTANT: Check currency BEFORE date/time to prevent amounts from being converted to dates
     if (isNumeric && isCurrencyColumn(columnName)) {
         const fallbackCurrency = columnCurrencies?.[columnName] || 'INR';
-        return formatCurrencyValue(numValue, fallbackCurrency);
+        return compactMode ? formatCompactInternational(numValue, CURRENCY_SYMBOLS[fallbackCurrency] || fallbackCurrency) : formatCurrencyValue(numValue, fallbackCurrency);
     }
 
     // For count columns, format with commas but no currency symbol
     if (isNumeric && isCountColumn(columnName)) {
-        return formatNumber(numValue, 0);
+        return compactMode ? formatCompactInternational(numValue) : formatNumber(numValue, 0);
     }
 
     // For date/time columns, handle Excel serial dates
@@ -457,6 +484,7 @@ export const smartFormat = (value: any, columnName: string, columnMetadata?: any
 
     // For other numeric values, format with commas
     if (isNumeric) {
+        if (compactMode) return formatCompactInternational(numValue);
         // Check if it looks like a whole number or has decimals
         const hasDecimals = numValue % 1 !== 0;
         return formatNumber(numValue, hasDecimals ? 2 : 0);

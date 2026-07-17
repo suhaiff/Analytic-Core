@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DataModel, ChartConfig, DashboardSection, ChartType, AggregationType, AnalyticsLinesConfig } from '../types';
 import { analyzeDataAndSuggestKPIs, generateChartFromPrompt } from '../services/geminiService';
-import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, RefreshCw, Filter, Check, ChevronDown, Palette, GitBranch, Layers, BarChartHorizontal, ScatterChart as ScatterChartIcon, Droplets, Grid3x3, Edit2, Settings2, TrendingUp, Map as MapIcon } from 'lucide-react';
+import { Plus, Sparkles, X, BarChart3, PieChart, LineChart, Activity, Send, Loader2, ArrowRight, ArrowLeft, Table as TableIcon, Mic, MicOff, Home, Save, RefreshCw, Filter, Check, ChevronDown, Palette, GitBranch, Layers, BarChartHorizontal, ScatterChart as ScatterChartIcon, Droplets, Grid3x3, Edit2, Settings2, TrendingUp, Map as MapIcon , Calculator, Trash2 } from 'lucide-react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { ThemeToggle } from './ThemeToggle';
 import { smartFormat } from '../utils/formatters';
+import { API_BASE } from '../config/api';
+import { fetchWithAuth } from '../utils/fetchWithAuth';
+import CreateMeasureModal from './modals/CreateMeasureModal';
 
 // 10 theme-safe colors that look good on both light and dark backgrounds
 const CHART_COLOR_OPTIONS: { label: string; value: string }[] = [
@@ -85,10 +88,318 @@ interface BucketChartCardProps {
     onYAxisChange: (id: string, key: string) => void;
     onFontFamilyChange: (id: string, fontFamily: string) => void;
     onFontSizeChange: (id: string, fontSize: number) => void;
+    onEditMeasure?: (measure: any) => void;
+    onDeleteMeasure?: (id: number) => void;
+}
+
+
+// ---- DropZone ----
+interface DropZoneProps {
+    label: string;
+    value: string;
+    onDrop: (fieldName: string) => void;
+    onClear: () => void;
+    isMeasure?: boolean;
+    theme: string;
+    colors: any;
+    required?: boolean;
+}
+
+const DropZone: React.FC<DropZoneProps> = ({ label, value, onDrop, onClear, theme, colors, required = false }) => {
+    const [isDragOver, setIsDragOver] = useState(false);
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragOver(true);
+    };
+
+    const handleDragLeave = () => setIsDragOver(false);
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        const fieldName = e.dataTransfer.getData('fieldName');
+        if (fieldName) onDrop(fieldName);
+    };
+
+    return (
+        <div>
+            <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-1.5`}>
+                {label}{required && <span className="text-rose-400 ml-0.5">*</span>}
+            </label>
+            <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`
+                    relative min-h-[42px] rounded-xl border-2 border-dashed transition-all duration-200 flex items-center px-3 gap-2
+                    ${isDragOver
+                        ? 'border-indigo-500 bg-indigo-500/10 shadow-lg shadow-indigo-500/20 scale-[1.01]'
+                        : value
+                            ? (theme === 'dark' ? 'border-slate-600 bg-slate-800/60' : 'border-slate-300 bg-slate-50')
+                            : (theme === 'dark' ? 'border-slate-700 bg-slate-900/40' : 'border-slate-200 bg-slate-50/50')
+                    }
+                `}
+            >
+                {value ? (
+                    <>
+                        <Calculator className="w-3.5 h-3.5 text-indigo-400 shrink-0 opacity-0 pointer-events-none" style={{ opacity: 0 }} />
+                        <span className={`text-sm font-medium truncate flex-1 ${colors.textPrimary}`}>{value}</span>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onClear(); }}
+                            className={`shrink-0 p-0.5 rounded-full transition-colors ${theme === 'dark' ? 'hover:bg-slate-700 text-slate-400 hover:text-rose-400' : 'hover:bg-slate-200 text-slate-400 hover:text-rose-500'}`}
+                            title="Clear"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </>
+                ) : (
+                    <span className={`text-xs ${isDragOver ? 'text-indigo-400 font-medium' : colors.textMuted} flex items-center gap-1.5 w-full`}>
+                        <ArrowRight className="w-3 h-3 shrink-0" />
+                        {isDragOver ? 'Release to assign' : 'Drag a field here'}
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// ---- FieldPanel ----
+interface FieldPanelProps {
+    isOpen: boolean;
+    onToggle: () => void;
+    rawColumns: string[];
+    customMeasures: any[];
+    onEditMeasure: (m: any) => void;
+    onDeleteMeasure: (id: number) => void;
+    theme: string;
+    colors: any;
+}
+
+const FieldPanel: React.FC<FieldPanelProps> = ({
+    isOpen, onToggle, rawColumns, customMeasures, onEditMeasure, onDeleteMeasure, theme, colors
+}) => {
+    const [search, setSearch] = useState('');
+    const measureNames = customMeasures.map((m: any) => m.name);
+    const filteredFields = rawColumns.filter(c => !measureNames.includes(c) && c.toLowerCase().includes(search.toLowerCase()));
+    const filteredMeasures = customMeasures.filter((m: any) => m.name.toLowerCase().includes(search.toLowerCase()));
+
+    const handleDragStart = (e: React.DragEvent, fieldName: string) => {
+        e.dataTransfer.setData('fieldName', fieldName);
+        e.dataTransfer.effectAllowed = 'copy';
+    };
+
+    const panelBg = theme === 'dark' ? 'bg-slate-900/80 border-slate-700' : 'bg-slate-50 border-slate-200';
+
+    return (
+        <div className={`relative flex shrink-0 transition-all duration-300 ease-in-out border-l ${panelBg} ${isOpen ? 'w-52' : 'w-9'} overflow-hidden`}>
+            {/* Toggle button */}
+            <button
+                onClick={onToggle}
+                title={isOpen ? 'Collapse fields panel' : 'Expand fields panel'}
+                className={`absolute top-3 ${isOpen ? 'right-2' : 'left-1'} z-10 p-1 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-200 text-slate-500'}`}
+            >
+                <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isOpen ? 'rotate-90' : '-rotate-90'}`} />
+            </button>
+
+            {/* Panel content — only visible when open */}
+            {isOpen && (
+                <div className="flex flex-col w-full pt-10 pb-3 px-2 overflow-hidden">
+                    {/* Search */}
+                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg mb-3 border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                        <Filter className={`w-3 h-3 ${colors.textMuted} shrink-0`} />
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            placeholder="Search..."
+                            className={`flex-1 text-xs bg-transparent outline-none ${colors.textPrimary} placeholder:${colors.textMuted}`}
+                        />
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-0.5">
+                        {/* Fields section */}
+                        <div>
+                            <p className={`text-[9px] font-bold uppercase tracking-widest ${colors.textMuted} mb-1.5 px-1`}>Fields</p>
+                            {filteredFields.length === 0 && (
+                                <p className={`text-[10px] ${colors.textMuted} px-1 italic`}>No fields</p>
+                            )}
+                            {filteredFields.map(col => (
+                                <div
+                                    key={col}
+                                    draggable
+                                    onDragStart={e => handleDragStart(e, col)}
+                                    title={`Drag "${col}" to a drop zone`}
+                                    className={`
+                                        group flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs mb-0.5 cursor-grab active:cursor-grabbing
+                                        select-none transition-all duration-150
+                                        ${theme === 'dark'
+                                            ? 'text-slate-300 hover:bg-indigo-500/10 hover:text-indigo-300 border border-transparent hover:border-indigo-500/20'
+                                            : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 border border-transparent hover:border-indigo-200'
+                                        }
+                                    `}
+                                >
+                                    <BarChart3 className={`w-3 h-3 shrink-0 ${theme === 'dark' ? 'text-slate-500 group-hover:text-indigo-400' : 'text-slate-400 group-hover:text-indigo-500'}`} />
+                                    <span className="truncate flex-1">{col}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Measures section */}
+                        {filteredMeasures.length > 0 && (
+                            <div>
+                                <p className={`text-[9px] font-bold uppercase tracking-widest ${colors.textMuted} mb-1.5 px-1`}>Measures</p>
+                                {filteredMeasures.map((m: any) => (
+                                    <div
+                                        key={m.id}
+                                        draggable
+                                        onDragStart={e => handleDragStart(e, m.name)}
+                                        title={`Drag "${m.name}" to a drop zone`}
+                                        className={`
+                                            group flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs mb-0.5 cursor-grab active:cursor-grabbing
+                                            select-none transition-all duration-150
+                                            ${theme === 'dark'
+                                                ? 'text-indigo-300 hover:bg-indigo-500/10 border border-transparent hover:border-indigo-500/20'
+                                                : 'text-indigo-700 hover:bg-indigo-50 border border-transparent hover:border-indigo-200'
+                                            }
+                                        `}
+                                    >
+                                        <Calculator className="w-3 h-3 text-indigo-500 shrink-0" />
+                                        <span className="truncate flex-1">{m.name}</span>
+                                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
+                                            <button
+                                                onClick={e => { e.stopPropagation(); onEditMeasure(m); }}
+                                                className={`p-0.5 rounded transition-colors ${theme === 'dark' ? 'hover:bg-slate-700 text-slate-400 hover:text-indigo-400' : 'hover:bg-slate-200 text-slate-400 hover:text-indigo-600'}`}
+                                                title="Edit measure"
+                                            >
+                                                <Edit2 className="w-2.5 h-2.5" />
+                                            </button>
+                                            <button
+                                                onClick={e => { e.stopPropagation(); onDeleteMeasure(m.id); }}
+                                                className={`p-0.5 rounded transition-colors ${theme === 'dark' ? 'hover:bg-slate-700 text-slate-400 hover:text-rose-400' : 'hover:bg-slate-200 text-slate-400 hover:text-rose-500'}`}
+                                                title="Delete measure"
+                                            >
+                                                <Trash2 className="w-2.5 h-2.5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {filteredFields.length === 0 && filteredMeasures.length === 0 && search && (
+                            <p className={`text-[10px] ${colors.textMuted} px-1 italic text-center pt-2`}>No results for "{search}"</p>
+                        )}
+                    </div>
+
+                    {/* Hint */}
+                    <p className={`text-[9px] ${colors.textMuted} text-center mt-2 opacity-60 leading-relaxed`}>
+                        Drag fields onto the drop zones
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+interface ColumnSelectDropdownProps {
+    value: string;
+    onChange: (val: string) => void;
+    allColumns: string[];
+    customMeasures: any[];
+    onEditMeasure: (m: any) => void;
+    onDeleteMeasure: (id: number) => void;
+    placeholder?: string;
+    theme: string;
+    colors: any;
+}
+
+const ColumnSelectDropdown: React.FC<ColumnSelectDropdownProps> = ({
+    value, onChange, allColumns, customMeasures, onEditMeasure, onDeleteMeasure, placeholder = "Select a column...", theme, colors
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    return (
+        <div className="relative" ref={menuRef}>
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full text-left px-4 py-2.5 rounded-xl flex items-center justify-between ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer`}
+            >
+                <span className="flex items-center gap-2 truncate">
+                    {value ? (
+                        <>
+                            {customMeasures.some(m => m.name === value) && <Calculator className="w-4 h-4 text-indigo-500 flex-shrink-0" />}
+                            <span className="truncate">{value}</span>
+                        </>
+                    ) : placeholder}
+                </span>
+                <ChevronDown className="w-4 h-4 text-slate-500 flex-shrink-0" />
+            </button>
+            
+            {isOpen && (
+                <div className={`absolute top-full left-0 mt-2 w-full max-h-64 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-[70] p-1.5 animate-fade-in custom-scrollbar`}>
+                    <button
+                        onClick={() => { onChange(''); setIsOpen(false); }}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all mb-0.5 ${!value ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                    >
+                        {placeholder}
+                    </button>
+                    {allColumns.map(col => {
+                        const isCustom = customMeasures.some(m => m.name === col);
+                        return (
+                            <div
+                                key={col}
+                                onClick={() => { onChange(col); setIsOpen(false); }}
+                                className={`cursor-pointer group w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-all mb-0.5 ${value === col ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                            >
+                                {isCustom && <Calculator className="w-4 h-4 text-indigo-500 flex-shrink-0" />}
+                                <span className="truncate flex-1">{col}</span>
+                                {isCustom && (
+                                    <div className="flex items-center gap-1 opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity ml-auto">
+                                        <button 
+                                            onClick={(e) => { 
+                                                e.stopPropagation(); 
+                                                onEditMeasure(customMeasures.find(m => m.name === col)); 
+                                                setIsOpen(false);
+                                            }}
+                                            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-indigo-500"
+                                        >
+                                            <Edit2 className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button 
+                                            onClick={(e) => { 
+                                                e.stopPropagation(); 
+                                                const m = customMeasures.find(m => m.name === col);
+                                                if (m) onDeleteMeasure(m.id);
+                                            }}
+                                            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-rose-500"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
 }
 
 const BucketChartCard: React.FC<BucketChartCardProps> = ({
-    chart, index, theme, colors, onRemove, onTypeChange, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart, sections, currentSectionId, onMoveToSection, allColumns, onXAxisChange, onMetricChange, onAggregationChange, onYAxisChange, onFontFamilyChange, onFontSizeChange
+    chart, index, theme, colors, onRemove, onTypeChange, onColorChange, onColor2Change, onMulticolorChange, onTitleChange, onDragStart, sections, currentSectionId, onMoveToSection, allColumns, onXAxisChange, onMetricChange, onAggregationChange, onYAxisChange, onFontFamilyChange, onFontSizeChange, customMeasures = [], onEditMeasure, onDeleteMeasure
 }) => {
     const [showTypeMenu, setShowTypeMenu] = useState(false);
     const typeMenuRef = useRef<HTMLDivElement>(null);
@@ -539,15 +850,42 @@ const BucketChartCard: React.FC<BucketChartCardProps> = ({
                     {showMetricMenu && (
                         <div className={`absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 max-h-64 overflow-y-auto ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl shadow-2xl z-[60] p-1.5 animate-fade-in custom-scrollbar`}>
                             <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 px-2 pt-1 ${colors.textMuted}`}>Change Metric</p>
-                            {allColumns.map(col => (
+                            {allColumns.map(col => {
+                                const isCustom = customMeasures.some(m => m.name === col);
+                                return (
                                 <button
                                     key={col}
                                     onClick={() => { onMetricChange(chart.id, col); setShowMetricMenu(false); }}
-                                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-all mb-0.5 ${chart.dataKey === col ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
+                                    className={`group w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center gap-2 transition-all mb-0.5 ${chart.dataKey === col ? 'bg-indigo-500/10 text-indigo-400 font-bold' : `${colors.textSecondary} hover:${colors.bgTertiary}`}`}
                                 >
-                                    {col}
+                                    {isCustom && <Calculator className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />}
+                                    <span className="truncate flex-1">{col}</span>
+                                    {isCustom && onEditMeasure && onDeleteMeasure && (
+                                        <div className="flex items-center gap-1 opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity ml-auto">
+                                            <button 
+                                                onClick={(e) => { 
+                                                    e.stopPropagation(); 
+                                                    onEditMeasure(customMeasures.find(m => m.name === col)); 
+                                                    setShowMetricMenu(false);
+                                                }}
+                                                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-indigo-500"
+                                            >
+                                                <Edit2 className="w-3 h-3" />
+                                            </button>
+                                            <button 
+                                                onClick={(e) => { 
+                                                    e.stopPropagation(); 
+                                                    const m = customMeasures.find(m => m.name === col);
+                                                    if (m) onDeleteMeasure(m.id);
+                                                }}
+                                                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-rose-500"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    )}
                                 </button>
-                            ))}
+                            )})}
                         </div>
                     )}
                 </div>
@@ -649,6 +987,26 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
 
     // Manual Chart Builder State
     const [isManualOpen, setIsManualOpen] = useState(false);
+    const [customMeasures, setCustomMeasures] = useState<any[]>(dataModel.customMeasures || []);
+    const [isMeasureModalOpen, setIsMeasureModalOpen] = useState(false);
+    const [measureToEdit, setMeasureToEdit] = useState<any>(null);
+    const [fieldPanelOpen, setFieldPanelOpen] = useState(true);
+
+    const handleDeleteMeasure = async (id: number) => {
+        if (confirm('Are you sure you want to delete this measure?')) {
+            try {
+                if (typeof id === 'number' && dataModel.fileId) {
+                    await fetchWithAuth(`${API_BASE}/dax/measure/${id}`, { method: 'DELETE' });
+                }
+                const newMeasures = customMeasures.filter((x: any) => x.id !== id);
+                setCustomMeasures(newMeasures);
+                dataModel.customMeasures = newMeasures;
+            } catch (err) {
+                console.error('Failed to delete', err);
+            }
+        }
+    };
+
     const [manualConfig, setManualConfig] = useState<ChartConfig>({
         id: `custom-manual-${Date.now()}`,
         title: '',
@@ -695,7 +1053,11 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    const allColumns = dataModel.columns || [];
+    const rawColumns = dataModel.columns || [];
+    const allColumns = [
+        ...rawColumns,
+        ...customMeasures.filter((m: any) => !rawColumns.includes(m.name)).map((m: any) => m.name)
+    ];
     const filteredColList = allColumns.filter(c =>
         c.toLowerCase().includes(filterColSearch.toLowerCase())
     );
@@ -1015,197 +1377,201 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
             {/* Manual Chart Builder Modal */}
             {isManualOpen && (
                 <div className={`fixed inset-0 z-[100] ${colors.overlayBg} glass-effect flex items-center justify-center p-2 sm:p-4 animate-fade-in`}>
-                    <div className={`w-full max-w-2xl ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}>
+                    <div className={`w-full max-w-4xl ${colors.bgSecondary} border ${colors.borderPrimary} rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}>
                         {/* Header */}
-                        <div className={`p-4 sm:p-6 border-b ${colors.borderPrimary} flex justify-between items-center`}>
+                        <div className={`p-4 sm:p-5 border-b ${colors.borderPrimary} flex justify-between items-center shrink-0`}>
                             <h2 className={`font-bold ${colors.textPrimary} text-lg sm:text-xl flex items-center gap-2`}>
                                 <Plus className="w-5 h-5 text-indigo-400" />
                                 Manual Chart Builder
                             </h2>
-                            <button onClick={() => setIsManualOpen(false)} className={`p-2 hover:${colors.bgTertiary} rounded-full ${colors.textMuted} transition`}>
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        {/* Content */}
-                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
-                            {/* Title */}
-                            <div>
-                                <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Chart Title</label>
-                                <input
-                                    type="text"
-                                    value={manualConfig.title}
-                                    onChange={e => setManualConfig({...manualConfig, title: e.target.value})}
-                                    placeholder="e.g., Sales by Region"
-                                    className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
-                                />
+                            <div className="flex items-center gap-2">
+                                <span className={`text-xs ${colors.textMuted} hidden sm:block`}>
+                                    Drag fields from the panel →
+                                </span>
+                                <button onClick={() => setIsManualOpen(false)} className={`p-2 hover:${colors.bgTertiary} rounded-full ${colors.textMuted} transition`}>
+                                    <X className="w-5 h-5" />
+                                </button>
                             </div>
+                        </div>
 
-                            {/* Chart Type Selection */}
-                            <div>
-                                <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Chart Type</label>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                    {ALL_CHART_TYPES.map(opt => (
-                                        <button
-                                            key={opt.type}
-                                            onClick={() => setManualConfig({...manualConfig, type: opt.type})}
-                                            className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-2 ${manualConfig.type === opt.type 
-                                                ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400 shadow-lg shadow-indigo-500/10' 
-                                                : `${colors.bgPrimary} border-transparent ${colors.textSecondary} hover:border-indigo-500/30`}`}
-                                        >
-                                            <div className={manualConfig.type === opt.type ? 'text-indigo-400' : colors.textMuted}>
-                                                {getChartIcon(opt.type)}
+                        {/* Body: left content + right field panel */}
+                        <div className="flex flex-1 overflow-hidden">
+                            {/* Left: main config */}
+                            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 custom-scrollbar">
+                                {/* Title */}
+                                <div>
+                                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Chart Title</label>
+                                    <input
+                                        type="text"
+                                        value={manualConfig.title}
+                                        onChange={e => setManualConfig({...manualConfig, title: e.target.value})}
+                                        placeholder="e.g., Sales by Region"
+                                        className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all`}
+                                    />
+                                </div>
+
+                                {/* Chart Type Selection */}
+                                <div>
+                                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Chart Type</label>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {ALL_CHART_TYPES.map(opt => (
+                                            <button
+                                                key={opt.type}
+                                                onClick={() => setManualConfig({...manualConfig, type: opt.type})}
+                                                className={`flex flex-col items-center justify-center p-2.5 rounded-xl border transition-all gap-1.5 ${manualConfig.type === opt.type
+                                                    ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400 shadow-lg shadow-indigo-500/10'
+                                                    : `${colors.bgPrimary} border-transparent ${colors.textSecondary} hover:border-indigo-500/30`}`}
+                                            >
+                                                <div className={manualConfig.type === opt.type ? 'text-indigo-400' : colors.textMuted}>
+                                                    {getChartIcon(opt.type)}
+                                                </div>
+                                                <span className="text-[9px] font-bold text-center leading-tight">{opt.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Drop Zones / Column Selection */}
+                                <div>
+                                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-3`}>Field Assignment</label>
+
+                                    {manualConfig.type === ChartType.TABLE ? (
+                                        <div>
+                                            <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Select Columns (Multiple)</label>
+                                            <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-3 border rounded-xl ${colors.borderSecondary} ${colors.bgPrimary}`}>
+                                                {allColumns.map(col => {
+                                                    const isSelected = manualConfig.columns?.includes(col) || false;
+                                                    return (
+                                                        <label key={col} className={`flex items-center gap-2 text-[11px] cursor-pointer ${colors.textSecondary} hover:text-indigo-400 transition-colors`}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isSelected}
+                                                                onChange={(e) => {
+                                                                    const cols = manualConfig.columns || [];
+                                                                    if (e.target.checked) {
+                                                                        setManualConfig({...manualConfig, columns: [...cols, col]});
+                                                                    } else {
+                                                                        setManualConfig({...manualConfig, columns: cols.filter(c => c !== col)});
+                                                                    }
+                                                                }}
+                                                                className="rounded border-slate-400 text-indigo-500 focus:ring-indigo-500 bg-transparent"
+                                                            />
+                                                            <span className="truncate" title={col}>{col}</span>
+                                                        </label>
+                                                    );
+                                                })}
                                             </div>
-                                            <span className="text-[10px] font-bold text-center">{opt.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {/* X-Axis / Dimension */}
+                                            {manualConfig.type !== ChartType.KPI && (
+                                                <DropZone
+                                                    label={manualConfig.type === ChartType.HORIZONTAL_BAR ? 'Y-Axis (Category)' : manualConfig.type === ChartType.MAP ? 'Location (Country Column)' : 'X-Axis (Dimension)'}
+                                                    value={manualConfig.xAxisKey || ''}
+                                                    onDrop={(fieldName) => setManualConfig({...manualConfig, xAxisKey: fieldName})}
+                                                    onClear={() => setManualConfig({...manualConfig, xAxisKey: ''})}
+                                                    theme={theme}
+                                                    colors={colors}
+                                                    required
+                                                />
+                                            )}
 
-                            {/* Column Selection */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {manualConfig.type === ChartType.TABLE ? (
-                                    <div className="col-span-full">
-                                        <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Select Columns (Multiple)</label>
-                                        <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-60 overflow-y-auto p-3 border rounded-xl ${colors.borderSecondary} ${colors.bgPrimary}`}>
-                                            {allColumns.map(col => {
-                                                const isSelected = manualConfig.columns?.includes(col) || false;
+                                            {/* Metric / Data Key */}
+                                            <DropZone
+                                                label={manualConfig.type === ChartType.HORIZONTAL_BAR ? 'X-Axis (Metric)' : manualConfig.type === ChartType.MAP ? 'Metric (Value/Heatmap)' : 'Metric (Value)'}
+                                                value={manualConfig.dataKey || ''}
+                                                onDrop={(fieldName) => setManualConfig({...manualConfig, dataKey: fieldName})}
+                                                onClear={() => setManualConfig({...manualConfig, dataKey: ''})}
+                                                theme={theme}
+                                                colors={colors}
+                                                required
+                                            />
+
+                                            {/* Aggregation */}
+                                            {(() => {
+                                                const isCustomMetric = customMeasures.some((m: any) => m.name === manualConfig.dataKey);
                                                 return (
-                                                    <label key={col} className={`flex items-center gap-2 text-[11px] cursor-pointer ${colors.textSecondary} hover:text-indigo-400 transition-colors`}>
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={isSelected}
-                                                            onChange={(e) => {
-                                                                const cols = manualConfig.columns || [];
-                                                                if (e.target.checked) {
-                                                                    setManualConfig({...manualConfig, columns: [...cols, col]});
-                                                                } else {
-                                                                    setManualConfig({...manualConfig, columns: cols.filter(c => c !== col)});
+                                                    <div>
+                                                        <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-1.5`}>Aggregation</label>
+                                                        <div className="relative">
+                                                            <select
+                                                                value={isCustomMetric ? '' : manualConfig.aggregation}
+                                                                onChange={e => setManualConfig({...manualConfig, aggregation: e.target.value as AggregationType})}
+                                                                disabled={isCustomMetric}
+                                                                className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none ${isCustomMetric ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                                                            >
+                                                                {isCustomMetric
+                                                                    ? <option value="">—</option>
+                                                                    : Object.values(AggregationType).map(type => <option key={type} value={type}>{type}</option>)
                                                                 }
-                                                            }}
-                                                            className="rounded border-slate-400 text-indigo-500 focus:ring-indigo-500 bg-transparent"
-                                                        />
-                                                        <span className="truncate" title={col}>{col}</span>
-                                                    </label>
+                                                            </select>
+                                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                                                        </div>
+                                                    </div>
                                                 );
-                                            })}
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <>
-                                        {/* Dimension / X-Axis */}
-                                        {manualConfig.type !== ChartType.KPI && (
-                                    <div>
-                                        <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>
-                                            {manualConfig.type === ChartType.HORIZONTAL_BAR ? 'Y-Axis (Category)' : manualConfig.type === ChartType.MAP ? 'Location (Country Column)' : 'X-Axis (Dimension)'}
-                                        </label>
-                                        <div className="relative">
-                                            <select
-                                                value={manualConfig.xAxisKey}
-                                                onChange={e => setManualConfig({...manualConfig, xAxisKey: e.target.value})}
-                                                className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
-                                            >
-                                                <option value="">Select a column...</option>
-                                                {allColumns.map(col => <option key={col} value={col}>{col}</option>)}
-                                            </select>
-                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-                                        </div>
-                                    </div>
-                                )}
+                                            })()}
 
-                                {/* Metric / Data Key */}
-                                <div>
-                                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>
-                                        {manualConfig.type === ChartType.HORIZONTAL_BAR ? 'X-Axis (Metric)' : manualConfig.type === ChartType.MAP ? 'Metric (Value/Heatmap)' : 'Metric (Value)'}
-                                    </label>
-                                    <div className="relative">
-                                        <select
-                                            value={manualConfig.dataKey}
-                                            onChange={e => setManualConfig({...manualConfig, dataKey: e.target.value})}
-                                            className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
-                                        >
-                                            <option value="">Select a column...</option>
-                                            {allColumns.map(col => <option key={col} value={col}>{col}</option>)}
-                                        </select>
-                                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-                                    </div>
+                                            {/* Heatmap / Matrix Y-Axis */}
+                                            {(manualConfig.type === ChartType.HEATMAP || manualConfig.type === ChartType.MATRIX) && (
+                                                <DropZone
+                                                    label="Y-Axis (Dimension 2)"
+                                                    value={manualConfig.yAxisKey || ''}
+                                                    onDrop={(fieldName) => setManualConfig({...manualConfig, yAxisKey: fieldName})}
+                                                    onClear={() => setManualConfig({...manualConfig, yAxisKey: ''})}
+                                                    theme={theme}
+                                                    colors={colors}
+                                                    required
+                                                />
+                                            )}
+
+                                            {/* Secondary Metric for Combo/Grouped/Stacked */}
+                                            {(manualConfig.type === ChartType.COMBO || manualConfig.type === ChartType.GROUPED_BAR || manualConfig.type === ChartType.STACKED_BAR) && (
+                                                <DropZone
+                                                    label="Secondary Metric (Optional)"
+                                                    value={manualConfig.dataKey2 || ''}
+                                                    onDrop={(fieldName) => setManualConfig({...manualConfig, dataKey2: fieldName})}
+                                                    onClear={() => setManualConfig({...manualConfig, dataKey2: ''})}
+                                                    theme={theme}
+                                                    colors={colors}
+                                                />
+                                            )}
+
+                                            {/* Forecasting Date Column */}
+                                            {manualConfig.type === ChartType.FORECASTING && (
+                                                <div className="col-span-full">
+                                                    <DropZone
+                                                        label="Date Column (for forecasting)"
+                                                        value={manualConfig.forecastDateColumn || ''}
+                                                        onDrop={(fieldName) => setManualConfig({...manualConfig, forecastDateColumn: fieldName, xAxisKey: fieldName})}
+                                                        onClear={() => setManualConfig({...manualConfig, forecastDateColumn: '', xAxisKey: ''})}
+                                                        theme={theme}
+                                                        colors={colors}
+                                                        required
+                                                    />
+                                                    <p className={`text-[9px] ${colors.textMuted} mt-1.5 opacity-70`}>Select the date/time column to use for trend forecasting</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
-
-                                {/* Aggregation */}
-                                <div>
-                                    <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Aggregation</label>
-                                    <div className="relative">
-                                        <select
-                                            value={manualConfig.aggregation}
-                                            onChange={e => setManualConfig({...manualConfig, aggregation: e.target.value as AggregationType})}
-                                            className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
-                                        >
-                                            {Object.values(AggregationType).map(type => <option key={type} value={type}>{type}</option>)}
-                                        </select>
-                                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-                                    </div>
-                                </div>
-
-                                {/* Heatmap / Matrix Y-Axis */}
-                                {(manualConfig.type === ChartType.HEATMAP || manualConfig.type === ChartType.MATRIX) && (
-                                    <div>
-                                        <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Y-Axis (Dimension 2)</label>
-                                        <div className="relative">
-                                            <select
-                                                value={manualConfig.yAxisKey || ''}
-                                                onChange={e => setManualConfig({...manualConfig, yAxisKey: e.target.value})}
-                                                className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
-                                            >
-                                                <option value="">Select a column...</option>
-                                                {allColumns.map(col => <option key={col} value={col}>{col}</option>)}
-                                            </select>
-                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Secondary Metric for Combo/Grouped/Stacked */}
-                                {(manualConfig.type === ChartType.COMBO || manualConfig.type === ChartType.GROUPED_BAR || manualConfig.type === ChartType.STACKED_BAR) && (
-                                    <div>
-                                        <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Secondary Metric (Optional)</label>
-                                        <div className="relative">
-                                            <select
-                                                value={manualConfig.dataKey2 || ''}
-                                                onChange={e => setManualConfig({...manualConfig, dataKey2: e.target.value})}
-                                                className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
-                                            >
-                                                <option value="">None</option>
-                                                {allColumns.map(col => <option key={col} value={col}>{col}</option>)}
-                                            </select>
-                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-                                        </div>
-                                    </div>
-                                )}
-                                </>
-                                )}
-
-                                {/* Forecasting Date Column Selector */}
-                                {manualConfig.type === ChartType.FORECASTING && (
-                                    <div>
-                                        <label className={`block text-[10px] font-bold uppercase tracking-wider ${colors.textMuted} mb-2`}>Date Column (for forecasting)</label>
-                                        <div className="relative">
-                                            <select
-                                                value={manualConfig.forecastDateColumn || ''}
-                                                onChange={e => setManualConfig({...manualConfig, forecastDateColumn: e.target.value, xAxisKey: e.target.value})}
-                                                className={`w-full px-4 py-2.5 rounded-xl ${colors.bgPrimary} border ${colors.borderSecondary} ${colors.textPrimary} focus:ring-2 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer`}
-                                            >
-                                                <option value="">Select a date column...</option>
-                                                {allColumns.map(col => <option key={col} value={col}>{col}</option>)}
-                                            </select>
-                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-                                        </div>
-                                        <p className={`text-[9px] ${colors.textMuted} mt-1.5 opacity-70`}>Select the date/time column to use for trend forecasting</p>
-                                    </div>
-                                )}
                             </div>
+
+                            {/* Right: collapsible FieldPanel */}
+                            <FieldPanel
+                                isOpen={fieldPanelOpen}
+                                onToggle={() => setFieldPanelOpen(v => !v)}
+                                rawColumns={rawColumns}
+                                customMeasures={customMeasures}
+                                onEditMeasure={(m) => { setMeasureToEdit(m); setIsMeasureModalOpen(true); }}
+                                onDeleteMeasure={handleDeleteMeasure}
+                                theme={theme}
+                                colors={colors}
+                            />
                         </div>
-                        
+
                         {/* Footer */}
-                        <div className={`p-4 sm:p-6 border-t ${colors.borderPrimary} flex justify-end gap-3`}>
+                        <div className={`p-4 sm:p-5 border-t ${colors.borderPrimary} flex justify-end gap-3 shrink-0`}>
                             <button
                                 onClick={() => setIsManualOpen(false)}
                                 className={`px-5 py-2 rounded-xl border ${colors.borderSecondary} ${colors.textSecondary} hover:${colors.bgTertiary} transition-all font-bold text-sm`}
@@ -1671,6 +2037,14 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                     >
                                         {isListening ? <MicOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Mic className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                                     </button>
+                                    
+                                    <button
+                                        onClick={() => setIsMeasureModalOpen(true)}
+                                        className={`p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl transition hover:${colors.bgTertiary} ${colors.textMuted}`}
+                                        title="Create Custom Measure"
+                                    >
+                                        <Calculator className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                    </button>
                                     <button
                                         onClick={() => setIsManualOpen(true)}
                                         className={`p-1.5 sm:p-2.5 rounded-lg sm:rounded-xl transition hover:${colors.bgTertiary} ${colors.textMuted}`}
@@ -1797,6 +2171,19 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                         onYAxisChange={onYAxisChangeBucket}
                                                         onFontFamilyChange={onFontFamilyChangeBucket}
                                                         onFontSizeChange={onFontSizeChangeBucket}
+                                                        onEditMeasure={(m) => { setMeasureToEdit(m); setIsMeasureModalOpen(true); }}
+                                                        onDeleteMeasure={async (id) => {
+                                                            if (confirm('Are you sure you want to delete this measure?')) {
+                                                                try {
+                                                                    if (typeof id === 'number' && dataModel.fileId) {
+                                                                        await fetchWithAuth(`${API_BASE}/dax/measure/${id}`, { method: 'DELETE' });
+                                                                    }
+                                                                    const newMeasures = customMeasures.filter((x: any) => x.id !== id);
+                                                                    setCustomMeasures(newMeasures);
+                                                                    dataModel.customMeasures = newMeasures;
+                                                                } catch (err) { console.error(err); }
+                                                            }
+                                                        }}
                                                     />
                                                 ))}
                                             </div>
@@ -1849,6 +2236,19 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                                                 onYAxisChange={onYAxisChangeBucket}
                                                 onFontFamilyChange={onFontFamilyChangeBucket}
                                                 onFontSizeChange={onFontSizeChangeBucket}
+                                                        onEditMeasure={(m) => { setMeasureToEdit(m); setIsMeasureModalOpen(true); }}
+                                                        onDeleteMeasure={async (id) => {
+                                                            if (confirm('Are you sure you want to delete this measure?')) {
+                                                                try {
+                                                                    if (typeof id === 'number' && dataModel.fileId) {
+                                                                        await fetchWithAuth(`${API_BASE}/dax/measure/${id}`, { method: 'DELETE' });
+                                                                    }
+                                                                    const newMeasures = customMeasures.filter((x: any) => x.id !== id);
+                                                                    setCustomMeasures(newMeasures);
+                                                                    dataModel.customMeasures = newMeasures;
+                                                                } catch (err) { console.error(err); }
+                                                            }
+                                                        }}
                                             />
                                         ))}
                                     </div>
@@ -1858,6 +2258,27 @@ export const ChartBuilder: React.FC<ChartBuilderProps> = ({
                     </div>
                 </div>
             </div>
+
+            <CreateMeasureModal
+                isOpen={isMeasureModalOpen}
+                onClose={() => { setIsMeasureModalOpen(false); setMeasureToEdit(null); }}
+                sheetId={dataModel.fileId?.toString() || 'unknown'}
+                availableColumns={allColumns}
+                initialMeasure={measureToEdit}
+                onMeasureSaved={(measure) => {
+                    const existingIdx = customMeasures.findIndex((m: any) => m.id === measure.id);
+                    let newMeasures = [...customMeasures];
+                    if (existingIdx >= 0) {
+                        newMeasures[existingIdx] = measure;
+                    } else {
+                        newMeasures = [...customMeasures, measure];
+                    }
+                    setCustomMeasures(newMeasures);
+                    dataModel.customMeasures = newMeasures;
+                    setIsMeasureModalOpen(false);
+                    setMeasureToEdit(null);
+                }}
+            />
         </div>
     );
 };

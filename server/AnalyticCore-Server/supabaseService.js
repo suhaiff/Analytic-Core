@@ -19,8 +19,15 @@ class SupabaseService {
 
         // Initialize Supabase client
         try {
+            const authConfig = {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false
+            };
+
             if (jwtToken) {
                 this.supabase = createClient(this.supabaseUrl, this.supabaseAnonKey, {
+                    auth: authConfig,
                     global: {
                         headers: {
                             Authorization: `Bearer ${jwtToken}`
@@ -29,7 +36,9 @@ class SupabaseService {
                 });
                 this.isScoped = true;
             } else {
-                this.supabase = createClient(this.supabaseUrl, this.supabaseKey);
+                this.supabase = createClient(this.supabaseUrl, this.supabaseKey, {
+                    auth: authConfig
+                });
                 this.isScoped = false;
             }
         } catch (error) {
@@ -42,6 +51,11 @@ class SupabaseService {
     getScopedClient(jwtToken) {
         if (!jwtToken) return this.supabase;
         return createClient(this.supabaseUrl, this.supabaseAnonKey, {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false
+            },
             global: {
                 headers: {
                     Authorization: `Bearer ${jwtToken}`
@@ -126,7 +140,15 @@ class SupabaseService {
 
     async signIn(email, password) {
         try {
-            const { data, error } = await this.supabase.auth.signInWithPassword({
+            // CRITICAL FIX: Use a temporary throwaway client for login.
+            // Calling signInWithPassword on the global client mutates its in-memory session
+            // and overrides the Service Role Key, causing it to act as the logged-in user 
+            // instead of an admin for all subsequent requests!
+            const authClient = createClient(this.supabaseUrl, this.supabaseAnonKey, {
+                auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+            });
+            
+            const { data, error } = await authClient.auth.signInWithPassword({
                 email,
                 password
             });

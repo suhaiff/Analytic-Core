@@ -595,44 +595,72 @@ export const DataModelling: React.FC<DataModellingProps> = ({ dataModel, onCompl
           if (isFromJoined && !isToJoined) {
              const toTable = tables.find(t => t.name === rel.toTable);
              if (toTable) {
-                const rightMap = new Map();
-                toTable.data.forEach(row => {
-                   rightMap.set(String(row[rel.toColumn]), row);
-                });
+                const rightMap = new Map<string, any[]>();
+                 toTable.data.forEach(row => {
+                    const key = String(row[rel.toColumn]);
+                    if (!rightMap.has(key)) rightMap.set(key, []);
+                    rightMap.get(key)!.push(row);
+                 });
 
-                mergedData = mergedData.map(row => {
-                   const joinKey = String(row[`${rel.fromTable}.${rel.fromColumn}`] ?? row[rel.fromColumn]);
-                   const match = rightMap.get(joinKey);
-                   const newRow = { ...row };
-                   toTable.columns.forEach(col => {
-                      const val = match ? match[col] : null;
-                      newRow[`${toTable.name}.${col}`] = val;
-                      newRow[col] = val; // fallback for AI processing un-prefixed
-                   });
-                   return newRow;
-                });
+                 mergedData = mergedData.flatMap(row => {
+                    const joinKey = String(row[`${rel.fromTable}.${rel.fromColumn}`] ?? row[rel.fromColumn]);
+                    const matches = rightMap.get(joinKey);
+                    
+                    if (!matches || matches.length === 0) {
+                       const newRow = { ...row };
+                       toTable.columns.forEach(col => {
+                          newRow[`${toTable.name}.${col}`] = null;
+                          newRow[col] = null;
+                       });
+                       return [newRow];
+                    }
+
+                    return matches.map(match => {
+                       const newRow = { ...row };
+                       toTable.columns.forEach(col => {
+                          const val = match[col];
+                          newRow[`${toTable.name}.${col}`] = val;
+                          newRow[col] = val; // fallback for AI processing un-prefixed
+                       });
+                       return newRow;
+                    });
+                 });
                 toTable.columns.forEach(col => mergedColumns.push(`${toTable.name}.${col}`));
                 joinedTables.add(toTable.name);
              }
           } else if (isToJoined && !isFromJoined) {
              const fromTable = tables.find(t => t.name === rel.fromTable);
              if (fromTable) {
-                const rightMap = new Map();
-                fromTable.data.forEach(row => {
-                   rightMap.set(String(row[rel.fromColumn]), row);
-                });
+                const rightMap = new Map<string, any[]>();
+                 fromTable.data.forEach(row => {
+                    const key = String(row[rel.fromColumn]);
+                    if (!rightMap.has(key)) rightMap.set(key, []);
+                    rightMap.get(key)!.push(row);
+                 });
 
-                mergedData = mergedData.map(row => {
-                   const joinKey = String(row[`${rel.toTable}.${rel.toColumn}`] ?? row[rel.toColumn]);
-                   const match = rightMap.get(joinKey);
-                   const newRow = { ...row };
-                   fromTable.columns.forEach(col => {
-                      const val = match ? match[col] : null;
-                      newRow[`${fromTable.name}.${col}`] = val;
-                      newRow[col] = val;
-                   });
-                   return newRow;
-                });
+                 mergedData = mergedData.flatMap(row => {
+                    const joinKey = String(row[`${rel.toTable}.${rel.toColumn}`] ?? row[rel.toColumn]);
+                    const matches = rightMap.get(joinKey);
+                    
+                    if (!matches || matches.length === 0) {
+                       const newRow = { ...row };
+                       fromTable.columns.forEach(col => {
+                          newRow[`${fromTable.name}.${col}`] = null;
+                          newRow[col] = null;
+                       });
+                       return [newRow];
+                    }
+
+                    return matches.map(match => {
+                       const newRow = { ...row };
+                       fromTable.columns.forEach(col => {
+                          const val = match[col];
+                          newRow[`${fromTable.name}.${col}`] = val;
+                          newRow[col] = val;
+                       });
+                       return newRow;
+                    });
+                 });
                 fromTable.columns.forEach(col => mergedColumns.push(`${fromTable.name}.${col}`));
                 joinedTables.add(fromTable.name);
              }

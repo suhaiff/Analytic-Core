@@ -104,6 +104,7 @@ export interface DataModel {
   name: string;
   data: ProcessedRow[];
   columns: string[];
+  customMeasures?: { name: string; dax_formula: string; sql_compiled?: string }[];
   numericColumns: string[];
   categoricalColumns: string[];
   columnMetadata?: { [columnName: string]: ColumnMetadata };
@@ -439,4 +440,51 @@ export interface Subscription {
   cancel_at_period_end: boolean;
   plans?: Plan;
   purchased_modules?: string[]; // Array of Module IDs
+}
+
+// ── Row-Level Security (RLS) ──────────────────────────────────────────────────
+
+export type RLSCondition =
+  | 'equals'
+  | 'not_equals'
+  | 'contains'
+  | 'not_contains'
+  | 'starts_with'
+  | 'ends_with'
+  | 'greater_than'
+  | 'less_than'
+  | 'greater_than_or_equal'
+  | 'less_than_or_equal'
+  | 'is_blank'
+  | 'is_not_blank';
+
+export interface RLSRule {
+  id: string;
+  column: string;
+  condition: RLSCondition;
+  value: string; // empty string is valid for is_blank / is_not_blank
+}
+
+export type RLSLogic = 'AND' | 'OR';
+
+export interface SecurityRole {
+  id: string;
+  dashboard_id: string;
+  name: string;
+  description?: string;
+  logic: RLSLogic;   // AND = all rules must match, OR = any rule must match
+  rules: RLSRule[];
+  created_by?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SecurityRoleAssignment {
+  id: string;
+  dashboard_id: string;
+  user_email: string;
+  security_role_id: string;
+  role?: SecurityRole; // populated by server join
+  assigned_by?: number;
+  created_at?: string;
 }

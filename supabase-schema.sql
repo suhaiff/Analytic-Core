@@ -258,3 +258,20 @@ $$ LANGUAGE SQL SECURITY DEFINER;
 -- Your database is now ready for InsightAI
 -- You can now start your backend server with:
 -- npm run dev
+
+-- ========================================
+-- Custom Measures (DAX Engine)
+-- ========================================
+CREATE TABLE IF NOT EXISTS custom_measures (
+    id BIGSERIAL PRIMARY KEY,
+    sheet_id BIGINT NOT NULL REFERENCES excel_sheets(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    dax_formula TEXT NOT NULL,
+    sql_compiled TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE custom_measures ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage own measures" ON custom_measures 
+    FOR ALL USING (user_id::text = auth.uid()::text);

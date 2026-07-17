@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
+    "@monaco-editor/react": "^4.7.0",
     "axios": "^1.13.2",
     "d3-scale": "^4.0.2",
     "dotenv": "^17.2.3",

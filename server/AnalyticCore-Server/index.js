@@ -76,6 +76,10 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/admin/subscriptions', adminSubscriptionRoutes);
 app.use('/api/payment-requests', paymentRequestRoutes);
 
+// DAX Routes
+const daxRoutes = require('./daxRoutes');
+app.use('/api/dax', daxRoutes);
+
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -177,6 +181,28 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     }
 });
 
+app.post('/api/refresh-token', async (req, res) => {
+    try {
+        const { refresh_token } = req.body;
+        if (!refresh_token) return res.status(400).json({ error: 'No refresh token provided' });
+        
+        const { data, error } = await globalSupabaseService.supabase.auth.refreshSession({ refresh_token });
+        if (error) throw error;
+        
+        if (data && data.session) {
+            res.json({
+                access_token: data.session.access_token,
+                refresh_token: data.session.refresh_token
+            });
+        } else {
+            res.status(401).json({ error: 'Invalid session' });
+        }
+    } catch (error) {
+        console.error('Refresh token error:', error);
+        res.status(401).json({ error: 'Token refresh failed' });
+    }
+});
+
 app.post('/api/signup', async (req, res) => {
     try {
         const { name, email, phone, company, job_title, domain } = req.body;
@@ -204,13 +230,47 @@ app.post('/api/signup', async (req, res) => {
     }
 });
 
+// Helper: Decode JWT payload without verification (payload is just base64)
+function decodeJwtPayload(token) {
+    try {
+        const base64Payload = token.split('.')[1];
+        const decoded = Buffer.from(base64Payload, 'base64').toString('utf8');
+        return JSON.parse(decoded);
+    } catch (e) {
+        return null;
+    }
+}
+
 // User Management (Admin)
 app.get('/api/users', async (req, res) => {
     try {
-        const users = await req.supabaseService.getUsers();
+        let isAdmin = false;
+        let userOrgId = null;
+
+        // Decode JWT directly — no Supabase Auth call, no RLS, no caching issues
+        if (req.token) {
+            const payload = decodeJwtPayload(req.token);
+            const email = payload?.email;
+            if (email) {
+                const dbUser = await globalSupabaseService.getUserByEmail(email);
+                if (dbUser) {
+                    isAdmin = dbUser.role === 'ADMIN';
+                    userOrgId = dbUser.organization_id;
+                }
+            }
+        }
+        
+        let users = [];
+        if (isAdmin) {
+            users = await globalSupabaseService.getUsers();
+        } else if (userOrgId) {
+            users = await globalSupabaseService.getUsersByOrganization(userOrgId);
+        } else {
+            users = await req.supabaseService.getUsers();
+        }
         res.json(users);
     } catch (error) {
-        console.error('Get users error:', error);
+        console.error('Get users error:', error, error.stack);
         res.status(500).json({ error: error.message });
     }
 });
@@ -552,7 +612,9 @@ app.get('/api/dashboards/shared', async (req, res) => {
     try {
         const userId = parseInt(req.query.userId);
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
-        const dashboards = await req.supabaseService.getSharedDashboards(userId);
+        
+        // Use global service to bypass RLS on the dashboards table during the join
+        const dashboards = await globalSupabaseService.getSharedDashboards(userId);
         res.json(dashboards);
     } catch (error) {
         console.error('Get shared dashboards error:', error);
@@ -641,7 +703,7 @@ app.get('/api/dashboards', async (req, res) => {
         res.json(dashboards);
     } catch (error) {
         console.error('Get dashboards error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message, details: error });
     }
 });
 
@@ -673,7 +735,16 @@ app.delete('/api/dashboards/:id', async (req, res) => {
 // Admin: Get All Dashboards
 app.get('/api/admin/dashboards', async (req, res) => {
     try {
-        const dashboards = await req.supabaseService.getAllDashboards();
+        let isAdmin = false;
+        if (req.token) {
+            const payload = decodeJwtPayload(req.token);
+            if (payload?.email) {
+                const dbUser = await globalSupabaseService.getUserByEmail(payload.email);
+                isAdmin = !!(dbUser && dbUser.role === 'ADMIN');
+            }
+        }
+        
+        const dashboards = isAdmin ? await globalSupabaseService.getAllDashboards() : await req.supabaseService.getAllDashboards();
         res.json(dashboards);
     } catch (error) {
         console.error('Get all dashboards error:', error);
@@ -733,7 +804,7 @@ app.get('/api/workspace/folders', async (req, res) => {
         res.json(folders);
     } catch (error) {
         console.error('Get workspace folders error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error.message, details: error });
     }
 });
 
@@ -874,6 +945,197 @@ app.delete('/api/workspace/groups/:id', async (req, res) => {
     }
 });
 
+
+// ============================================
+// Security Roles Endpoints (Row-Level Security)
+// ============================================
+
+// GET all roles for a dashboard
+app.get('/api/dashboards/:id/security-roles', async (req, res) => {
+    try {
+        const dashboardId = parseInt(req.params.id);
+        const { data, error } = await req.supabaseService.supabase
+            .from('security_roles')
+            .select('*')
+            .eq('dashboard_id', dashboardId)
+            .order('created_at', { ascending: true });
+        if (error) throw error;
+        res.json(data || []);
+    } catch (error) {
+        console.error('Get security roles error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST create a new security role
+app.post('/api/dashboards/:id/security-roles', async (req, res) => {
+    try {
+        const dashboardId = parseInt(req.params.id);
+        const { name, description, logic = 'AND', rules = [], createdBy } = req.body;
+        if (!name) return res.status(400).json({ error: 'Missing role name' });
+
+        const { data, error } = await req.supabaseService.supabase
+            .from('security_roles')
+            .insert([{
+                dashboard_id: dashboardId,
+                name,
+                description: description || null,
+                logic,
+                rules: rules,
+                created_by: createdBy || null,
+            }])
+            .select()
+            .single();
+        if (error) throw error;
+        res.json(data);
+    } catch (error) {
+        console.error('Create security role error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// PUT update a security role
+app.put('/api/dashboards/:id/security-roles/:roleId', async (req, res) => {
+    try {
+        const dashboardId = parseInt(req.params.id);
+        const roleId = req.params.roleId;
+        const { name, description, logic, rules } = req.body;
+
+        const updates = { updated_at: new Date().toISOString() };
+        if (name !== undefined) updates.name = name;
+        if (description !== undefined) updates.description = description;
+        if (logic !== undefined) updates.logic = logic;
+        if (rules !== undefined) updates.rules = rules;
+
+        const { data, error } = await req.supabaseService.supabase
+            .from('security_roles')
+            .update(updates)
+            .eq('id', roleId)
+            .eq('dashboard_id', dashboardId)
+            .select()
+            .single();
+        if (error) throw error;
+        if (!data) return res.status(404).json({ error: 'Security role not found' });
+        res.json(data);
+    } catch (error) {
+        console.error('Update security role error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE a security role
+app.delete('/api/dashboards/:id/security-roles/:roleId', async (req, res) => {
+    try {
+        const dashboardId = parseInt(req.params.id);
+        const roleId = req.params.roleId;
+        const { error } = await req.supabaseService.supabase
+            .from('security_roles')
+            .delete()
+            .eq('id', roleId)
+            .eq('dashboard_id', dashboardId);
+        if (error) throw error;
+        res.json({ message: 'Security role deleted' });
+    } catch (error) {
+        console.error('Delete security role error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET all role assignments for a dashboard
+app.get('/api/dashboards/:id/security-role-assignments', async (req, res) => {
+    try {
+        const dashboardId = parseInt(req.params.id);
+        const { data, error } = await req.supabaseService.supabase
+            .from('security_role_assignments')
+            .select('*, role:security_roles(*)')
+            .eq('dashboard_id', dashboardId)
+            .order('created_at', { ascending: true });
+        if (error) throw error;
+        res.json(data || []);
+    } catch (error) {
+        console.error('Get security role assignments error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST assign a role to a user email
+app.post('/api/dashboards/:id/security-role-assignments', async (req, res) => {
+    try {
+        const dashboardId = parseInt(req.params.id);
+        const { userEmail, securityRoleId, assignedBy } = req.body;
+        if (!userEmail || !securityRoleId) {
+            return res.status(400).json({ error: 'Missing userEmail or securityRoleId' });
+        }
+
+        // Upsert: replace existing assignment for the same email on this dashboard
+        const { data, error } = await req.supabaseService.supabase
+            .from('security_role_assignments')
+            .upsert([{
+                dashboard_id: dashboardId,
+                user_email: userEmail.toLowerCase().trim(),
+                security_role_id: securityRoleId,
+                assigned_by: assignedBy || null,
+            }], { onConflict: 'dashboard_id,user_email' })
+            .select('*, role:security_roles(*)')
+            .single();
+        if (error) throw error;
+        res.json(data);
+    } catch (error) {
+        console.error('Assign security role error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE a role assignment by ID
+app.delete('/api/dashboards/:id/security-role-assignments/:assignmentId', async (req, res) => {
+    try {
+        const dashboardId = parseInt(req.params.id);
+        const assignmentId = req.params.assignmentId;
+        const { error } = await req.supabaseService.supabase
+            .from('security_role_assignments')
+            .delete()
+            .eq('id', assignmentId)
+            .eq('dashboard_id', dashboardId);
+        if (error) throw error;
+        res.json({ message: 'Security role assignment removed' });
+    } catch (error) {
+        console.error('Remove security role assignment error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET the security role assigned to the current user's email (called at dashboard load)
+app.get('/api/dashboards/:id/my-security-role', async (req, res) => {
+    try {
+        const dashboardId = parseInt(req.params.id);
+        let email = (req.query.email || '').toLowerCase().trim();
+        
+        // Securely extract email from JWT to prevent querying other users' roles
+        if (req.token) {
+            const payload = decodeJwtPayload(req.token);
+            if (payload?.email) {
+                email = payload.email.toLowerCase().trim();
+            }
+        }
+        
+        if (!email) return res.status(400).json({ error: 'Missing email' });
+
+        // Use globalSupabaseService to bypass RLS, ensuring users can always read their own assigned roles
+        const { data, error } = await globalSupabaseService.supabase
+            .from('security_role_assignments')
+            .select('*, role:security_roles(*)')
+            .eq('dashboard_id', dashboardId)
+            .eq('user_email', email)
+            .maybeSingle();
+
+        if (error) throw error;
+        if (!data) return res.status(404).json({ role: null });
+        res.json({ role: data.role });
+    } catch (error) {
+        console.error('Get my security role error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // Cloud Storage Routes
 app.use('/api/cloud-storage', cloudStorageRoutes);
@@ -1161,7 +1423,16 @@ app.post('/api/log-config', async (req, res) => {
 // Admin: Get All Uploads
 app.get('/api/admin/uploads', async (req, res) => {
     try {
-        const uploads = await req.supabaseService.getAllUploads();
+        let isAdmin = false;
+        if (req.token) {
+            const payload = decodeJwtPayload(req.token);
+            if (payload?.email) {
+                const dbUser = await globalSupabaseService.getUserByEmail(payload.email);
+                isAdmin = !!(dbUser && dbUser.role === 'ADMIN');
+            }
+        }
+        
+        const uploads = isAdmin ? await globalSupabaseService.getAllUploads() : await req.supabaseService.getAllUploads();
         res.json(uploads);
     } catch (error) {
         console.error('Get all uploads error:', error);

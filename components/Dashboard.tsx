@@ -5,7 +5,8 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, Brush, LabelList,
     ScatterChart, Scatter, ZAxis, ComposedChart, ReferenceLine
 } from 'recharts';
-import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType, SavedDashboard, AccessLevel, AnalyticsLinesConfig, ForecastUnits, ConditionalFormattingRule } from '../types';
+import { DataModel, ChartConfig, ChartType, DashboardSection, AggregationType, SavedDashboard, AccessLevel, AnalyticsLinesConfig, ForecastUnits, ConditionalFormattingRule, SecurityRole, RLSRule, RLSLogic } from '../types';
+import { securityRolesService } from '../services/securityRolesService';
 import { aggregateData } from '../utils/aggregator';
 import {
     LayoutDashboard, Download, Share2, TrendingUp, Loader2, Maximize2,
@@ -705,7 +706,7 @@ const DateFilterSlider = React.memo(({
     );
 });
 
-const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true, columnMetadata, columnCurrencies, isExporting = false, fontSettings, onUpdateConfig }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean, columnMetadata?: any, columnCurrencies?: { [key: string]: string }, isExporting?: boolean, fontSettings?: { fontFamily: string, fontSize: number, isBold: boolean, isItalic: boolean }, onUpdateConfig?: (configId: string, updates: Partial<ChartConfig>) => void }) => {
+const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onItemClick, activeFilterValue, isAnimationActive = true, columnMetadata, columnCurrencies, isExporting = false, fontSettings, onUpdateConfig, compactNumbers = false }: { config: ChartConfig, data: any[], isExpanded?: boolean, theme: Theme, onItemClick?: (value: any) => void, activeFilterValue?: any, isAnimationActive?: boolean, columnMetadata?: any, columnCurrencies?: { [key: string]: string }, isExporting?: boolean, fontSettings?: { fontFamily: string, fontSize: number, isBold: boolean, isItalic: boolean }, onUpdateConfig?: (configId: string, updates: Partial<ChartConfig>) => void, compactNumbers?: boolean }) => {
     const colors = getThemeClasses(theme);
     if (!data || data.length === 0) return <div className={`flex items-center justify-center h-full ${colors.textMuted} text-sm`}>No Data Available</div>;
 
@@ -871,7 +872,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
 
     // Helper to format any value based on column name
     const formatByColumn = (value: any, key: string, compact = false) => {
-        return smartFormat(value, key, columnMetadata, columnCurrencies);
+        return smartFormat(value, key, columnMetadata, columnCurrencies, compactNumbers || compact);
     };
 
     // Custom formatter for labels (usually for dataKey)
@@ -1286,7 +1287,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                             fill={themeColors.chartLabelText}
                                             fontSize={8}
                                             fontWeight={600}
-                                            formatter={((val: any) => smartFormat(val, config.dataKey2!, columnMetadata)) as any}
+                                            formatter={((val: any) => smartFormat(val, config.dataKey2!, columnMetadata, columnCurrencies, compactNumbers)) as any}
                                             offset={8}
                                         />
                                     </Bar>
@@ -2582,6 +2583,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     const [currentFilterColumns, setCurrentFilterColumns] = useState<string[]>(filterColumns);
     const [isEditing, setIsEditing] = useState(false);
     const [showShareModal, setShowShareModal] = useState(false);
+
+    // ── RLS: Row-Level Security ──────────────────────────────────────────────
+    const [rlsRole, setRlsRole] = useState<SecurityRole | null>(null);
+    const [isRlsLoading, setIsRlsLoading] = useState(true);
+
+    // Fetch the RLS role assigned to the current user for this dashboard
+    useEffect(() => {
+        if (!dashboardId || !currentUser?.email) {
+            setIsRlsLoading(false);
+            return;
+        }
+        // Owners and true Admins (role === 'ADMIN') always see all data — skip RLS lookup.
+        // Superusers (is_superuser) do NOT bypass RLS.
+        const bypassRls = isOwner || currentUser?.role === 'ADMIN';
+        if (bypassRls) {
+            setIsRlsLoading(false);
+            return;
+        }
+        
+        setIsRlsLoading(true);
+        securityRolesService.getMyRole(dashboardId, currentUser.email)
+            .then(role => setRlsRole(role))
+            .catch(() => setRlsRole(null)) // fail-open: if fetch fails, show all data
+            .finally(() => setIsRlsLoading(false));
+    }, [dashboardId, currentUser?.email, currentUser?.role, isOwner]);
+
     // Ref to prevent the prop-sync useEffect from overwriting local state after a self-save
     const isSelfSaveRef = useRef(false);
 
@@ -2599,6 +2626,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     const [fontSize, setFontSize] = useState(14);
     const [isBoldFont, setIsBoldFont] = useState(false);
     const [isItalicFont, setIsItalicFont] = useState(false);
+    const [compactNumbers, setCompactNumbers] = useState(false);
     const fontSettings = useMemo(() => ({ fontFamily, fontSize, isBold: isBoldFont, isItalic: isItalicFont }), [fontFamily, fontSize, isBoldFont, isItalicFont]);
     const FONT_OPTIONS = ['Inter', 'Times New Roman', 'Arial', 'Roboto', 'Georgia', 'Courier New'];
 
@@ -2751,13 +2779,50 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     // --- NEW: Per-Chart Filtering State (supports multiple values per column) ---
     const [chartFilters, setChartFilters] = useState<{ [chartId: string]: { [column: string]: any[] } }>({});
 
+    // ── RLS filter: applied before global filters ─────────────────────────
+    const rlsFilteredData = useMemo(() => {
+        const raw = dataModel?.data || [];
+        if (!rlsRole || !rlsRole.rules || rlsRole.rules.length === 0) return raw;
+        const logic: RLSLogic = rlsRole.logic || 'AND';
+
+        const matchRule = (row: any, rule: RLSRule): boolean => {
+            const cellRaw = row[rule.column];
+            const cell = String(cellRaw ?? '').toLowerCase();
+            const val  = String(rule.value ?? '').toLowerCase();
+            switch (rule.condition) {
+                case 'equals':               return cell === val;
+                case 'not_equals':           return cell !== val;
+                case 'contains':             return cell.includes(val);
+                case 'not_contains':         return !cell.includes(val);
+                case 'starts_with':          return cell.startsWith(val);
+                case 'ends_with':            return cell.endsWith(val);
+                case 'greater_than':         return parseFloat(String(cellRaw)) > parseFloat(rule.value);
+                case 'less_than':            return parseFloat(String(cellRaw)) < parseFloat(rule.value);
+                case 'greater_than_or_equal':return parseFloat(String(cellRaw)) >= parseFloat(rule.value);
+                case 'less_than_or_equal':   return parseFloat(String(cellRaw)) <= parseFloat(rule.value);
+                case 'is_blank':             return cell === '' || cellRaw === null || cellRaw === undefined;
+                case 'is_not_blank':         return cell !== '' && cellRaw !== null && cellRaw !== undefined;
+                default:                     return true;
+            }
+        };
+
+        const activeRules = rlsRole.rules.filter(r => r.column);
+        if (activeRules.length === 0) return raw;
+
+        return raw.filter(row => {
+            if (!row) return false;
+            if (logic === 'OR') return activeRules.some(rule => matchRule(row, rule));
+            return activeRules.every(rule => matchRule(row, rule));
+        });
+    }, [dataModel?.data, rlsRole]);
+
     // Filtered data calculation (global filters only — now supports multiple values per column)
     const filteredData = useMemo(() => {
-        if (!dataModel || !dataModel.data) return [];
-        if (Object.keys(activeFilters).length === 0) return dataModel.data;
+        if (!rlsFilteredData || rlsFilteredData.length === 0) return rlsFilteredData;
+        if (Object.keys(activeFilters).length === 0) return rlsFilteredData;
 
         try {
-            return dataModel.data.filter(row => {
+            return rlsFilteredData.filter(row => {
                 if (!row) return false;
                 return Object.entries(activeFilters).every(([col, vals]) => {
                     if (!Array.isArray(vals) || vals.length === 0) return true;
@@ -2766,9 +2831,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
             });
         } catch (e) {
             console.error("Error in filtering logic:", e);
-            return dataModel.data || [];
+            return rlsFilteredData || [];
         }
-    }, [dataModel?.data, activeFilters]);
+    }, [rlsFilteredData, activeFilters]);
 
     // Helper function to apply per-chart filters (supports multiple values)
     const applyChartFilters = (data: any[], chartId: string): any[] => {
@@ -3606,6 +3671,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
             );
         }
 
+        if (isRlsLoading) {
+            return (
+                <div className={`flex flex-col items-center justify-center min-h-screen ${colors.bgPrimary} ${colors.textPrimary} p-6`}>
+                    <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
+                    <h2 className="text-lg font-bold">Checking Data Permissions...</h2>
+                    <p className={`text-sm ${colors.textMuted} mt-2`}>Securing dashboard access</p>
+                </div>
+            );
+        }
+
         return (
             <>
                 {/* Save Dashboard Modal */}
@@ -3845,6 +3920,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             isAnimationActive={true}
                                             fontSettings={fontSettings}
                                             onUpdateConfig={updateChartConfig}
+                                            compactNumbers={compactNumbers}
                                         />
                                     )}
                                 </div>
@@ -3920,7 +3996,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                         }
                                         return isDateTimeColumn(expandedChartConfig.xAxisKey) 
                                             ? getDrillDownData(expandedChartConfig, chartData)
-                                            : aggregateData(chartData, expandedChartConfig);
+                                            : aggregateData(chartData, expandedChartConfig, dataModel.customMeasures);
                                     })()}
                                     isExpanded={true}
                                     theme={theme}
@@ -3935,6 +4011,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                     columnMetadata={dataModel.columnMetadata}
                                     columnCurrencies={dataModel.columnCurrencies}
                                     fontSettings={fontSettings}
+                                    compactNumbers={compactNumbers}
                                 />
                             </div>
                             <div className={`p-4 ${colors.bgSecondary} border-t ${colors.borderPrimary} text-center`}>
@@ -3952,6 +4029,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                     <DashboardShareModal
                         dashboardId={dashboardId}
                         currentUser={currentUser}
+                        dataModelColumns={dataModel?.columns || []}
                         onClose={() => setShowShareModal(false)}
                     />
                 )}
@@ -4311,6 +4389,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                         )}
                                     </div>
 
+                                    <button
+                                        onClick={() => setCompactNumbers(!compactNumbers)}
+                                        className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all duration-300 border ${compactNumbers ? 'bg-indigo-500/20 text-indigo-500 border-indigo-500/50 shadow-[0_0_10px_rgba(99,102,241,0.2)]' : `bg-transparent ${theme === 'dark' ? 'text-slate-400 border-slate-700 hover:bg-slate-800' : 'text-slate-500 border-slate-300 hover:bg-slate-100'}`} ml-1`}
+                                    >
+                                        {compactNumbers ? 'Auto (K/M/B)' : 'Auto'}
+                                    </button>
                                     <ThemeToggle className="scale-100 sm:scale-110 ml-0 sm:ml-1" />
 
 
@@ -4649,9 +4733,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-2 print:grid-cols-4">
                                         {activeSection.filter(c => c.type === ChartType.KPI).map((kpi) => {
                                             const baseData = kpi.ignoreGlobalFilters ? dataModel.data : filteredData;
-                                            const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi);
+                                            const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi, dataModel.customMeasures);
                                             const value = data[0]?.value || 0;
-                                            const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata, dataModel.columnCurrencies);
+                                            const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata, dataModel.columnCurrencies, compactNumbers);
                                             return (
                                                 <div key={kpi.id} className={`glass-panel premium-box rounded-[32px] border ${colors.borderPrimary} p-8 shadow-2xl relative overflow-hidden group print:shadow-none ${theme === 'dark' ? 'print:border-slate-600' : 'print:border-slate-300'} hover:translate-y-[-4px] transition-all duration-500`}>
                                                     <div className="absolute top-0 right-0 p-6 opacity-[0.03] group-hover:opacity-10 transition duration-700 transform group-hover:scale-150 rotate-12 print:hidden pointer-events-none">
@@ -4710,7 +4794,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                           ).extendedData
                                         : (isXDate 
                                             ? getDrillDownData(chart, chartPreFilteredData)
-                                            : aggregateData(chartPreFilteredData, chart));
+                                            : aggregateData(chartPreFilteredData, chart, dataModel.customMeasures));
                                     const hasChartFilters = chartFilters[chart.id] && Object.keys(chartFilters[chart.id]).length > 0;
                                     const drillState = chartDrillStates[chart.id];
                                     const isDrilled = drillState && drillState.level !== 'year' && (drillState.level !== 'month' || drillState.year !== null);
@@ -5127,9 +5211,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '32px', width: '100%' }}>
                                         {page.pageKPIs.map((kpi, kIdx) => {
                                             const baseData = kpi.ignoreGlobalFilters ? dataModel.data : filteredData;
-                                            const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi);
+                                            const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi, dataModel.customMeasures);
                                             const value = data[0]?.value || 0;
-                                            const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata, dataModel.columnCurrencies);
+                                            const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata, dataModel.columnCurrencies, compactNumbers);
                                             return (
                                                 <div key={kpi.id} style={{ 
                                                     flex: '1 1 calc(25% - 15px)', 
@@ -5182,7 +5266,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                         }
                                                         return isDateTimeColumn(chart.xAxisKey)
                                                             ? getDrillDownData(chart, chartData)
-                                                            : aggregateData(chartData, chart);
+                                                            : aggregateData(chartData, chart, dataModel.customMeasures);
                                                     })()}
                                                     theme={theme}
                                                     isAnimationActive={false}
