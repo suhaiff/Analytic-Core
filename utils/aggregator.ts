@@ -17,43 +17,95 @@ export function evaluateDaxMeasure(formula: string, rows: ProcessedRow[], custom
   const values: Record<string, number> = {};
 
   // 1a. Process CALCULATE + DATESINPERIOD
-  const calcDatesRegex = /CALCULATE\(\s*(.+?)\s*,\s*DATESINPERIOD\(\s*(?:'[^']+'\[([^\]]+)\]|\[([^\]]+)\])\s*,\s*MAX\(\s*(?:'[^']+'\[([^\]]+)\]|\[([^\]]+)\])\s*\)\s*,\s*(-?\d+)\s*,\s*(DAY|MONTH|QUARTER|YEAR)\s*\)\s*\)/gi;
-  let remainingFormulaForCalc = jsFormula;
-  while ((match = calcDatesRegex.exec(remainingFormulaForCalc)) !== null) {
-      const [fullMatch, expression, dateCol1, dateCol2, maxDateCol1, maxDateCol2, offsetStr, intervalStr] = match;
-      if (!jsFormula.includes(fullMatch)) continue;
-      
-      const dateCol = dateCol1 || dateCol2;
+  // Uses a bracket-aware extractor to correctly capture expressions containing commas.
+  // Syntax: CALCULATE(<expr>, DATESINPERIOD(<DateCol>, MAX(<DateCol>), -90, DAY))
+  const calcDatesPattern = /CALCULATE\s*\(/gi;
+  let calcMatch;
+  calcDatesPattern.lastIndex = 0;
+  const tempFormula1 = jsFormula;
+  const calcDateReplacements: Array<{from: string, to: string}> = [];
+
+  while ((calcMatch = calcDatesPattern.exec(tempFormula1)) !== null) {
+      // Find the matching closing paren for CALCULATE(
+      const startIdx = calcMatch.index + calcMatch[0].length;
+      let depth = 1;
+      let i = startIdx;
+      while (i < tempFormula1.length && depth > 0) {
+          if (tempFormula1[i] === '(') depth++;
+          else if (tempFormula1[i] === ')') depth--;
+          i++;
+      }
+      const inner = tempFormula1.slice(startIdx, i - 1).trim(); // everything inside CALCULATE(...)
+      const fullMatch = tempFormula1.slice(calcMatch.index, i);
+
+      // Split inner into: first arg (expression) and the rest (filter args)
+      // Split at top-level commas only
+      const topLevelSplit = (str: string): string[] => {
+          const parts: string[] = [];
+          let d = 0; let cur = '';
+          for (const c of str) {
+              if (c === '(' ) d++;
+              else if (c === ')') d--;
+              if (c === ',' && d === 0) { parts.push(cur.trim()); cur = ''; }
+              else cur += c;
+          }
+          if (cur.trim()) parts.push(cur.trim());
+          return parts;
+      };
+
+      const args = topLevelSplit(inner);
+      if (args.length < 2) continue;
+
+      let expression = args[0];
+      const filterArg = args.slice(1).join(', ');
+
+      // Resolve a [MeasureName] reference that refers to another custom measure
+      const measureRefMatch = /^\[([^\]]+)\]$/.exec(expression.trim());
+      if (measureRefMatch && customMeasures) {
+          const refMeasure = customMeasures.find((m: any) => m.name === measureRefMatch[1]);
+          if (refMeasure) expression = refMeasure.dax_formula;
+      }
+
+      // Now parse the filter: DATESINPERIOD(<DateCol>, MAX(<DateCol>), <offset>, <interval>)
+      const datesInPeriodMatch = /^DATESINPERIOD\(\s*(?:'[^']+'\[([^\]]+)\]|\[([^\]]+)\])\s*,\s*MAX\(\s*(?:'[^']+'\[([^\]]+)\]|\[([^\]]+)\])\s*\)\s*,\s*(-?\d+)\s*,\s*(DAY|MONTH|QUARTER|YEAR)\s*\)$/i.exec(filterArg.trim())
+          || /^DATESINPERIOD\(\s*(?:'[^']+')??\[([^\]]+)\]\s*,\s*MAX\(\s*(?:'[^']+')??\[([^\]]+)\]\s*\)\s*,\s*(-?\d+)\s*,\s*(DAY|MONTH|QUARTER|YEAR)\s*\)$/i.exec(filterArg.trim());
+
+      if (!datesInPeriodMatch) continue;
+
+      // Groups differ per regex; find the non-null column names
+      const nonNullGroups = datesInPeriodMatch.slice(1).filter(Boolean);
+      const dateCol = nonNullGroups[0];
+      const offset = parseInt(nonNullGroups[nonNullGroups.length - 2], 10);
+      const interval = nonNullGroups[nonNullGroups.length - 1].toUpperCase();
+
       const key = `__val${index++}__`;
-      const offset = parseInt(offsetStr, 10);
-      const interval = intervalStr.toUpperCase();
-      
       let val = 0;
-      let validRows = rows.filter(r => r[dateCol] !== undefined && r[dateCol] !== null);
-      
+      let validRows = rows.filter(r => r[dateCol] !== undefined && r[dateCol] !== null && !isNaN(new Date(r[dateCol]).getTime()));
+
       if (validRows.length > 0) {
           const maxDate = new Date(Math.max(...validRows.map(r => new Date(r[dateCol]).getTime())));
-          
           let startDate = new Date(maxDate);
           if (interval === 'DAY') startDate.setDate(startDate.getDate() + offset);
           else if (interval === 'MONTH') startDate.setMonth(startDate.getMonth() + offset);
           else if (interval === 'QUARTER') startDate.setMonth(startDate.getMonth() + (offset * 3));
           else if (interval === 'YEAR') startDate.setFullYear(startDate.getFullYear() + offset);
-          
+
           const minTime = Math.min(startDate.getTime(), maxDate.getTime());
           const maxTime = Math.max(startDate.getTime(), maxDate.getTime());
-          
+
           const filteredRows = validRows.filter(r => {
               const d = new Date(r[dateCol]).getTime();
               return d >= minTime && d <= maxTime;
           });
-          
+
           val = evaluateDaxMeasure(expression, filteredRows, customMeasures, fullDataset);
       }
-      
+
+      calcDateReplacements.push({ from: fullMatch, to: key });
       values[key] = val;
-      jsFormula = jsFormula.replace(fullMatch, key);
   }
+  calcDateReplacements.forEach(({ from, to }) => { jsFormula = jsFormula.replace(from, to); });
+
 
   // 1b. Process CALCULATE + PREVIOUSYEAR / PREVIOUSQUARTER / PREVIOUSMONTH / SAMEPERIODLASTYEAR
   // Syntax: CALCULATE(<expression>, PREVIOUSYEAR(<DateColumn>))

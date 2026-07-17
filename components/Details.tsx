@@ -2,7 +2,11 @@ import React, { useState } from 'react';
 import { useTheme } from '../ThemeContext';
 import { getThemeClasses } from '../theme';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, Code2, Megaphone, Palette, Target, Settings, Database, Wand2, LineChart, Sparkles, CheckCircle2 } from 'lucide-react';
+import { 
+  ArrowRight, Code2, Megaphone, Palette, Target, Settings, 
+  Database, Wand2, LineChart, Sparkles, CheckCircle2, 
+  Zap, Shield, Info, Clock, Wifi, CheckCircle 
+} from 'lucide-react';
 
 interface DetailsProps {
   onNavigateToLanding: () => void;
@@ -69,11 +73,16 @@ const tabContent = {
   }
 };
 
-const flowSteps = [
-  { id: 1, title: 'Connect Data', desc: 'Securely link databases, APIs, or upload spreadsheets. We handle the formatting.', icon: Database, color: 'blue' },
-  { id: 2, title: 'AI Processing', desc: 'Our neural engines automatically clean, type-cast, and join your scattered data.', icon: Wand2, color: 'violet' },
-  { id: 3, title: 'Visualize', desc: 'Generate pixel-perfect interactive dashboards without writing a single line of code.', icon: LineChart, color: 'fuchsia' },
-  { id: 4, title: 'Decide', desc: 'Query your data in plain English and share insights with your entire organization.', icon: Sparkles, color: 'emerald' }
+const pros = [
+  { id: 1, title: 'AI-Native Insights', desc: 'Ask questions in plain English and instantly receive interactive charts and SQL queries.', icon: Sparkles },
+  { id: 2, title: 'Real-time Multiplayer', desc: 'Collaborate with your team on live dashboards simultaneously, just like Google Docs.', icon: Zap },
+  { id: 3, title: 'Bank-Grade Security', desc: 'SOC2 compliant with end-to-end encryption and fine-grained RBAC out of the box.', icon: Shield },
+];
+
+const cons = [
+  { id: 1, title: 'Cloud-Only Deployment', desc: 'Currently does not support on-premise installations for fully air-gapped environments.', icon: Wifi },
+  { id: 2, title: 'Initial Indexing Time', desc: 'Connecting massive legacy databases (10TB+) may take a few hours to fully index semantics.', icon: Clock },
+  { id: 3, title: 'Advanced Custom ML', desc: 'While Auto-ML is powerful, importing custom Python ML models requires the Enterprise API.', icon: Code2 },
 ];
 
 export const Details: React.FC<DetailsProps> = ({ onNavigateToLanding }) => {
@@ -210,7 +219,108 @@ export const Details: React.FC<DetailsProps> = ({ onNavigateToLanding }) => {
           </div>
         </div>
 
-        {/* Application Flow - Vertical Connected Cards */}
+        {/* Pros & Cons Section - Massive Innovative Design */}
+        <div className="w-full mb-32 relative">
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-20"
+          >
+            <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold uppercase tracking-widest mb-6 ${theme === 'dark' ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-400' : 'border-indigo-400/40 bg-indigo-50 text-indigo-600'}`}>
+              <div className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+              Platform Evaluation
+            </div>
+            <h2 className={`text-5xl md:text-6xl font-black ${colors.textPrimary} mb-6 tracking-tight`}>
+              Strategic <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-indigo-400">Trade-offs</span>
+            </h2>
+            <p className={`${colors.textMuted} text-xl max-w-2xl mx-auto font-medium`}>A transparent look at where AnalyticCore excels and where it's evolving.</p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 relative z-10 w-full">
+            
+            {/* Pros Column */}
+            <motion.div 
+              initial={{ opacity: 0, x: -50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+              className={`relative rounded-[2.5rem] p-8 md:p-12 border overflow-hidden group
+                ${theme === 'dark' 
+                  ? 'bg-slate-900/50 border-emerald-500/20 shadow-[0_0_50px_-15px_rgba(16,185,129,0.2)]' 
+                  : 'bg-white/80 border-emerald-200 shadow-xl shadow-emerald-900/5'}`}
+            >
+              <div className="absolute -top-32 -left-32 w-96 h-96 bg-emerald-500/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-emerald-500/20 transition-colors duration-700"></div>
+              
+              <div className="relative z-10 flex items-center gap-4 mb-10">
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/30`}>
+                  <CheckCircle className="w-7 h-7 text-white" />
+                </div>
+                <h3 className={`text-3xl md:text-4xl font-black ${colors.textPrimary}`}>Advantages</h3>
+              </div>
+
+              <div className="space-y-6 relative z-10">
+                {pros.map((pro) => (
+                  <motion.div 
+                    whileHover={{ x: 10 }}
+                    key={pro.id}
+                    className={`p-6 rounded-2xl border transition-all duration-300 ${theme === 'dark' ? 'bg-white/5 border-white/10 hover:border-emerald-500/30' : 'bg-slate-50 border-slate-200 hover:border-emerald-300'} flex gap-5`}
+                  >
+                    <div className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-600'}`}>
+                      <pro.icon className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className={`text-xl font-bold ${colors.textPrimary} mb-2`}>{pro.title}</h4>
+                      <p className={`${colors.textMuted} leading-relaxed text-sm md:text-base`}>{pro.desc}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Cons Column */}
+            <motion.div 
+              initial={{ opacity: 0, x: 50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+              className={`relative rounded-[2.5rem] p-8 md:p-12 border overflow-hidden group
+                ${theme === 'dark' 
+                  ? 'bg-slate-900/50 border-amber-500/20 shadow-[0_0_50px_-15px_rgba(245,158,11,0.2)]' 
+                  : 'bg-white/80 border-amber-200 shadow-xl shadow-amber-900/5'}`}
+            >
+              <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-amber-500/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-amber-500/20 transition-colors duration-700"></div>
+              
+              <div className="relative z-10 flex items-center gap-4 mb-10">
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-500/30`}>
+                  <Info className="w-7 h-7 text-white" />
+                </div>
+                <h3 className={`text-3xl md:text-4xl font-black ${colors.textPrimary}`}>Considerations</h3>
+              </div>
+
+              <div className="space-y-6 relative z-10">
+                {cons.map((con) => (
+                  <motion.div 
+                    whileHover={{ x: -10 }}
+                    key={con.id}
+                    className={`p-6 rounded-2xl border transition-all duration-300 ${theme === 'dark' ? 'bg-white/5 border-white/10 hover:border-amber-500/30' : 'bg-slate-50 border-slate-200 hover:border-amber-300'} flex gap-5`}
+                  >
+                    <div className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center ${theme === 'dark' ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
+                      <con.icon className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className={`text-xl font-bold ${colors.textPrimary} mb-2`}>{con.title}</h4>
+                      <p className={`${colors.textMuted} leading-relaxed text-sm md:text-base`}>{con.desc}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+
+          </div>
+        </div>
+
+        {/* Top Functionalities - Massive Bento Grid */}
         <div className="w-full mb-32 relative">
           <motion.div 
             initial={{ opacity: 0, y: 30 }}
@@ -218,34 +328,115 @@ export const Details: React.FC<DetailsProps> = ({ onNavigateToLanding }) => {
             viewport={{ once: true }}
             className="text-center mb-16"
           >
-            <h2 className={`text-4xl font-black ${colors.textPrimary} mb-4`}>The AnalyticCore Flow</h2>
-            <p className={`${colors.textMuted} text-lg max-w-xl mx-auto`}>From raw data to actionable decisions in four seamless steps.</p>
+            <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-bold uppercase tracking-widest mb-6 ${theme === 'dark' ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-400' : 'border-fuchsia-400/40 bg-fuchsia-50 text-fuchsia-600'}`}>
+              <div className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+              Core Arsenal
+            </div>
+            <h2 className={`text-5xl md:text-6xl font-black ${colors.textPrimary} mb-6 tracking-tight`}>
+              Next-Gen <span className="text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 to-indigo-400">Capabilities</span>
+            </h2>
+            <p className={`${colors.textMuted} text-xl max-w-2xl mx-auto font-medium`}>Everything you need to build, analyze, and scale—engineered for performance.</p>
           </motion.div>
 
-          <div className="max-w-4xl mx-auto relative px-4 md:px-0">
-             <div className="flex flex-col gap-8 relative z-10">
-               {flowSteps.map((step, idx) => (
-                 <motion.div 
-                   initial={{ opacity: 0, y: 50 }}
-                   whileInView={{ opacity: 1, y: 0 }}
-                   viewport={{ once: true, margin: "-50px" }}
-                   transition={{ duration: 0.6, delay: idx * 0.1 }}
-                   key={step.id} 
-                   className={`p-8 md:p-10 rounded-[2rem] border ${theme === 'dark' ? 'bg-slate-900/60 border-white/5' : 'bg-white/80 border-slate-200'} backdrop-blur-xl hover:-translate-y-2 transition-all duration-300 shadow-xl ${getColorClass(step.color, 'shadow')} flex flex-col sm:flex-row items-start sm:items-center gap-8 group`}
-                 >
-                    <div className={`shrink-0 w-20 h-20 rounded-2xl ${getColorClass(step.color, 'bg')} ${getColorClass(step.color, 'text')} flex items-center justify-center border border-${step.color}-500/20`}>
-                      <step.icon className="w-10 h-10" />
-                    </div>
-                    <div>
-                      <div className="flex items-baseline gap-4 mb-2">
-                         <span className={`text-4xl md:text-5xl font-black opacity-20 ${getColorClass(step.color, 'text')}`}>0{step.id}</span>
-                         <h3 className={`text-2xl md:text-3xl font-bold ${colors.textPrimary}`}>{step.title}</h3>
-                      </div>
-                      <p className={`text-lg ${colors.textMuted} leading-relaxed`}>{step.desc}</p>
-                    </div>
-                 </motion.div>
-               ))}
-             </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10 w-full max-w-7xl mx-auto">
+            {[
+              {
+                id: 'ai-copilot',
+                title: 'AI Copilot & NL-to-SQL',
+                desc: 'Ask complex questions in natural language. The engine instantly translates them into highly optimized SQL and generates interactive charts without you writing a single line of code.',
+                icon: Sparkles,
+                bgLight: 'bg-fuchsia-50/80', bgDark: 'bg-fuchsia-900/10',
+                textLight: 'text-fuchsia-600', textDark: 'text-fuchsia-400',
+                borderLight: 'border-fuchsia-200 hover:border-fuchsia-400', borderDark: 'border-white/10 hover:border-fuchsia-500/50',
+                iconBgLight: 'bg-fuchsia-100', iconBgDark: 'bg-fuchsia-500/20',
+                shadowLight: 'shadow-xl hover:shadow-2xl shadow-fuchsia-900/5', shadowDark: 'shadow-xl hover:shadow-[0_0_40px_-10px_rgba(217,70,239,0.4)]',
+                colSpan: 'lg:col-span-2',
+                glow: 'bg-fuchsia-500/30'
+              },
+              {
+                id: 'multiplayer',
+                title: 'Real-time Multiplayer',
+                desc: 'See cursor movements, chat, and co-edit dashboards with your team in real-time.',
+                icon: Zap,
+                bgLight: 'bg-amber-50/80', bgDark: 'bg-amber-900/10',
+                textLight: 'text-amber-600', textDark: 'text-amber-400',
+                borderLight: 'border-amber-200 hover:border-amber-400', borderDark: 'border-white/10 hover:border-amber-500/50',
+                iconBgLight: 'bg-amber-100', iconBgDark: 'bg-amber-500/20',
+                shadowLight: 'shadow-xl hover:shadow-2xl shadow-amber-900/5', shadowDark: 'shadow-xl hover:shadow-[0_0_40px_-10px_rgba(245,158,11,0.4)]',
+                colSpan: 'lg:col-span-1',
+                glow: 'bg-amber-500/30'
+              },
+              {
+                id: 'drag-drop',
+                title: 'Drag & Drop Canvas',
+                desc: 'Build pixel-perfect layouts instantly. Snap elements to the grid and configure KPI tiles intuitively.',
+                icon: LineChart,
+                bgLight: 'bg-indigo-50/80', bgDark: 'bg-indigo-900/10',
+                textLight: 'text-indigo-600', textDark: 'text-indigo-400',
+                borderLight: 'border-indigo-200 hover:border-indigo-400', borderDark: 'border-white/10 hover:border-indigo-500/50',
+                iconBgLight: 'bg-indigo-100', iconBgDark: 'bg-indigo-500/20',
+                shadowLight: 'shadow-xl hover:shadow-2xl shadow-indigo-900/5', shadowDark: 'shadow-xl hover:shadow-[0_0_40px_-10px_rgba(99,102,241,0.4)]',
+                colSpan: 'lg:col-span-1',
+                glow: 'bg-indigo-500/30'
+              },
+              {
+                id: 'automl',
+                title: 'Auto-ML Hub',
+                desc: 'Detect anomalies and forecast trends with one click. The platform auto-selects the best predictive models.',
+                icon: Wand2,
+                bgLight: 'bg-emerald-50/80', bgDark: 'bg-emerald-900/10',
+                textLight: 'text-emerald-600', textDark: 'text-emerald-400',
+                borderLight: 'border-emerald-200 hover:border-emerald-400', borderDark: 'border-white/10 hover:border-emerald-500/50',
+                iconBgLight: 'bg-emerald-100', iconBgDark: 'bg-emerald-500/20',
+                shadowLight: 'shadow-xl hover:shadow-2xl shadow-emerald-900/5', shadowDark: 'shadow-xl hover:shadow-[0_0_40px_-10px_rgba(16,185,129,0.4)]',
+                colSpan: 'lg:col-span-1',
+                glow: 'bg-emerald-500/30'
+              },
+              {
+                id: 'dax',
+                title: 'Advanced DAX Measures',
+                desc: 'Write powerful time-intelligence formulas (YTD, SAMEPERIODLASTYEAR) just like PowerBI, running at cloud-scale.',
+                icon: Code2,
+                bgLight: 'bg-blue-50/80', bgDark: 'bg-blue-900/10',
+                textLight: 'text-blue-600', textDark: 'text-blue-400',
+                borderLight: 'border-blue-200 hover:border-blue-400', borderDark: 'border-white/10 hover:border-blue-500/50',
+                iconBgLight: 'bg-blue-100', iconBgDark: 'bg-blue-500/20',
+                shadowLight: 'shadow-xl hover:shadow-2xl shadow-blue-900/5', shadowDark: 'shadow-xl hover:shadow-[0_0_40px_-10px_rgba(59,130,246,0.4)]',
+                colSpan: 'lg:col-span-1',
+                glow: 'bg-blue-500/30'
+              }
+            ].map((feat, idx) => (
+              <motion.div
+                key={feat.id}
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-50px" }}
+                transition={{ duration: 0.6, delay: idx * 0.1, ease: [0.22, 1, 0.36, 1] }}
+                className={`relative rounded-[2rem] p-8 md:p-10 border overflow-hidden group transition-all duration-500 ${feat.colSpan}
+                  ${theme === 'dark' 
+                    ? `${feat.bgDark} ${feat.borderDark} ${feat.shadowDark}` 
+                    : `${feat.bgLight} ${feat.borderLight} ${feat.shadowLight}`}`}
+              >
+                {/* Background Ambient Glow */}
+                <div className={`absolute -right-20 -bottom-20 w-64 h-64 rounded-full blur-[80px] opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none ${feat.glow}`}></div>
+                
+                {/* Icon Header */}
+                <div className="flex items-center gap-4 mb-8 relative z-10">
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border shadow-lg ${theme === 'dark' ? `${feat.iconBgDark} ${feat.textDark} border-white/10` : `${feat.iconBgLight} ${feat.textLight} border-white/50`}`}>
+                    <feat.icon className="w-7 h-7" />
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="relative z-10">
+                  <h3 className={`text-2xl font-bold ${colors.textPrimary} mb-3 transition-colors duration-300 ${theme === 'dark' ? `group-hover:${feat.textDark}` : `group-hover:${feat.textLight}`}`}>{feat.title}</h3>
+                  <p className={`${colors.textMuted} leading-relaxed text-sm md:text-base`}>{feat.desc}</p>
+                </div>
+                
+                {/* Decorative Pattern overlay */}
+                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMTUwLCAxNTAsIDE1MCwgMC4wNCkiLz48L3N2Zz4=')] opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none mix-blend-overlay"></div>
+              </motion.div>
+            ))}
           </div>
         </div>
 

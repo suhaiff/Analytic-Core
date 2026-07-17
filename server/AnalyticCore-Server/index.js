@@ -162,7 +162,22 @@ app.post('/api/login', loginLimiter, async (req, res) => {
         const authData = await req.supabaseService.signIn(email, password);
         
         // Get additional user profile data from public.users
-        const user = await req.supabaseService.getUserByEmail(email);
+        let user = await req.supabaseService.getUserByEmail(email);
+        
+        // Fallback: If global service fails due to RLS / missing Service Role key in production
+        if (!user && authData?.session?.access_token) {
+            console.log('Global service failed to find user profile. Trying scoped client...');
+            const scopedClient = req.supabaseService.getScopedClient(authData.session.access_token);
+            const { data: scopedUser } = await scopedClient
+                .from('users')
+                .select('*')
+                .eq('email', email)
+                .single();
+            
+            if (scopedUser) {
+                user = scopedUser;
+            }
+        }
         
         if (user) {
             const { password: _, otp_code, otp_expires_at, ...userWithoutSensitive } = user;
