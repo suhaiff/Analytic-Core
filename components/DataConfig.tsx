@@ -385,8 +385,7 @@ export const DataConfig: React.FC<DataConfigProps> = ({ initialTables, fileName,
             return { 
                 id: t.id, 
                 name: t.name, 
-                columns: processed.headers.filter(c => c && c.trim()),
-                data: processed.rows
+                columns: processed.headers.filter(c => c && c.trim())
             };
         });
 

@@ -783,7 +783,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
     };
 
     const renderColorPicker = () => {
-        if (!showColorPicker || selectedCells.size === 0) return null;
+        if (!showColorPicker || selectedCells.size === 0 || isExporting) return null;
         
         const firstCellId = Array.from(selectedCells)[0];
         const currentBg = config.cellStyles?.[firstCellId]?.backgroundColor || '#000000';
@@ -1993,14 +1993,14 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                 
             return (
                 <div style={{ width: '100%', height: '100%', overflow: 'auto' }} className="custom-chart-scrollbar">
-                    <table className="w-full border-collapse" style={{ fontSize: isExporting ? '7.5px' : '11px' }}>
+                    <table className="w-full border-collapse" style={{ fontSize: isExporting ? '11px' : '11px' }}>
                         <thead>
                             <tr style={{ background: theme === 'dark' ? '#1e293b' : '#e2e8f0' }}>
-                                <th className={`px-2 py-1 text-center font-bold text-[7.5px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`}>#</th>
+                                <th className={`px-2 py-1 text-center font-bold text-[10px] uppercase tracking-widest border-b-2`} style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b', borderColor: theme === 'dark' ? 'rgba(99,102,241,0.3)' : 'rgba(129,140,248,0.3)' }}>#</th>
                                 {tableCols.map(col => {
                                     const isNumeric = data.length > 0 && (typeof data[0][col] === 'number' || (typeof data[0][col] === 'string' && !isNaN(Number(String(data[0][col]).replace(/[^0-9.-]+/g,"")))));
                                     return (
-                                        <th key={col} className={`px-3 py-1 ${isNumeric ? 'text-right' : 'text-left'} font-bold text-[7.5px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`}>
+                                        <th key={col} className={`px-3 py-1 ${isNumeric ? 'text-right' : 'text-left'} font-bold text-[10px] uppercase tracking-widest border-b-2`} style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b', borderColor: theme === 'dark' ? 'rgba(99,102,241,0.3)' : 'rgba(129,140,248,0.3)' }}>
                                             {col}
                                         </th>
                                     );
@@ -2018,7 +2018,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                         }
                                     }}
                                 >
-                                    <td className={`px-2 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-[10px]'} text-center ${theme === 'dark' ? 'text-slate-600' : 'text-slate-400'} font-mono`}>{i + 1}</td>
+                                    <td className={`px-2 py-0.5 ${isExporting ? 'text-[10px]' : 'text-[10px]'} text-center font-mono`} style={{ color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{i + 1}</td>
                                     {tableCols.map(col => {
                                         const cellId = `${row[config.xAxisKey]}-${col}`;
                                         const customStyle = config.cellStyles?.[cellId];
@@ -2028,8 +2028,8 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                         return (
                                             <td 
                                                 key={col}
-                                                className={`px-3 py-0.5 ${isExporting ? 'text-[7.5px]' : 'text-xs'} ${isNumeric ? 'text-right font-mono font-medium' : 'text-left font-medium'} ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'} transition-all ${isSelected ? 'ring-2 ring-indigo-500 ring-inset opacity-80 bg-indigo-500/20' : ''}`}
-                                                style={{ backgroundColor: customStyle?.backgroundColor, color: customStyle?.fontColor }}
+                                                className={`px-3 py-0.5 ${isExporting ? 'text-[11px]' : 'text-xs'} ${isNumeric ? 'text-right font-mono font-medium' : 'text-left font-medium'} transition-all ${isSelected ? 'ring-2 ring-indigo-500 ring-inset opacity-80 bg-indigo-500/20' : ''}`}
+                                                style={{ backgroundColor: customStyle?.backgroundColor, color: customStyle?.fontColor || (theme === 'dark' ? '#f1f5f9' : '#1e293b') }}
                                                 onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, cellId); }}
                                                 onMouseEnter={(e) => handleMouseEnter(e, cellId)}
                                                 onMouseUp={(e) => { e.stopPropagation(); handleMouseUp(e); }}
@@ -2140,22 +2140,20 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                 if (fontColorRule.applyTo === 'totals' && !isTotalCell) return undefined;
                 const pool = fontColorRule.applyTo === 'values' ? valueOnlyVals : fontColorRule.applyTo === 'totals' ? totalVals : allContextVals;
                 return getGradientColor(fontColorRule, val, pool);
-            };
-
-            const matrixFontSize = isExporting ? (mxVals.length > 15 ? '6px' : (mxVals.length > 8 ? '7.5px' : '9px')) : '11px';
+            };            const matrixFontSize = isExporting ? (mxVals.length > 15 ? '9px' : (mxVals.length > 8 ? '10px' : '11px')) : '11px';
 
             return (
                 <div style={{ width: '100%', height: '100%', overflow: 'auto', padding: '0' }}>
                     <table className="w-full border-collapse" style={{ fontSize: matrixFontSize, tableLayout: isExporting && mxVals.length > 8 ? 'fixed' : 'auto' }}>
                         <thead>
                             <tr style={{ background: theme === 'dark' ? '#1e293b' : '#e2e8f0' }}>
-                                <th className={`px-2 py-2 text-left font-bold text-[8px] uppercase tracking-tighter border-b-2 border-r ${theme === 'dark' ? 'border-indigo-500/30 text-slate-500' : 'border-indigo-400/30 text-slate-400'}`} style={{ borderColor: themeColors.chartGrid, width: isExporting ? '80px' : 'auto' }}>
+                                <th className={`px-2 py-2 text-left font-bold text-[10px] uppercase tracking-tighter border-b-2 border-r`} style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b', borderColor: themeColors.chartGrid, width: isExporting ? '80px' : 'auto' }}>
                                     {isExporting ? 'Y \\ X' : `${config.yAxisKey} ↓ / ${config.xAxisKey} →`}
                                 </th>
                                 {mxVals.map(x => (
                                     <th key={x} 
-                                        className={`px-1 py-1.5 text-center font-bold uppercase tracking-tighter border-b-2 border-r ${theme === 'dark' ? 'border-indigo-500/30 text-slate-400' : 'border-indigo-400/30 text-slate-500'}`} 
-                                        style={{ borderColor: themeColors.chartGrid, fontSize: isExporting && mxVals.length > 12 ? '6px' : 'inherit', cursor: onItemClick ? 'pointer' : 'default' }}
+                                        className={`px-1 py-1.5 text-center font-bold uppercase tracking-tighter border-b-2 border-r`}
+                                        style={{ color: theme === 'dark' ? '#cbd5e1' : '#64748b', borderColor: themeColors.chartGrid, fontSize: isExporting && mxVals.length > 12 ? '9px' : 'inherit', cursor: onItemClick ? 'pointer' : 'default' }}
                                         onClick={() => onItemClick && onItemClick(x)}
                                     >
                                         {(() => {
@@ -2166,13 +2164,13 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                         })()}
                                     </th>
                                 ))}
-                                <th className={`px-3 py-2.5 text-center font-bold text-[9px] uppercase tracking-widest border-b-2 ${theme === 'dark' ? 'border-indigo-500/30 text-indigo-400' : 'border-indigo-400/30 text-indigo-600'}`}>Total</th>
+                                <th className={`px-3 py-2.5 text-center font-bold text-[9px] uppercase tracking-widest border-b-2`} style={{ color: theme === 'dark' ? '#818cf8' : '#4f46e5', borderColor: themeColors.chartGrid }}>Total</th>
                             </tr>
                         </thead>
                         <tbody>
                             {myVals.map((y, ri) => (
                                 <tr key={y} style={{ background: ri % 2 === 0 ? (theme === 'dark' ? 'rgba(30,41,59,0.2)' : 'rgba(241,245,249,0.4)') : 'transparent' }}>
-                                    <td className={`px-2 py-1.5 font-bold border-r ${theme === 'dark' ? 'text-slate-300 bg-slate-800/30' : 'text-slate-600 bg-slate-50/60'}`} style={{ borderColor: themeColors.chartGrid, fontSize: isExporting && mxVals.length > 12 ? '7px' : 'inherit', width: isExporting ? '60px' : 'auto' }}>
+                                    <td className={`px-2 py-1.5 font-bold border-r`} style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569', backgroundColor: theme === 'dark' ? 'rgba(30,41,59,0.3)' : 'rgba(248,250,252,0.6)', borderColor: themeColors.chartGrid, fontSize: isExporting && mxVals.length > 12 ? '9px' : 'inherit', width: isExporting ? '60px' : 'auto' }}>
                                         {(() => {
                                             const formatted = formatByColumn(y, config.yAxisKey);
                                             return formatted.length > (isExporting ? 10 : 14) 
@@ -2189,7 +2187,7 @@ const RenderChart = React.memo(({ config, data, isExpanded = false, theme, onIte
                                         const val = cell?.value ?? 0;
                                         const t = (val - mMinVal) / mRange;
                                         const defaultBg = getCellBg(val);
-                                        const defaultColor = t > 0.6 ? '#ffffff' : (theme === 'dark' ? '#94a3b8' : '#475569');
+                                        const defaultColor = t > 0.6 ? '#ffffff' : (theme === 'dark' ? '#e2e8f0' : '#475569');
 
                                         // Apply conditional formatting (overrides defaults but not manual cell styles)
                                         const cfBg = getCFCellBg(val, false);
@@ -3033,7 +3031,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         let currentYear = null;
 
         if (!current) {
-            const years = Array.from(new Set(dataModel.data.map(d => getYear(d[chart.xAxisKey])).filter(y => y !== null)));
+            const years = Array.from(new Set((dataModel.data || []).map(d => getYear(d[chart.xAxisKey])).filter(y => y !== null)));
             effectiveLevel = years.length > 1 ? 'year' : 'month';
             currentYear = years.length === 1 ? years[0] : null;
         } else {
@@ -3136,7 +3134,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
             : dataModel.columns;
         return sourceColumns.filter(col => {
             if (!col) return false;
-            const firstRow = dataModel.data && dataModel.data[0];
+            const firstRow = dataModel.data && dataModel.data.length > 0 ? dataModel.data[0] : undefined;
             return firstRow && (col in firstRow);
         });
     }, [dataModel, currentFilterColumns]);
@@ -3144,7 +3142,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
     const getUniqueValues = useCallback((column: string): string[] => {
         if (!column || !dataModel || !dataModel.data) return [];
         try {
-            const rawValues = Array.from(new Set<string>(dataModel.data.map((r: any) => {
+            const rawValues = Array.from(new Set<string>((dataModel.data || []).map((r: any) => {
                 const val = r[column];
                 return val === null || val === undefined ? '' : String(val);
             })));
@@ -3188,6 +3186,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
             setDashboardName(dataModel.name || "Untitled Dashboard");
         }
     }, [chartConfigs, filterColumns, dataModel?.name, explicitSections]);
+
+    // Automatically re-fetch the raw data rows if they were stripped from the saved dashboard payload
+    useEffect(() => {
+        if (dataModel && !dataModel.data && onRefresh && !isSelfSaveRef.current) {
+            handleRefresh();
+        }
+    }, [dataModel, onRefresh]);
 
     const kpis = useMemo(() => {
         if (!Array.isArray(currentCharts)) return [];
@@ -3481,7 +3486,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         }
     };
 
-
     const expandedChartConfig = useMemo(() => {
         if (!currentCharts) return undefined;
         return currentCharts.find(c => c.id === expandedChartId);
@@ -3489,12 +3493,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
     // --- NEW: PDF Export Logic ---
     const [isExportingPDF, setIsExportingPDF] = useState(false);
+    const pdfCaptureCallback = useRef<null | (() => void)>(null);
+
+    interface PDFChartWrap {
+        config: ChartConfig;
+        pdfDataSlice?: [number, number];
+        titleSuffix?: string;
+        isFullWidth?: boolean;
+    }
 
     interface PDFPageContent {
         pageId: number;
         tabIndex: number;
         tabName: string;
-        charts: ChartConfig[];
+        charts: PDFChartWrap[];
         isFirstPageOfTab: boolean;
         isFirstPageOfPDF: boolean;
         pageKPIs?: ChartConfig[];
@@ -3509,109 +3521,202 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
         for (let t = 0; t < sections.length; t++) {
             const tabName = resolvedTabNames[t] || `Section ${t + 1}`;
             const tabAllItems = sections[t] || [];
-            
-            // Separate KPIs from other charts within the section to manage layout distribution
-            const tabKPIs = tabAllItems.filter(c => c && c.type === ChartType.KPI);
-            const tabCharts = tabAllItems.filter(c => c && c.type !== ChartType.KPI);
 
-            // Calculate how much space KPIs take on the first page of this tab to adjust chart capacity
-            const kpiRows = Math.ceil(tabKPIs.length / 4);
-            let chartsOnFirstPageOfTab = 6;
-            
-            if (kpiRows >= 5) {
-                chartsOnFirstPageOfTab = 0; // Dedicate page to KPIs if many are present
-            } else if (kpiRows >= 4) {
-                chartsOnFirstPageOfTab = 2; // High density KPIs: space for 2 charts
-            } else if (kpiRows >= 1) {
-                chartsOnFirstPageOfTab = 4; // Moderate KPIs: space for 4 charts
+            const tabKPIs = tabAllItems.filter(c => c && c.type === ChartType.KPI);
+            const rawTabCharts = tabAllItems.filter(c => c && c.type !== ChartType.KPI);
+
+            // --- Pagination Logic for Tables ---
+            const expandedTabCharts: PDFChartWrap[] = [];
+            for (const chart of rawTabCharts) {
+                if (chart.type === ChartType.TABLE || chart.type === ChartType.MATRIX) {
+                    try {
+                        const baseData = chart.ignoreGlobalFilters ? (dataModel.data || []) : filteredData;
+                        const chartData = applyChartFilters(baseData, chart.id);
+                        let finalData: any[] = [];
+                        
+                        if (chart.isForecastChart) {
+                            const filteredForForecast = filterDataByDateRange(chartData, chart.forecastDateColumn || chart.xAxisKey || '', chart.dateSliderRange);
+                            finalData = computeForecastChartData(filteredForForecast, chart, chart.forecastGranularity || 'date').extendedData;
+                        } else {
+                            finalData = isDateTimeColumn(chart.xAxisKey || '')
+                                ? getDrillDownData(chart, chartData)
+                                : aggregateData(chartData, chart, dataModel.customMeasures);
+                        }
+                        
+                        const totalRows = finalData.length;
+                        const ROWS_PER_PAGE = 20;
+                        if (totalRows > ROWS_PER_PAGE) {
+                            for (let i = 0; i < totalRows; i += ROWS_PER_PAGE) {
+                                expandedTabCharts.push({
+                                    config: chart,
+                                    pdfDataSlice: [i, i + ROWS_PER_PAGE],
+                                    titleSuffix: `(Part ${Math.floor(i / ROWS_PER_PAGE) + 1} of ${Math.ceil(totalRows / ROWS_PER_PAGE)})`,
+                                    isFullWidth: true
+                                });
+                            }
+                        } else {
+                            expandedTabCharts.push({ config: chart, isFullWidth: true });
+                        }
+                    } catch (e) {
+                        expandedTabCharts.push({ config: chart, isFullWidth: true });
+                    }
+                } else {
+                    expandedTabCharts.push({ config: chart, isFullWidth: false });
+                }
             }
 
-            // Push the main/first page for this section which includes the KPIs
-            pages.push({
-                pageId: pages.length + 1,
-                tabIndex: t,
-                tabName: tabName,
-                charts: tabCharts.slice(0, chartsOnFirstPageOfTab),
-                isFirstPageOfTab: true,
-                isFirstPageOfPDF: t === 0,
-                pageKPIs: tabKPIs
-            });
+            const kpiRows = Math.ceil(tabKPIs.length / 4);
+            let capacityOnFirstPage = 6;
+            
+            if (kpiRows >= 5) capacityOnFirstPage = 0;
+            else if (kpiRows >= 4) capacityOnFirstPage = 2;
+            else if (kpiRows >= 1) capacityOnFirstPage = 4;
 
-            // Handle overflow charts for this section on subsequent pages
-            if (tabCharts.length > chartsOnFirstPageOfTab) {
-                for (let i = chartsOnFirstPageOfTab; i < tabCharts.length; i += 6) {
-                    pages.push({
-                        pageId: pages.length + 1,
-                        tabIndex: t,
-                        tabName: tabName,
-                        charts: tabCharts.slice(i, i + 6),
-                        isFirstPageOfTab: false,
-                        isFirstPageOfPDF: false
-                    });
+            let currentPageCharts: PDFChartWrap[] = [];
+            let currentCapacity = 0;
+            let isFirstPageOfTab = true;
+
+            const pushPage = (chartsToPush: PDFChartWrap[]) => {
+                pages.push({
+                    pageId: pages.length + 1,
+                    tabIndex: t,
+                    tabName: tabName,
+                    charts: chartsToPush,
+                    isFirstPageOfTab: isFirstPageOfTab,
+                    isFirstPageOfPDF: t === 0 && isFirstPageOfTab,
+                    pageKPIs: isFirstPageOfTab ? tabKPIs : undefined
+                });
+                isFirstPageOfTab = false;
+            };
+
+            for (const chartWrap of expandedTabCharts) {
+                const maxCap = isFirstPageOfTab ? capacityOnFirstPage : 6;
+                const cost = chartWrap.isFullWidth ? 2 : 1;
+                
+                if (currentCapacity + cost > maxCap && currentPageCharts.length > 0) {
+                    pushPage([...currentPageCharts]);
+                    currentPageCharts = [];
+                    currentCapacity = 0;
                 }
+                
+                currentPageCharts.push(chartWrap);
+                currentCapacity += cost;
+            }
+
+            if (currentPageCharts.length > 0 || isFirstPageOfTab) {
+                pushPage([...currentPageCharts]);
             }
         }
 
         return pages;
-    }, [isExportingPDF, sections, resolvedTabNames]);
+    }, [isExportingPDF, sections, resolvedTabNames, filteredData, dataModel]);
 
-    const handleExportPDF = async () => {
+    // useEffect triggers the actual PDF capture AFTER React has rendered the hidden export pages
+    useEffect(() => {
+        if (isExportingPDF && pdfCaptureCallback.current) {
+            const cb = pdfCaptureCallback.current;
+            pdfCaptureCallback.current = null;
+            // Give charts extra time to fully paint inside the now-rendered DOM
+            const timer = setTimeout(cb, 1500);
+            return () => clearTimeout(timer);
+        }
+    }, [isExportingPDF, pdfExportPages]);
+
+    const handleExportPDF = () => {
         setIsExporting(true);
-        setIsExportingPDF(true);
 
-        // Wait for all charts to render in the hidden export view
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        try {
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'pt',
-                format: 'a4',
-                compress: true
-            });
-
-            const pageElements = document.querySelectorAll('[data-pdf-page]');
-            if (!pageElements.length) throw new Error("Export elements not found");
-
-            const bgColor = bgCustomColor || (theme === 'dark' ? '#0f172a' : '#f8fafc');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-
-            for (let i = 0; i < pageElements.length; i++) {
-                const el = pageElements[i] as HTMLElement;
-
-                const canvas = await html2canvas(el, {
-                    scale: 1.5,
-                    useCORS: true,
-                    allowTaint: true,
-                    logging: false,
-                    backgroundColor: bgColor,
-                    width: 1200, // Widened for more internal chart space
-                    height: 1696,
-                    windowWidth: 1200,
-                    windowHeight: 1696
+        // Store the async capture work in a ref so useEffect can call it after render
+        pdfCaptureCallback.current = async () => {
+            try {
+                const pdf = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'pt',
+                    format: 'a4',
+                    compress: true
                 });
 
-                // Use JPEG for faster generation and smaller file size
-                const imgData = canvas.toDataURL('image/jpeg', 0.85);
+                const pageElements = document.querySelectorAll('[data-pdf-page]');
+                if (!pageElements.length) throw new Error("Export elements not found");
 
-                if (i > 0) pdf.addPage();
+                const bgColor = bgCustomColor || (theme === 'dark' ? '#0f172a' : '#f8fafc');
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = pdf.internal.pageSize.getHeight();
 
-                // Ensure page background
-                pdf.setFillColor(bgColor);
-                pdf.rect(0, 0, pdfWidth, pdfHeight, 'F');
+                for (let i = 0; i < pageElements.length; i++) {
+                    const el = pageElements[i] as HTMLElement;
 
-                pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+                    const canvas = await html2canvas(el, {
+                        scale: 1.5,
+                        useCORS: true,
+                        allowTaint: true,
+                        logging: false,
+                        backgroundColor: bgColor,
+                        width: 1200,
+                        height: 1696,
+                        windowWidth: 1200,
+                        windowHeight: 1696,
+                        onclone: (clonedDoc) => {
+                            const canvas = clonedDoc.createElement('canvas');
+                            canvas.width = 1;
+                            canvas.height = 1;
+                            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                            
+                            const convertToSafeColor = (colorStr: string) => {
+                                if (!ctx) return 'transparent';
+                                ctx.clearRect(0, 0, 1, 1);
+                                ctx.fillStyle = colorStr;
+                                ctx.fillRect(0, 0, 1, 1);
+                                const data = ctx.getImageData(0, 0, 1, 1).data;
+                                // Convert 0-255 alpha back to 0-1 range for rgba()
+                                return `rgba(${data[0]}, ${data[1]}, ${data[2]}, ${data[3] / 255})`;
+                            };
+
+                            const elements = clonedDoc.querySelectorAll('*');
+                            for (let j = 0; j < elements.length; j++) {
+                                const elem = elements[j] as HTMLElement;
+                                const style = clonedDoc.defaultView?.getComputedStyle(elem);
+                                if (!style) continue;
+                                
+                                // Iterate all computed properties
+                                for (let k = 0; k < style.length; k++) {
+                                    const prop = style[k];
+                                    const val = style.getPropertyValue(prop);
+                                    if (val && (val.includes('okl') || val.includes('color('))) {
+                                        // If it's a standalone color property, convert it accurately to RGBA
+                                        if (prop === 'color' || prop === 'background-color' || prop.endsWith('-color') || prop === 'fill' || prop === 'stroke') {
+                                            elem.style.setProperty(prop, convertToSafeColor(val), 'important');
+                                        } else {
+                                            // For complex shorthands (like box-shadow) containing oklch, neutralize it to prevent the renderer crash
+                                            elem.style.setProperty(prop, 'none', 'important');
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    const imgData = canvas.toDataURL('image/jpeg', 0.85);
+
+                    if (i > 0) pdf.addPage();
+
+                    pdf.setFillColor(bgColor);
+                    pdf.rect(0, 0, pdfWidth, pdfHeight, 'F');
+
+                    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+                }
+
+                pdf.save(`${dataModel.name.replace(/\s+/g, '_')}_Report.pdf`);
+            } catch (error) {
+                console.error("Export PDF Error:", error);
+                alert("Failed to generate PDF. Please try again.");
+            } finally {
+                setIsExporting(false);
+                setIsExportingPDF(false);
             }
+        };
 
-            pdf.save(`${dataModel.name.replace(/\s+/g, '_')}_Report.pdf`);
-        } catch (error) {
-            console.error("Export PDF Error:", error);
-            alert("Failed to generate PDF. Please try again.");
-        } finally {
-            setIsExporting(false);
-            setIsExportingPDF(false);
-        }
+        // This triggers the useEffect above after React re-renders the hidden PDF view
+        setIsExportingPDF(true);
     };
 
 
@@ -3971,7 +4076,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                             {expandedChartConfig.isForecastChart && (expandedChartConfig.forecastDateColumn || expandedChartConfig.xAxisKey) && (
                                 <div className={`px-8 py-4 border-b ${colors.borderPrimary} ${theme === 'dark' ? 'bg-slate-900/20' : 'bg-slate-50/30'}`}>
                                     <DateFilterSlider
-                                        data={expandedChartConfig.ignoreGlobalFilters ? dataModel.data : filteredData}
+                                        data={expandedChartConfig.ignoreGlobalFilters ? (dataModel.data || []) : filteredData}
                                         dateCol={expandedChartConfig.forecastDateColumn || expandedChartConfig.xAxisKey}
                                         currentRange={expandedChartConfig.dateSliderRange}
                                         onChange={(range) => updateDateSliderRange(expandedChartConfig.id, range)}
@@ -3984,7 +4089,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                     config={expandedChartConfig}
                                     onUpdateConfig={updateChartConfig}
                                     data={(() => {
-                                        const baseData = expandedChartConfig.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                        const baseData = expandedChartConfig.ignoreGlobalFilters ? (dataModel.data || []) : filteredData;
                                         const chartData = applyChartFilters(baseData, expandedChartConfig.id);
                                         if (expandedChartConfig.isForecastChart) {
                                             const filteredForForecast = filterDataByDateRange(chartData, expandedChartConfig.forecastDateColumn || expandedChartConfig.xAxisKey, expandedChartConfig.dateSliderRange);
@@ -4646,7 +4751,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                 <span className={colors.textMuted}>Showing</span>
                                 <span className="text-indigo-400 font-bold">{filteredData.length.toLocaleString()}</span>
                                 <span className={colors.textMuted}>/</span>
-                                <span className={colors.textPrimary}>{dataModel.data.length.toLocaleString()}</span>
+                                <span className={colors.textPrimary}>{(dataModel.data || []).length.toLocaleString()}</span>
                                 <span className={colors.textMuted}>rows</span>
                             </div>
                         </div>
@@ -4732,7 +4837,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                 {activeSection.some(c => c.type === ChartType.KPI) && (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-2 print:grid-cols-4">
                                         {activeSection.filter(c => c.type === ChartType.KPI).map((kpi) => {
-                                            const baseData = kpi.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                            const baseData = kpi.ignoreGlobalFilters ? (dataModel.data || []) : filteredData;
                                             const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi, dataModel.customMeasures);
                                             const value = data[0]?.value || 0;
                                             const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata, dataModel.columnCurrencies, compactNumbers);
@@ -4768,7 +4873,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                         : isDateTimeColumn(chart.xAxisKey);
                                         
                                     // Base data: ignoring global filters if configured to do so
-                                    const baseData = chart.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                    const baseData = chart.ignoreGlobalFilters ? (dataModel.data || []) : filteredData;
 
                                     // Apply Page Filters (only for charts in this section)
                                     let pageFilteredData = baseData;
@@ -4815,7 +4920,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                 {/* Forecast Date Filter Slider */}
                                                 {chart.isForecastChart && (chart.forecastDateColumn || chart.xAxisKey) && (
                                                     <DateFilterSlider
-                                                        data={chart.ignoreGlobalFilters ? dataModel.data : filteredData}
+                                                        data={chart.ignoreGlobalFilters ? (dataModel.data || []) : filteredData}
                                                         dateCol={chart.forecastDateColumn || chart.xAxisKey}
                                                         currentRange={chart.dateSliderRange}
                                                         onChange={(range) => updateDateSliderRange(chart.id, range)}
@@ -5191,7 +5296,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                             </div>
                                             <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
                                                 <p style={{ fontSize: '12px', color: theme === 'dark' ? '#6366f1' : '#4f46e5', fontWeight: 'bold', margin: '0' }}>{new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-                                                <p style={{ fontSize: '10px', color: theme === 'dark' ? '#475569' : '#94a3b8', margin: '2px 0 0 0' }}>Ref: {dataModel.data.length.toLocaleString()} Records</p>
+                                                <p style={{ fontSize: '10px', color: theme === 'dark' ? '#475569' : '#94a3b8', margin: '2px 0 0 0' }}>Ref: {(dataModel.data || []).length.toLocaleString()} Records</p>
                                             </div>
                                         </div>
                                     </div>
@@ -5210,7 +5315,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                 {page.pageKPIs && page.pageKPIs.length > 0 && (
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '32px', width: '100%' }}>
                                         {page.pageKPIs.map((kpi, kIdx) => {
-                                            const baseData = kpi.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                            const baseData = kpi.ignoreGlobalFilters ? (dataModel.data || []) : filteredData;
                                             const data = aggregateData(applyChartFilters(baseData, kpi.id), kpi, dataModel.customMeasures);
                                             const value = data[0]?.value || 0;
                                             const displayValue = smartFormat(value, kpi.dataKey, dataModel.columnMetadata, dataModel.columnCurrencies, compactNumbers);
@@ -5248,25 +5353,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
 
                                 {/* Charts Grid */}
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '30px', flex: 1, width: '100%', alignContent: 'flex-start' }}>
-                                    {page.charts.map((chart, cIdx) => (
-                                        <div key={chart.id} style={{ width: 'calc(50% - 15px)', background: theme === 'dark' ? '#1e293b' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#475569' : '#94a3b8'}`, padding: '24px 24px 20px 24px', borderRadius: '16px', height: '420px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflow: 'hidden', boxShadow: 'none' }}>
+                                    {page.charts.map((chartObj, cIdx) => (
+                                        <div key={`${chartObj.config.id}-${chartObj.pdfDataSlice ? chartObj.pdfDataSlice[0] : 0}-${cIdx}`} style={{ width: chartObj.isFullWidth ? '100%' : 'calc(50% - 15px)', background: theme === 'dark' ? '#1e293b' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#475569' : '#94a3b8'}`, padding: '24px 24px 20px 24px', borderRadius: '16px', height: '420px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflow: 'hidden', boxShadow: 'none' }}>
                                             <div style={{ marginBottom: '12px', flexShrink: 0, overflow: 'visible' }}>
-                                                <h4 style={{ fontSize: '15px', fontWeight: '700', color: theme === 'dark' ? '#f1f5f9' : '#1e293b', margin: '0 0 2px 0', lineHeight: '1.4', overflow: 'visible', wordBreak: 'break-word' }}>{chart.title}</h4>
-                                                <p style={{ fontSize: '11px', color: theme === 'dark' ? '#64748b' : '#94a3b8', margin: '0', lineHeight: '1.3', overflow: 'visible', wordBreak: 'break-word' }}>{chart.description}</p>
+                                                <h4 style={{ fontSize: '15px', fontWeight: '700', color: theme === 'dark' ? '#f1f5f9' : '#1e293b', margin: '0 0 2px 0', lineHeight: '1.4', overflow: 'visible', wordBreak: 'break-word' }}>{chartObj.config.title} {chartObj.titleSuffix || ''}</h4>
+                                                <p style={{ fontSize: '11px', color: theme === 'dark' ? '#64748b' : '#94a3b8', margin: '0', lineHeight: '1.3', overflow: 'visible', wordBreak: 'break-word' }}>{chartObj.config.description}</p>
                                             </div>
                                             <div style={{ flex: 1, minHeight: 0, width: '100%', position: 'relative', overflow: 'hidden' }}>
                                                 <RenderChart
-                                                    config={chart}
+                                                    config={chartObj.config}
                                                     data={(() => {
-                                                        const baseData = chart.ignoreGlobalFilters ? dataModel.data : filteredData;
+                                                        const chart = chartObj.config;
+                                                        const baseData = chart.ignoreGlobalFilters ? (dataModel.data || []) : filteredData;
                                                         const chartData = applyChartFilters(baseData, chart.id);
+                                                        let finalData: any[] = [];
                                                         if (chart.isForecastChart) {
-                                                            const filteredForForecast = filterDataByDateRange(chartData, chart.forecastDateColumn || chart.xAxisKey, chart.dateSliderRange);
-                                                            return computeForecastChartData(filteredForForecast, chart, chart.forecastGranularity || 'date').extendedData;
+                                                            const filteredForForecast = filterDataByDateRange(chartData, chart.forecastDateColumn || chart.xAxisKey || '', chart.dateSliderRange);
+                                                            finalData = computeForecastChartData(filteredForForecast, chart, chart.forecastGranularity || 'date').extendedData;
+                                                        } else {
+                                                            finalData = isDateTimeColumn(chart.xAxisKey || '')
+                                                                ? getDrillDownData(chart, chartData)
+                                                                : aggregateData(chartData, chart, dataModel.customMeasures);
                                                         }
-                                                        return isDateTimeColumn(chart.xAxisKey)
-                                                            ? getDrillDownData(chart, chartData)
-                                                            : aggregateData(chartData, chart, dataModel.customMeasures);
+                                                        if (chartObj.pdfDataSlice) {
+                                                            return finalData.slice(chartObj.pdfDataSlice[0], chartObj.pdfDataSlice[1]);
+                                                        }
+                                                        return finalData;
                                                     })()}
                                                     theme={theme}
                                                     isAnimationActive={false}
@@ -5274,8 +5386,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ dataModel, chartConfigs, s
                                                     columnCurrencies={dataModel.columnCurrencies}
                                                     isExporting={true}
                                                     fontSettings={{
-                                                        fontFamily: chart.fontFamily || fontSettings.fontFamily,
-                                                        fontSize: chart.fontSize || fontSettings.fontSize,
+                                                        fontFamily: chartObj.config.fontFamily || fontSettings.fontFamily,
+                                                        fontSize: chartObj.config.fontSize || fontSettings.fontSize,
                                                         isBold: fontSettings.isBold,
                                                         isItalic: fontSettings.isItalic
                                                     }}

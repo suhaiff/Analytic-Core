@@ -370,7 +370,7 @@ class SupabaseService {
             const payloadSize = JSON.stringify(payload).length;
             console.log(`📦 Payload size: ${(payloadSize / 1024).toFixed(2)} KB`);
 
-            if (payloadSize > 5 * 1024 * 1024) { // 5MB limit
+            if (payloadSize > 50 * 1024 * 1024) { // 50MB limit
                 console.error('❌ Payload too large:', payloadSize);
                 throw new Error(`Dashboard data too large (${(payloadSize / 1024 / 1024).toFixed(2)} MB). Please reduce the amount of data.`);
             }

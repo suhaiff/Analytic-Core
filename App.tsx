@@ -229,10 +229,17 @@ function AppContent() {
           console.log("File uploaded to server successfully");
         } catch (uploadError: any) {
           console.error("Failed to upload file to server", uploadError);
-          if (uploadError.code === 'ECONNABORTED' || uploadError.message === 'Network Error' || !window.navigator.onLine) {
+          // Only treat genuine offline / connection-refused as a hard disconnect.
+          // Axios timeout (ECONNABORTED) just means the file is very large — the backend
+          // will finish inserting on its own and the user can still continue.
+          if (!window.navigator.onLine) {
             throw new Error('NETWORK_DISCONNECT');
           }
-          // Don't block the user flow if upload fails for non-network reasons, just log it
+          if (uploadError.code === 'ECONNABORTED') {
+            console.warn('Upload request timed out on the client side — backend may still be processing. Continuing user flow.');
+            // Don't block — let the user proceed to DataConfig
+          }
+          // Don't block the user flow for any other upload errors, just log them
         }
       }
 

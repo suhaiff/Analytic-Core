@@ -37,7 +37,7 @@ export const fileService = {
             headers: {
                 'Content-Type': 'multipart/form-data'
             },
-            timeout: 30000 // 30s timeout to prevent hanging on silent disconnects
+            timeout: 600000 // 10 minutes — large files (50k+ rows) need time to batch-insert into Supabase
         });
         return response.data;
     },

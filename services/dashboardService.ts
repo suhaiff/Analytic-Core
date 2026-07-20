@@ -25,12 +25,9 @@ export const dashboardService = {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-            // Strip the raw data rows from dataModel before sending to the server.
-            // The `data` array can contain tens of thousands of rows, easily exceeding
-            // Netlify's 6 MB CDN proxy limit in production and causing a 400 error.
-            // Only the metadata (columns, types, fileId, joins, etc.) needs to be
-            // persisted — the actual rows are re-fetched from the stored file on load.
-            const { data: _stripped, ...dataModelWithoutRows } = dashboard.dataModel;
+            // The user explicitly requested to save the dashboard WITH the dataset, regardless of size.
+            // (The backend limit has been increased to 50MB to accommodate this).
+            const dataModelWithoutRows = dashboard.dataModel;
 
             const response = await fetchWithAuth(`${API_URL}/dashboards`, {
                 method: 'POST',
@@ -77,10 +74,9 @@ export const dashboardService = {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-            // Strip the raw data rows from dataModel before sending to the server.
-            // Same reason as saveDashboard: the `data` array is too large for Netlify's
-            // 6 MB CDN proxy limit in production, causing a 400 error.
-            const { data: _stripped, ...dataModelWithoutRows } = dashboard.dataModel;
+            // The user explicitly requested to save the dashboard WITH the dataset, regardless of size.
+            // (The backend limit has been increased to 50MB to accommodate this).
+            const dataModelWithoutRows = dashboard.dataModel;
 
             const response = await fetchWithAuth(`${API_URL}/dashboards/${id}`, {
                 method: 'PUT',

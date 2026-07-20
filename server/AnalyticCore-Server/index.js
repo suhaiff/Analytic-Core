@@ -1242,22 +1242,24 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
             console.log(`Created sheet record with ID: ${sheetId}`);
 
-            // Insert row data - process in larger batches for high performance
+            // Insert row data in parallel batches for maximum performance
             const batchSize = 500;
-            let currentBatch = [];
+            const concurrency = 5; // Run 5 batches in parallel at once
+            const batches = [];
+            for (let rowIndex = 0; rowIndex < sheetData.length; rowIndex += batchSize) {
+                batches.push(
+                    sheetData.slice(rowIndex, rowIndex + batchSize).map((row, i) => ({
+                        rowIndex: rowIndex + i,
+                        rowData: row
+                    }))
+                );
+            }
 
-            for (let rowIndex = 0; rowIndex < sheetData.length; rowIndex++) {
-                currentBatch.push({
-                    rowIndex,
-                    rowData: sheetData[rowIndex]
-                });
-
-                // When batch is full or it's the last row, insert
-                if (currentBatch.length === batchSize || rowIndex === sheetData.length - 1) {
-                    await req.supabaseService.createExcelDataBatch(sheetId, currentBatch);
-                    console.log(`  Inserted ${rowIndex + 1}/${sheetData.length} rows for sheet "${sheetName}"`);
-                    currentBatch = []; // Reset batch
-                }
+            for (let b = 0; b < batches.length; b += concurrency) {
+                const chunk = batches.slice(b, b + concurrency);
+                await Promise.all(chunk.map(batch => req.supabaseService.createExcelDataBatch(sheetId, batch)));
+                const insertedSoFar = Math.min((b + concurrency) * batchSize, sheetData.length);
+                console.log(`  Inserted ${insertedSoFar}/${sheetData.length} rows for sheet "${sheetName}"`);
             }
 
             console.log(`Completed inserting all rows for sheet "${sheetName}"`);
@@ -3361,7 +3363,7 @@ runScheduler().catch(err => console.error('[Scheduler] Startup run failed:', err
 setInterval(runScheduler, SCHEDULER_INTERVAL_MS);
 console.log(`⏰ Scheduled refresh engine started (polling every ${SCHEDULER_INTERVAL_MS / 1000}s)`);
 
-const server = app.listen(port, () => {
+const server = app.listen(port, '0.0.0.0', () => {
     console.log(`Server running on port ${port} with Supabase integration`);
     console.log('Supabase Configuration:');
     console.log(`  Project URL: ${globalSupabaseService.supabaseUrl}`);
