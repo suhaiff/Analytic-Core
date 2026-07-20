@@ -5,6 +5,9 @@ import { Footer } from './Footer';
 import { ArrowRight, CheckCircle2, BarChart3, Lock, Cpu, Activity, Database, MessageSquare, Shield, Users, Bot, LineChart, Code2, Workflow, User as UserIcon } from 'lucide-react';
 import { User } from '../types';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
+import welcomePageImage from './images/welcome_page_image.png';
+import { ChartMarquee } from './ChartMarquee';
+import { IntegrationMarquee } from './IntegrationMarquee';
 
 interface OverviewProps {
   user: User | null;
@@ -16,23 +19,14 @@ export const Overview: React.FC<OverviewProps> = ({ onNavigateToLanding, onNavig
   const { theme } = useTheme();
   const colors = getThemeClasses(theme);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const isDark = theme === 'dark';
 
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll();
   const mockupY = useTransform(scrollYProgress, [0, 0.5], [0, -100]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.2], [1, 0]);
-
-  const isDark = theme === 'dark';
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePosition({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-    };
+    // Removed mouse tracking that was causing severe performance degradation
   }, []);
 
   const handleGetStarted = () => {
@@ -121,7 +115,6 @@ export const Overview: React.FC<OverviewProps> = ({ onNavigateToLanding, onNavig
           
           {/* Hero Section */}
           <motion.section 
-            style={{ opacity: heroOpacity }}
             className="text-center mb-40 relative z-10 px-4 w-full"
           >
                 {/* Floating Elements (Background) */}
@@ -151,6 +144,21 @@ export const Overview: React.FC<OverviewProps> = ({ onNavigateToLanding, onNavig
                         <p>KPIs, insights, and recommended next steps in minutes, not days</p>
                     </div>
 
+                    {/* Hero Dashboard Image */}
+                    <motion.div 
+                        initial={{ opacity: 0, y: 30 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.8, delay: 0.2 }}
+                        className="w-full max-w-6xl mx-auto mb-16 md:mb-20 relative px-4 sm:px-6"
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/20 via-purple-500/10 to-transparent blur-[60px] md:blur-[100px] rounded-3xl" />
+                        <div className={`relative rounded-xl md:rounded-2xl overflow-hidden border ${isDark ? 'border-white/10 shadow-[0_0_50px_-15px_rgba(99,102,241,0.5)]' : 'border-slate-200/50 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.1)]'} z-20`}>
+                            <img src={welcomePageImage} alt="AnalyticCore Dashboard Presentation" className="w-full h-auto object-cover" />
+                            {/* Inner glass reflection effect */}
+                            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent pointer-events-none" />
+                        </div>
+                    </motion.div>
+
                     <button
                         onClick={handleGetStarted}
                         className="group relative inline-flex items-center justify-center gap-3 px-8 py-4 rounded-full bg-indigo-600 text-white font-bold text-lg overflow-hidden transition-all hover:scale-105 shadow-[0_0_40px_-10px_rgba(99,102,241,0.6)] mb-20 md:mb-28"
@@ -161,7 +169,12 @@ export const Overview: React.FC<OverviewProps> = ({ onNavigateToLanding, onNavig
                         </span>
                         <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-violet-500 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                     </button>
+                </motion.div>
+          </motion.section>
 
+          <ChartMarquee />
+
+          <motion.section className="text-center mb-40 relative z-10 px-4 w-full">
                     {/* Massive Dashboard Mockup */}
                     <motion.div 
                         initial={{ opacity: 0, y: 100 }}
@@ -312,7 +325,6 @@ export const Overview: React.FC<OverviewProps> = ({ onNavigateToLanding, onNavig
                             </div>
                         </motion.div>
                     </motion.div>
-                </motion.div>
           </motion.section>
 
           {/* Workflow Section: Massive Staggered Blocks */}
@@ -814,6 +826,8 @@ export const Overview: React.FC<OverviewProps> = ({ onNavigateToLanding, onNavig
               </motion.div>
             </div>
           </section>
+
+          <IntegrationMarquee />
 
 
           {/* Pricing — Immersive Showcase */}

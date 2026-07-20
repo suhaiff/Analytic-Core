@@ -545,9 +545,24 @@ export function evaluateDaxMeasure(formula: string, rows: ProcessedRow[], custom
       }
   );
 
+  jsFormula = jsFormula.replace(/\bDIVIDE\b/gi, 'DIVIDE');
+  jsFormula = jsFormula.replace(/\bADD\b/gi, 'ADD');
+  jsFormula = jsFormula.replace(/\bSUBTRACT\b/gi, 'SUBTRACT');
+  jsFormula = jsFormula.replace(/\bMULTIPLY\b/gi, 'MULTIPLY');
+
   try {
       // eslint-disable-next-line no-new-func
-      const result = new Function(`return ${jsFormula}`)();
+      const result = new Function(`
+        const DIVIDE = (n, d, alt) => {
+            const num = Number(n) || 0;
+            const den = Number(d) || 0;
+            return den === 0 ? (alt !== undefined ? Number(alt) : 0) : (num / den);
+        };
+        const ADD = (a, b) => (Number(a) || 0) + (Number(b) || 0);
+        const SUBTRACT = (a, b) => (Number(a) || 0) - (Number(b) || 0);
+        const MULTIPLY = (a, b) => (Number(a) || 0) * (Number(b) || 0);
+        return ${jsFormula};
+      `)();
       return isNaN(result) ? 0 : parseFloat(result.toFixed(2));
   } catch (e) {
       return 0;

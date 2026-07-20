@@ -19,6 +19,9 @@ import {
 } from 'lucide-react';
 import { Footer } from './Footer';
 import { motion, useScroll, useTransform } from 'framer-motion';
+import welcomePageImage from './images/welcome_page_image.png';
+import { ChartMarquee } from './ChartMarquee';
+import { IntegrationMarquee } from './IntegrationMarquee';
 
 interface WelcomeProps {
     onNavigateToLogin: () => void;
@@ -34,7 +37,6 @@ export const Welcome: React.FC<WelcomeProps> = ({ onNavigateToLogin, onNavigateT
     // Parallax values
     const y1 = useTransform(scrollYProgress, [0, 1], [0, -200]);
     const y2 = useTransform(scrollYProgress, [0, 1], [0, -100]);
-    const opacityHero = useTransform(scrollYProgress, [0, 0.2], [1, 0]);
 
     const isDark = theme === 'dark';
 
@@ -87,7 +89,6 @@ export const Welcome: React.FC<WelcomeProps> = ({ onNavigateToLogin, onNavigateT
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.7, delay: 0.1 }}
-                    style={{ opacity: opacityHero }}
                     className="flex flex-col items-center text-center max-w-5xl mx-auto w-full z-10 relative"
                 >
                     <div className={`text-xs sm:text-sm font-semibold tracking-wide uppercase mb-6 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -103,6 +104,21 @@ export const Welcome: React.FC<WelcomeProps> = ({ onNavigateToLogin, onNavigateT
                         <p>KPIs, insights, and recommended next steps in minutes, not days</p>
                     </div>
 
+                    {/* Hero Dashboard Image */}
+                    <motion.div 
+                        initial={{ opacity: 0, y: 30 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.8, delay: 0.2 }}
+                        className="w-full max-w-6xl mx-auto mb-16 md:mb-20 relative px-4 sm:px-6"
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/20 via-purple-500/10 to-transparent blur-[60px] md:blur-[100px] rounded-3xl" />
+                        <div className={`relative rounded-xl md:rounded-2xl overflow-hidden border ${isDark ? 'border-white/10 shadow-[0_0_50px_-15px_rgba(99,102,241,0.5)]' : 'border-slate-200/50 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.1)]'} z-20`}>
+                            <img src={welcomePageImage} alt="AnalyticCore Dashboard Presentation" className="w-full h-auto object-cover" />
+                            {/* Inner glass reflection effect */}
+                            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent pointer-events-none" />
+                        </div>
+                    </motion.div>
+
                     <button
                         onClick={onNavigateToSignup}
                         className="group relative inline-flex items-center justify-center gap-3 px-8 py-4 rounded-full bg-indigo-600 text-white font-bold text-lg overflow-hidden transition-all hover:scale-105 shadow-[0_0_40px_-10px_rgba(99,102,241,0.6)] mb-20 md:mb-28"
@@ -113,9 +129,18 @@ export const Welcome: React.FC<WelcomeProps> = ({ onNavigateToLogin, onNavigateT
                         </span>
                         <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-violet-500 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                     </button>
+                </motion.div>
 
+                <ChartMarquee />
+
+                <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.7, delay: 0.2 }}
+                    className="flex flex-col items-center text-center max-w-5xl mx-auto w-full z-10 relative"
+                >
                     
-                    {/* View Toggle */}
+                {/* View Toggle */}
                     <div className="flex items-center gap-2 p-1.5 rounded-full bg-slate-900/10 dark:bg-white/10 backdrop-blur-md mb-12 relative z-20 border border-slate-200 dark:border-white/10">
                         <button
                             onClick={() => setViewMode('visual')}
@@ -499,6 +524,8 @@ export const Welcome: React.FC<WelcomeProps> = ({ onNavigateToLogin, onNavigateT
                     </motion.div>
                 </div>
             </section>
+
+            <IntegrationMarquee />
 
             {/* Smart Pricing Section */}
             <section className="relative z-10 py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
